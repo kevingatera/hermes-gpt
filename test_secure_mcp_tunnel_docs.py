@@ -10,6 +10,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
 
 ROOT = Path(__file__).resolve().parent
 GUIDE = ROOT / "docs" / "openai-secure-mcp-tunnel.md"
+SESSIONS_GUIDE = ROOT / "docs" / "chatgpt-sessions-plugin.md"
 LAUNCHER = ROOT / "examples" / "start-openai-secure-mcp-tunnel.example.ps1"
 STATUS = ROOT / "examples" / "status-hermes-gpt.example.ps1"
 
@@ -29,6 +30,26 @@ def test_secure_tunnel_guide_preserves_loopback_and_security_boundaries() -> Non
     assert "authorization server itself is not automatically tunneled" in text
     assert "Operator or Owner authorization" in text
     assert "public plugin distribution endpoint" in text
+
+
+def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -> None:
+    text = _read(SESSIONS_GUIDE)
+
+    assert "python server.py mcp --http --host 127.0.0.1 --port 4751" in text
+    assert "http://127.0.0.1:4751/mcp" in text
+    for env_name in (
+        "HERMES_GPT_CODEX_TOOLSET=sessions",
+        "HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES",
+        "HERMES_GPT_OPERATOR_ALLOWED_PROFILES",
+        "HERMES_GPT_TASK_BROWSER_ALLOWED_PROFILES",
+        "HERMES_GPT_TASK_WORKSPACES",
+        "HERMES_GPT_OPERATOR_APPLY_MODE=direct",
+    ):
+        assert env_name in text
+    assert "deepseek/deepseek-v4.1-flash" in text
+    assert "reasoning_effort" in text
+    assert "plugin_asdk_app" in text
+    assert "A2A delegation tools" in text
 
 
 def test_secure_tunnel_launcher_supervises_only_owned_children() -> None:
@@ -57,11 +78,15 @@ def test_secure_tunnel_docs_are_wired_into_current_entry_points() -> None:
     root_readme = _read(ROOT / "README.md")
     docs_readme = _read(ROOT / "docs" / "README.md")
     windows_guide = _read(ROOT / "docs" / "windows-chatgpt-codex.md")
+    codex_guide = _read(ROOT / "docs" / "codex.md")
     cloudflare_guide = _read(ROOT / "docs" / "cloudflare-tunnel.md")
     compatibility = _read(ROOT / "docs" / "mcp-compatibility.md")
 
     for text in (root_readme, docs_readme, windows_guide, cloudflare_guide, compatibility):
         assert "openai-secure-mcp-tunnel.md" in text
+    assert "chatgpt-sessions-plugin.md" in root_readme
+    assert "chatgpt-sessions-plugin.md" in docs_readme
+    assert "chatgpt-sessions-plugin.md" in codex_guide
 
 
 def test_secure_tunnel_docs_and_launcher_ship_in_package_data() -> None:
@@ -71,5 +96,6 @@ def test_secure_tunnel_docs_and_launcher_ship_in_package_data() -> None:
     shipped_examples = package_data["share/hermes-gpt/examples"]
 
     assert "docs/openai-secure-mcp-tunnel.md" in shipped_docs
+    assert "docs/chatgpt-sessions-plugin.md" in shipped_docs
     assert "docs/cloudflare-tunnel.md" in shipped_docs
     assert "examples/start-openai-secure-mcp-tunnel.example.ps1" in shipped_examples

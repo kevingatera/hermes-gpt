@@ -31,6 +31,7 @@ PyPI is an independent distribution channel. Check the PyPI badge in the root RE
 | [`mcp-compatibility.md`](mcp-compatibility.md) | current | SDK 1/2 support, protocol regression checks, transport matrix, trusted-client auth metadata |
 | [`file-export.md`](file-export.md) | current | bounded binary file transfer, workspace/denied-path gates, size/extension limits, MCP embedded-resource semantics |
 | [`openai-secure-mcp-tunnel.md`](openai-secure-mcp-tunnel.md) | current | outbound-only private access from supported OpenAI products to loopback Hermes GPT |
+| [`chatgpt-sessions-plugin.md`](chatgpt-sessions-plugin.md) | current | private ChatGPT setup for the curated Hermes session and browser MCP toolset |
 | [`cloudflare-tunnel.md`](cloudflare-tunnel.md) | current | public Cloudflare HTTPS proxy deployment and Host allowlist behavior |
 | [`operator-mode.md`](operator-mode.md) | current | Operator / Owner policy, Mission Control, fleet routing, Work Contracts, Swarm Orchestration, v0.8 Fabric execution, and Flight Deck surfaces |
 | [`finance.md`](finance.md) | current | bounded ChatGPT-to-Hermes Finance bridge, finance evidence/decision contracts, persistence boundary, activation, and verification |

@@ -196,6 +196,10 @@ Use Hermes GPT OAuth with Secure MCP Tunnel only when you deliberately provide t
 
 See [OAuth and bearer authentication](oauth.md) for the Hermes GPT OAuth contract.
 
+For ChatGPT session and browser control, use the curated `sessions` MCP
+toolset and its separate profile/workspace gates. See [ChatGPT session and
+browser plugin setup](chatgpt-sessions-plugin.md).
+
 ## Windows supervised launcher
 
 The repository ships [`../examples/start-openai-secure-mcp-tunnel.example.ps1`](../examples/start-openai-secure-mcp-tunnel.example.ps1).

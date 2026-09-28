@@ -110,6 +110,11 @@ Use a dedicated Hermes profile and keep its name in both `HERMES_GPT_SESSION_CON
 
 Use MCP tools for direct session and browser operations. Use the existing [A2A fleet tools](delegations.md) on the main Hermes GPT MCP server when handing a work contract to another Hermes peer.
 
+`hermes-gpt codex install --toolset sessions` configures a local stdio server
+for Codex. ChatGPT Work uses a separately registered MCP connection; for a
+private ChatGPT setup, use [ChatGPT session and browser plugin setup](chatgpt-sessions-plugin.md)
+with OpenAI Secure MCP Tunnel.
+
 ### Tool-name namespace warning
 
 The curated Codex MCP server is not identical to the main Hermes GPT server.

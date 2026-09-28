@@ -110,6 +110,7 @@ See the [v0.6.0 release notes](docs/release-notes-v0.6.0.md) and [retention poli
 | Understand the repository and current docs | [Documentation map](docs/README.md) |
 | Run Hermes GPT locally | [Local quickstart](#local-quickstart) |
 | Connect ChatGPT/OpenAI privately without publishing Hermes GPT | [OpenAI Secure MCP Tunnel](docs/openai-secure-mcp-tunnel.md) |
+| Give ChatGPT private Hermes session and browser controls | [ChatGPT session and browser plugin](docs/chatgpt-sessions-plugin.md) |
 | Authenticate a remote MCP connector | [OAuth and bearer authentication](docs/oauth.md) |
 | Connect Google Gemini (consumer Custom apps) | [Gemini Spark custom app](docs/gemini-spark.md) |
 | Verify the MCP protocol surface | [MCP compatibility manifest](docs/mcp-compatibility.md) |
