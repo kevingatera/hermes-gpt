@@ -58,6 +58,8 @@ py-modules = [
   "operator_fabric_control",
   "operator_fabric_router",
   "operator_fabric_g4c",
+  "operator_fabric_g4c_protocol",
+  "operator_fabric_g4c_peer_write",
   "operator_fabric_view",
   "operator_diagnostics",
   "operator_codex",
