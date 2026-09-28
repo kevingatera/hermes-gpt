@@ -22,6 +22,7 @@ import operator_status as op_status
 import operator_swarm as op_swarm
 import server_hermes_runtime as hermes_runtime
 import server_http as http_server
+import server_hermes_tools as hermes_tools
 import server_skill_tools as skill_tools
 from hermes_session_history import (
     INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
@@ -263,95 +264,34 @@ def tool_meta(extra: dict[str, Any] | None = None) -> dict[str, Any]:
     return meta
 
 
-def hermes_read_file(path: str, offset: int = 1, limit: int = 500) -> str:
-    try:
-        require_imports()
-        return file_tools.read_file_tool(path=expand_path(path), offset=offset, limit=limit)
-    except Exception as exc:
-        raise clean_error("hermes_read_file", exc) from exc
-
-
-def hermes_write_file(path: str, content: str) -> str:
-    try:
-        require_imports()
-        return file_tools.write_file_tool(path=expand_path(path), content=content)
-    except Exception as exc:
-        raise clean_error("hermes_write_file", exc) from exc
-
-
-def hermes_patch(
-    path: str,
-    old_string: str,
-    new_string: str,
-    mode: str = "replace",
-    replace_all: bool = False,
-) -> str:
-    try:
-        require_imports()
-        return call_with_supported_kwargs(
-            file_tools.patch_tool,
-            mode=mode,
-            path=expand_path(path),
-            old_string=old_string,
-            new_string=new_string,
-            replace_all=replace_all,
-        )
-    except Exception as exc:
-        raise clean_error("hermes_patch", exc) from exc
-
-
-def hermes_search_files(
-    pattern: str,
-    target: str = "content",
-    path: str = ".",
-    file_glob: str | None = None,
-    limit: int = 50,
-) -> str:
-    try:
-        require_imports()
-        return call_with_supported_kwargs(
-            file_tools.search_tool,
-            pattern=pattern,
-            target=target,
-            path=expand_path(path),
-            file_glob=file_glob,
-            limit=limit,
-        )
-    except Exception as exc:
-        raise clean_error("hermes_search_files", exc) from exc
-
-
-def hermes_run_command(command: str, timeout: int = 30, workdir: str | None = None) -> str:
-    try:
-        require_imports()
-        if not env_enabled(ENABLE_TERMINAL_ENV):
-            raise RuntimeError(f"Terminal execution is disabled. Set {ENABLE_TERMINAL_ENV}=1 to enable it.")
-        capped_timeout = max(1, min(int(timeout), 120))
-        return call_with_supported_kwargs(
-            terminal_tool.terminal_tool,
-            command=command,
-            timeout=capped_timeout,
-            workdir=expand_path(workdir),
-        )
-    except Exception as exc:
-        raise clean_error("hermes_run_command", exc) from exc
-
-
-def hermes_memory(
-    action: str,
-    target: str = "memory",
-    content: str | None = None,
-    old_text: str | None = None,
-) -> str:
-    try:
-        require_imports()
-        if action not in {"add", "replace", "remove", "search"}:
-            raise RuntimeError("Unsupported memory action. Use add, replace, remove, or search.")
-        if action in {"add", "replace", "remove"} and not env_enabled(ENABLE_MEMORY_WRITE_ENV):
-            raise RuntimeError(f"Memory write actions are disabled. Set {ENABLE_MEMORY_WRITE_ENV}=1 to enable them.")
-        return memory_tool.memory_tool(action=action, target=target, content=content, old_text=old_text)
-    except Exception as exc:
-        raise clean_error("hermes_memory", exc) from exc
+_hermes_tool_context = hermes_tools.HermesToolContext(
+    require_imports=lambda: require_imports(),
+    env_enabled=lambda name: env_enabled(name),
+    call_with_supported_kwargs=lambda func, **kwargs: call_with_supported_kwargs(
+        func, **kwargs
+    ),
+    expand_path=lambda value: expand_path(value),
+    clean_error=lambda name, exc: clean_error(name, exc),
+    get_file_tools=lambda: file_tools,
+    get_memory_tool=lambda: memory_tool,
+    get_terminal_tool=lambda: terminal_tool,
+    get_vision_tool=lambda: vision_tool,
+    get_web_tool=lambda: web_tool,
+    terminal_enabled_env=ENABLE_TERMINAL_ENV,
+    memory_write_enabled_env=ENABLE_MEMORY_WRITE_ENV,
+    vision_enabled_env=ENABLE_VISION_ENV,
+    web_enabled_env=ENABLE_WEB_ENV,
+)
+_hermes_tools = hermes_tools.HermesTools(_hermes_tool_context)
+hermes_read_file = _hermes_tools.hermes_read_file
+hermes_write_file = _hermes_tools.hermes_write_file
+hermes_patch = _hermes_tools.hermes_patch
+hermes_search_files = _hermes_tools.hermes_search_files
+hermes_run_command = _hermes_tools.hermes_run_command
+hermes_memory = _hermes_tools.hermes_memory
+hermes_vision_analyze = _hermes_tools.hermes_vision_analyze
+hermes_web_search = _hermes_tools.hermes_web_search
+hermes_web_extract = _hermes_tools.hermes_web_extract
 
 
 _session_tool_context = SessionToolContext(
@@ -399,81 +339,6 @@ hermes_task_continue = _managed_session_task_tools.hermes_task_continue
 hermes_task_status = _managed_session_task_tools.hermes_task_status
 hermes_task_result = _managed_session_task_tools.hermes_task_result
 hermes_task_cancel = _managed_session_task_tools.hermes_task_cancel
-
-
-# ---------------------------------------------------------------------------
-# Hermes tool wrappers (env-gated)
-# ---------------------------------------------------------------------------
-
-
-def hermes_vision_analyze(image_url: str, question: str = "") -> str:
-    """Analyze an image using Hermes Agent vision. Env-gated."""
-    try:
-        require_imports()
-        if not env_enabled(ENABLE_VISION_ENV):
-            raise RuntimeError(
-                f"Vision analysis is disabled. Set {ENABLE_VISION_ENV}=1 to enable it."
-            )
-        if vision_tool is None:
-            raise RuntimeError(
-                "Vision tool is not available (import failed at startup)."
-            )
-        import asyncio
-
-        user_prompt = question if question else "Describe this image in detail."
-        result = asyncio.run(
-            vision_tool.vision_analyze_tool(
-                image_url=image_url, user_prompt=user_prompt
-            )
-        )
-        return result
-    except Exception as exc:
-        raise clean_error("hermes_vision_analyze", exc) from exc
-
-
-def hermes_web_search(query: str, limit: int = 5) -> str:
-    """Search the web using Hermes Agent web_search. Env-gated."""
-    try:
-        require_imports()
-        if not env_enabled(ENABLE_WEB_ENV):
-            raise RuntimeError(
-                f"Web search is disabled. Set {ENABLE_WEB_ENV}=1 to enable it."
-            )
-        if web_tool is None:
-            raise RuntimeError(
-                "Web tool is not available (import failed at startup)."
-            )
-        return web_tool.web_search_tool(query=query, limit=limit)
-    except Exception as exc:
-        raise clean_error("hermes_web_search", exc) from exc
-
-
-def hermes_web_extract(
-    urls: list[str],
-    char_limit: int | None = None,
-) -> str:
-    """Extract content from web pages using Hermes Agent web_extract. Env-gated."""
-    try:
-        require_imports()
-        if not env_enabled(ENABLE_WEB_ENV):
-            raise RuntimeError(
-                f"Web extract is disabled. Set {ENABLE_WEB_ENV}=1 to enable it."
-            )
-        if web_tool is None:
-            raise RuntimeError(
-                "Web tool is not available (import failed at startup)."
-            )
-        import asyncio
-
-        kwargs = {}
-        if char_limit is not None:
-            kwargs["char_limit"] = char_limit
-        result = asyncio.run(
-            web_tool.web_extract_tool(urls=urls, **kwargs)
-        )
-        return result
-    except Exception as exc:
-        raise clean_error("hermes_web_extract", exc) from exc
 
 
 def hermes_finance_analyze(evidence_json: str, timeout: int = 120) -> str:
