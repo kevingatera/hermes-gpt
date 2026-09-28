@@ -90,6 +90,9 @@ def _validate_model_and_effort(model: str, effort: str) -> tuple[str, str]:
     provider, separator, model_name = model.partition("/")
     if not separator or not provider or not model_name:
         raise ValueError("model must use provider/model syntax")
+    if provider.lower() not in PROVIDER_KEY_ENVS:
+        supported = ", ".join(sorted(PROVIDER_KEY_ENVS))
+        raise ValueError(f"model provider is unsupported; choose one of: {supported}")
     if not isinstance(effort, str) or effort not in REASONING_EFFORTS:
         choices = ", ".join(sorted(REASONING_EFFORTS))
         raise ValueError(f"reasoning_effort must be one of: {choices}")

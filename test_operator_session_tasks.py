@@ -115,6 +115,30 @@ def test_task_start_dry_run_reports_selection_without_provider_credentials(
     assert not tasks._task_root(root).exists()
 
 
+def test_task_start_dry_run_rejects_unsupported_model_provider(monkeypatch, tmp_path):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    monkeypatch.setattr(
+        tasks.runtime,
+        "_model_credentials",
+        lambda *_args: pytest.fail("a dry run must not read provider credentials"),
+    )
+
+    result = tasks.hermes_task_start(
+        "Inspect the readme and summarize the project.",
+        "demo",
+        model="unsupported/model-name",
+        browser_enabled=False,
+        hermes_root=root,
+    )
+
+    assert result["success"] is False
+    assert result["code"] == "TASK_START_ERROR"
+    assert "model provider is unsupported" in result["safe_message"]
+    assert not tasks._task_root(root).exists()
+
+
 def test_task_start_requires_provider_credentials_before_creating_state(
     monkeypatch, tmp_path
 ):
