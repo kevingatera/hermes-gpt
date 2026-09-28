@@ -53,6 +53,32 @@ import operator_session_tasks as op_session_tasks
 import operator_skills as op_skills
 import operator_swarm as op_swarm
 import operator_workspace as op_workspace
+from hermes_session_history import (
+    MAX_EXPORT_MESSAGES,
+    MAX_ID_LENGTH,
+    MAX_LIST_LIMIT,
+    MAX_MESSAGE_SCAN_ROWS,
+    MAX_OFFSET,
+    MAX_PAGE_SIZE,
+    MAX_QUERY_LENGTH,
+    INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
+    ReadOnlySessionStore,
+    SessionSearchUnavailable as _SessionSearchUnavailable,
+    allowed_message_roles as _allowed_message_roles,
+    redact_error as _redact_error,
+    redact_text as _redact_text,
+    redact_value as _redact_value,
+    safe_message as _safe_message,
+    safe_search_message as _safe_search_message,
+    safe_session_metadata as _safe_session_metadata,
+    utf8_response_bytes as _utf8_response_bytes,
+    validate_bool as _validate_bool,
+    validate_limit as _validate_limit,
+    validate_offset as _validate_offset,
+    validate_profile as _validate_profile,
+    validate_query as _validate_query,
+    validate_session_id as _validate_session_id,
+)
 from versioning import VERSION
 
 LOCAL_DEV_PROFILE = "local-dev"
@@ -64,7 +90,6 @@ ALLOWED_HOSTS_ENV = "HERMES_GPT_ALLOWED_HOSTS"
 ENABLE_WRITE_ENV = "HERMES_GPT_ENABLE_WRITE"
 ENABLE_MEMORY_WRITE_ENV = "HERMES_GPT_ENABLE_MEMORY_WRITE"
 ENABLE_SESSION_SEARCH_ENV = "HERMES_GPT_ENABLE_SESSION_SEARCH"
-ENABLE_SESSION_INTERNAL_CONTENT_ENV = "HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT"
 ENABLE_SESSION_CONTROL_ENV = op_session.ENABLE_SESSION_CONTROL_ENV
 SESSION_ALLOWED_PROFILES_ENV = op_session.SESSION_ALLOWED_PROFILES_ENV
 ENABLE_SCOPED_TASKS_ENV = op_session_tasks.ENABLE_SCOPED_TASKS_ENV
@@ -74,29 +99,9 @@ ENABLE_WEB_ENV = "HERMES_GPT_ENABLE_WEB"
 CODEX_BATCH_VERSION = VERSION
 NOAUTH_META = {"securitySchemes": [{"type": "noauth"}]}
 
-MAX_LIST_LIMIT = 100
-MAX_PAGE_SIZE = 100
-MAX_EXPORT_MESSAGES = 500
-MAX_OFFSET = 10_000
-MAX_ID_LENGTH = 256
-MAX_QUERY_LENGTH = 512
 MAX_RESPONSE_BYTES = 262_144
-MAX_MESSAGE_SCAN_ROWS = 1_000
 DEFAULT_SESSION_OFFSET = 0
 DEFAULT_SESSION_TIMEOUT = 900
-
-_DEFAULT_MESSAGE_ROLES = {"user", "assistant"}
-_INTERNAL_MESSAGE_ROLES = {"system", "tool", "function"}
-
-
-class _SessionSearchUnavailable(RuntimeError):
-    """Raised when the read-only session search/FTS API is unavailable."""
-_SENSITIVE_KEY_RE = re.compile(
-    r"(?i)(?:token|secret|password|passwd|api[_-]?key|authorization|cookie|private[_-]?key)"
-)
-_ABSOLUTE_PATH_RE = re.compile(
-    r"(?i)(?:[A-Z]:[\\/]|\\\\|/(?:Users|home|mnt|var|tmp)/)[^\s\"']+"
-)
 
 HERMES_ROOT: Path | None = None
 IMPORT_ERROR: str | None = None
@@ -287,161 +292,20 @@ def require_imports() -> None:
         raise RuntimeError(f"Hermes imports are unavailable: missing {', '.join(missing)}")
 
 
-def _validate_limit(value: int, name: str, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"{name} must be an integer.")
-    if value < 0:
-        raise ValueError(f"{name} must not be negative.")
-    if value > maximum:
-        raise ValueError(f"{name} exceeds the maximum of {maximum}.")
-    return value
-
-
-def _validate_offset(value: int) -> int:
-    return _validate_limit(value, "offset", MAX_OFFSET)
-
-
-def _validate_bool(value: bool, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{name} must be a boolean.")
-    return value
-
-
-def _validate_session_id(value: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError("session_id must be a string.")
-    normalized = value.strip()
-    if not normalized:
-        raise ValueError("session_id must not be empty.")
-    if len(normalized) > MAX_ID_LENGTH:
-        raise ValueError(f"session_id exceeds the maximum of {MAX_ID_LENGTH} characters.")
-    return normalized
-
-
-def _validate_query(value: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError("query must be a string.")
-    normalized = value.strip()
-    if not normalized:
-        raise ValueError("query must not be empty.")
-    if len(normalized) > MAX_QUERY_LENGTH:
-        raise ValueError(f"query exceeds the maximum of {MAX_QUERY_LENGTH} characters.")
-    return normalized
-
-
-def _utf8_response_bytes(value: str) -> int:
-    if not isinstance(value, str):
-        raise TypeError("response value must be a string.")
-    return len(value.encode("utf-8"))
-
-
-def _redact_text(value: Any) -> str:
-    text = op_policy.redact_output(str(value))
-    text = _ABSOLUTE_PATH_RE.sub("[REDACTED_PATH]", text)
-    return text
-
-
-def _redact_error(exc: BaseException) -> str:
-    return _redact_text(f"{type(exc).__name__}: {exc}")
-
-
-def _redact_value(value: Any, *, key: str | None = None) -> Any:
-    if key and key != "session_id" and _SENSITIVE_KEY_RE.search(key):
-        return "[REDACTED]"
-    if isinstance(value, str):
-        return _redact_text(value)
-    if isinstance(value, dict):
-        return {str(item_key): _redact_value(item, key=str(item_key)) for item_key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [_redact_value(item) for item in value]
-    return value
-
-
-def _safe_session_metadata(row: dict[str, Any]) -> dict[str, Any]:
-    safe_keys = (
-        "id",
-        "source",
-        "started_at",
-        "ended_at",
-        "last_active",
-        "message_count",
-        "tool_call_count",
-        "archived",
-    )
-    result = {key: row[key] for key in safe_keys if key in row}
-    result["has_title"] = bool(row.get("title"))
-    return _redact_value(result)
-
-
-def _safe_message(row: dict[str, Any], allowed_roles: set[str]) -> dict[str, Any] | None:
-    requested_internal = set(allowed_roles) & _INTERNAL_MESSAGE_ROLES
-    if requested_internal and not env_enabled(ENABLE_SESSION_INTERNAL_CONTENT_ENV):
-        raise RuntimeError(
-            "Internal session content is disabled. Set "
-            f"{ENABLE_SESSION_INTERNAL_CONTENT_ENV}=1 to request system or tool messages."
-        )
-    role = row.get("role")
-    safe_roles = _DEFAULT_MESSAGE_ROLES | _INTERNAL_MESSAGE_ROLES
-    if role not in set(allowed_roles) & safe_roles:
-        return None
-    safe_keys = ("id", "session_id", "role", "timestamp", "content")
-    result = {key: row[key] for key in safe_keys if key in row}
-    return _redact_value(result)
-
-
-def _safe_search_message(
-    row: dict[str, Any], allowed_roles: set[str]
-) -> dict[str, Any] | None:
-    """Project a SessionDB search row through the normal message safeguards."""
-    projected = dict(row)
-    snippet = row.get("snippet")
-    if isinstance(snippet, str):
-        # Current Hermes search results expose matched text as ``snippet``;
-        # older runtimes and test doubles may still expose ``content``.
-        projected["content"] = snippet
-    return _safe_message(projected, allowed_roles)
-
-
-def _allowed_message_roles(
-    *,
-    include_system_messages: bool = False,
-    include_tool_messages: bool = False,
-) -> set[str]:
-    if (include_system_messages or include_tool_messages) and not env_enabled(
-        ENABLE_SESSION_INTERNAL_CONTENT_ENV
-    ):
-        raise RuntimeError(
-            "Internal session content is disabled. Set "
-            f"{ENABLE_SESSION_INTERNAL_CONTENT_ENV}=1 to request system or tool messages."
-        )
-    allowed = set(_DEFAULT_MESSAGE_ROLES)
-    if include_system_messages:
-        allowed.add("system")
-    if include_tool_messages:
-        allowed.update({"tool", "function"})
-    return allowed
-
-
 def _validate_session_profile(profile: str = "default") -> str:
     """Validate a session-history profile against Hermes/operator policy."""
-    canon = op_policy.validate_profile_name(profile)
-    hermes_root = _default_hermes_root()
-    if canon != "default":
-        policy = op_policy.OperatorPolicy()
-        policy.require_profile(canon, hermes_root)
-    return canon
+    return _validate_profile(profile, _default_hermes_root())
 
 
 def _session_profile_db_path(profile: str = "default") -> Path:
-    """Return the state.db path for an authorized Hermes profile."""
+    """Return the authorized Hermes profile's state database path."""
     canon = _validate_session_profile(profile)
-    hermes_root = _default_hermes_root()
-    profile_home = op_policy.resolve_profile_home(canon, hermes_root)
+    profile_home = op_policy.resolve_profile_home(canon, _default_hermes_root())
     return profile_home / "state.db"
 
 
-class ReadOnlySessionAdapter:
-    """Bounded adapter around Hermes' verified read-only SessionDB API."""
+class ReadOnlySessionAdapter(ReadOnlySessionStore):
+    """Bind the reusable session store to this server's Hermes runtime."""
 
     def __init__(
         self,
@@ -449,210 +313,14 @@ class ReadOnlySessionAdapter:
         connection_type: type = sqlite3.Connection,
         profile: str = "default",
     ):
-        self._db_factory = db_factory if db_factory is not None else SessionDB
-        self._connection_type = connection_type
-        self._profile = _validate_session_profile(profile)
-        self._db = None
-        self._disposed = False
-
-    def open(self) -> "ReadOnlySessionAdapter":
-        if self._disposed:
-            raise RuntimeError("Read-only session adapter has already been disposed.")
-        if self._db is not None:
-            return self
-        if self._db_factory is None:
-            raise RuntimeError("Hermes session database is unavailable: SessionDB import failed.")
-        try:
-            self._db = self._db_factory(
-                db_path=_session_profile_db_path(self._profile),
-                read_only=True,
-            )
-        except Exception as exc:
-            raise RuntimeError(f"Hermes session database is unavailable: {_redact_error(exc)}") from exc
-        return self
-
-    def __enter__(self) -> "ReadOnlySessionAdapter":
-        return self.open()
-
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
-        self.dispose_safely()
-
-    def _require_db(self) -> Any:
-        if self._db is None or self._disposed:
-            raise RuntimeError("Read-only session adapter is not open.")
-        return self._db
-
-    def list_sessions(self, *, limit: int, offset: int, include_archived: bool = False) -> list[dict[str, Any]]:
-        db = self._require_db()
-        safe_limit = _validate_limit(limit, "limit", MAX_LIST_LIMIT)
-        safe_offset = _validate_offset(offset)
-        safe_include_archived = _validate_bool(include_archived, "include_archived")
-        return db.list_sessions_rich(
-            limit=safe_limit,
-            offset=safe_offset,
-            include_archived=safe_include_archived,
-            compact_rows=True,
+        super().__init__(
+            db_factory=SessionDB if db_factory is None else db_factory,
+            connection_type=connection_type,
+            profile=profile,
+            hermes_root=_default_hermes_root(),
+            profile_validator=_validate_session_profile,
+            profile_db_resolver=_session_profile_db_path,
         )
-
-    def resolve_session_id(self, session_id_or_prefix: str) -> str | None:
-        return self._require_db().resolve_session_id(_validate_session_id(session_id_or_prefix))
-
-    def get_canonical_bot_chat(self) -> dict[str, Any] | None:
-        """Resolve this profile's canonical Bot Chat registry row and live tip."""
-        db = self._require_db()
-        if not hasattr(db, "get_session_by_title") or not hasattr(db, "get_compression_tip"):
-            raise RuntimeError("Installed SessionDB runtime lacks canonical Bot Chat lookup support.")
-        title = getattr(db, "CANONICAL_BOT_CHAT_TITLE", "Bot Chat")
-        registry = db.get_session_by_title(title)
-        if not isinstance(registry, dict):
-            return None
-        if str(registry.get("source") or "").strip().lower() in {"kanban", "tool"}:
-            return None
-        if bool(registry.get("archived")):
-            return None
-        registry_id = registry.get("id")
-        if not isinstance(registry_id, str) or not registry_id:
-            return None
-        tip_id = db.get_compression_tip(registry_id) or registry_id
-        current = registry
-        if tip_id != registry_id:
-            if not hasattr(db, "get_session"):
-                raise RuntimeError("Installed SessionDB runtime cannot hydrate the Bot Chat compression tip.")
-            resolved = db.get_session(tip_id)
-            if isinstance(resolved, dict):
-                current = resolved
-        return {
-            "registry": registry,
-            "current": current,
-            "registry_session_id": registry_id,
-            "current_session_id": tip_id,
-            "canonical_title": title,
-        }
-
-    def get_messages_page(
-        self,
-        session_id: str,
-        *,
-        limit: int,
-        offset: int,
-        include_inactive: bool = False,
-        include_system_messages: bool = False,
-        include_tool_messages: bool = False,
-    ) -> dict[str, Any]:
-        db = self._require_db()
-        safe_id = _validate_session_id(session_id)
-        safe_limit = _validate_limit(limit, "limit", MAX_EXPORT_MESSAGES)
-        safe_offset = _validate_offset(offset)
-        safe_include_inactive = _validate_bool(include_inactive, "include_inactive")
-        safe_include_system = _validate_bool(include_system_messages, "include_system_messages")
-        safe_include_tool = _validate_bool(include_tool_messages, "include_tool_messages")
-        allowed_roles = _allowed_message_roles(
-            include_system_messages=safe_include_system,
-            include_tool_messages=safe_include_tool,
-        )
-        projected: list[dict[str, Any]] = []
-        cursor = safe_offset
-        rows_examined = 0
-        source_exhausted = safe_limit == 0
-        while len(projected) < safe_limit and rows_examined < MAX_MESSAGE_SCAN_ROWS:
-            fetch_limit = min(
-                MAX_PAGE_SIZE,
-                MAX_MESSAGE_SCAN_ROWS - rows_examined,
-                max(1, safe_limit - len(projected)),
-            )
-            raw_rows = db.get_messages(
-                safe_id,
-                limit=fetch_limit,
-                offset=cursor,
-                include_inactive=safe_include_inactive,
-            )
-            examined_now = len(raw_rows)
-            if examined_now == 0:
-                source_exhausted = True
-                break
-            rows_examined += examined_now
-            cursor += examined_now
-            for row in raw_rows:
-                message = _safe_message(row, allowed_roles)
-                if message is not None:
-                    projected.append(message)
-                    if len(projected) >= safe_limit:
-                        break
-            if examined_now < fetch_limit:
-                source_exhausted = True
-                break
-
-        return {
-            "messages": projected[:safe_limit],
-            "next_offset": cursor,
-            "rows_examined": rows_examined,
-            "has_more": not source_exhausted,
-            "scan_limited": rows_examined >= MAX_MESSAGE_SCAN_ROWS and not source_exhausted,
-        }
-
-    def get_messages(
-        self,
-        session_id: str,
-        *,
-        limit: int,
-        offset: int,
-        include_inactive: bool = False,
-        include_system_messages: bool = False,
-        include_tool_messages: bool = False,
-    ) -> list[dict[str, Any]]:
-        return self.get_messages_page(
-            session_id,
-            limit=limit,
-            offset=offset,
-            include_inactive=include_inactive,
-            include_system_messages=include_system_messages,
-            include_tool_messages=include_tool_messages,
-        )["messages"]
-
-    def search_messages(self, *, query: str, limit: int, offset: int) -> list[dict[str, Any]]:
-        db = self._require_db()
-        if not hasattr(db, "search_messages"):
-            raise _SessionSearchUnavailable(
-                "read-only FTS search_messages API is unavailable"
-            )
-        if hasattr(db, "_fts_enabled") and not bool(getattr(db, "_fts_enabled")):
-            raise _SessionSearchUnavailable(
-                "read-only FTS is disabled by the installed SessionDB runtime"
-            )
-        safe_query = _validate_query(query)
-        safe_limit = _validate_limit(limit, "limit", MAX_LIST_LIMIT)
-        safe_offset = _validate_offset(offset)
-        raw_rows = db.search_messages(query=safe_query, limit=safe_limit, offset=safe_offset)
-        allowed_roles = _allowed_message_roles()
-        projected = []
-        for row in raw_rows:
-            message = _safe_search_message(row, allowed_roles)
-            if message is not None:
-                projected.append(message)
-        return projected
-
-    def export_session(self, session_id: str) -> dict[str, Any] | None:
-        """INTERNAL RAW export; callers must project before client exposure."""
-        return self._require_db().export_session(_validate_session_id(session_id))
-
-    def export_session_lineage(self, session_id: str) -> dict[str, Any] | None:
-        """INTERNAL RAW lineage export; never return directly from an MCP tool."""
-        return self._require_db().export_session_lineage(_validate_session_id(session_id))
-
-    def dispose_safely(self) -> None:
-        if self._disposed:
-            return
-        self._disposed = True
-        db = self._db
-        if db is None:
-            return
-        connection = getattr(db, "_conn", None)
-        if not isinstance(connection, self._connection_type):
-            return
-        try:
-            connection.close()
-        except Exception as exc:
-            eprint(f"hermes-gpt: read-only session disposal failed: {_redact_error(exc)}")
 
 
 def skill_roots() -> list[Path]:
