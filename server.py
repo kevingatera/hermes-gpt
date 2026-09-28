@@ -70,7 +70,9 @@ from hermes_session_history import (
 )
 from server_hermes_profile_tools import HermesProfileTools
 from server_mission_tools import MissionTools
+from server_session_browser_tools import register_session_browser_tools
 from server_session_control_tools import SessionControlTools
+from server_session_task_tools import ManagedSessionTaskTools
 from server_session_tools import SessionHistoryTools, SessionToolContext
 from versioning import VERSION
 
@@ -572,6 +574,7 @@ _session_tool_context = SessionToolContext(
 )
 _session_history_tools = SessionHistoryTools(_session_tool_context)
 _session_control_tools = SessionControlTools(_session_tool_context)
+_managed_session_task_tools = ManagedSessionTaskTools(_session_tool_context)
 
 _session_error = _session_history_tools._session_error
 _session_page_response = _session_history_tools._session_page_response
@@ -588,13 +591,13 @@ hermes_session_send = _session_control_tools.hermes_session_send
 hermes_session_job_status = _session_control_tools.hermes_session_job_status
 hermes_session_job_cancel = _session_control_tools.hermes_session_job_cancel
 hermes_session_job_result = _session_control_tools.hermes_session_job_result
-hermes_task_list = _session_control_tools.hermes_task_list
-hermes_task_workspaces = _session_control_tools.hermes_task_workspaces
-hermes_task_start = _session_control_tools.hermes_task_start
-hermes_task_continue = _session_control_tools.hermes_task_continue
-hermes_task_status = _session_control_tools.hermes_task_status
-hermes_task_result = _session_control_tools.hermes_task_result
-hermes_task_cancel = _session_control_tools.hermes_task_cancel
+hermes_task_list = _managed_session_task_tools.hermes_task_list
+hermes_task_workspaces = _managed_session_task_tools.hermes_task_workspaces
+hermes_task_start = _managed_session_task_tools.hermes_task_start
+hermes_task_continue = _managed_session_task_tools.hermes_task_continue
+hermes_task_status = _managed_session_task_tools.hermes_task_status
+hermes_task_result = _managed_session_task_tools.hermes_task_result
+hermes_task_cancel = _managed_session_task_tools.hermes_task_cancel
 
 
 # ---------------------------------------------------------------------------
@@ -1940,8 +1943,15 @@ def register_tools(server: FastMCP) -> None:
         server,
         tool_meta=tool_meta,
         session_control_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV),
-        scoped_tasks_enabled=env_enabled(ENABLE_SCOPED_TASKS_ENV),
     )
+    scoped_tasks_enabled = env_enabled(ENABLE_SCOPED_TASKS_ENV)
+    _managed_session_task_tools.register_mcp_tools(
+        server,
+        tool_meta=tool_meta,
+        enabled=scoped_tasks_enabled,
+    )
+    if scoped_tasks_enabled:
+        register_session_browser_tools(server, tool_meta=tool_meta)
     if env_enabled(ENABLE_VISION_ENV):
         server.add_tool(hermes_vision_analyze, meta=tool_meta())
     if env_enabled(ENABLE_WEB_ENV):
@@ -2269,6 +2279,7 @@ def build_codex_mcp_server(
             codex_server,
             history_tools=_session_history_tools,
             session_control_tools=_session_control_tools,
+            managed_task_tools=_managed_session_task_tools,
             tool_meta=lambda: dict(NOAUTH_META),
             session_history_enabled=env_enabled(ENABLE_SESSION_SEARCH_ENV),
             session_control_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV),

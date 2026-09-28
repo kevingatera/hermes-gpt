@@ -7,6 +7,8 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
+from server_session_browser_tools import register_session_browser_tools
+
 _READ_ONLY_HISTORY_TOOLS = (
     "hermes_bot_chat_get",
     "hermes_session_list",
@@ -21,6 +23,7 @@ def register_codex_session_tools(
     *,
     history_tools: Any,
     session_control_tools: Any,
+    managed_task_tools: Any,
     tool_meta: Callable[[], dict[str, Any]],
     session_history_enabled: bool,
     session_control_enabled: bool,
@@ -52,8 +55,14 @@ def register_codex_session_tools(
         server,
         tool_meta=tool_meta,
         session_control_enabled=session_control_enabled,
-        scoped_tasks_enabled=scoped_tasks_enabled,
     )
+    managed_task_tools.register_mcp_tools(
+        server,
+        tool_meta=tool_meta,
+        enabled=scoped_tasks_enabled,
+    )
+    if scoped_tasks_enabled:
+        register_session_browser_tools(server, tool_meta=tool_meta)
 
 
 __all__ = ["register_codex_session_tools"]

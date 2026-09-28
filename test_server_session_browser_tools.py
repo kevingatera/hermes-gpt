@@ -21,6 +21,14 @@ def test_browser_tab_tools_are_gated_and_have_safe_annotations(monkeypatch):
     assert tools["hermes_browser_profile_tabs"].annotations.read_only_hint is True
     assert tools["hermes_task_browser_select_tab"].annotations.destructive_hint is True
     assert tools["hermes_browser_profile_select_tab"].annotations.destructive_hint is True
+    assert (
+        tools["hermes_browser_profile_list"].annotations.title
+        == "List authorized local Hermes browser profiles"
+    )
+    assert (
+        tools["hermes_browser_profile_attach"].annotations.title
+        == "Attach ChatGPT controls to an authorized Hermes browser profile"
+    )
 
 
 def test_browser_tab_tools_are_absent_when_scoped_tasks_are_disabled(monkeypatch):

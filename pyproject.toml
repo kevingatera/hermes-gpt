@@ -119,6 +119,8 @@ py-modules = [
   "hermes_session_history",
   "server_session_tools",
   "server_session_control_tools",
+  "server_session_task_tools",
+  "server_session_browser_tools",
   "server_hermes_profile_tools",
   "server_mission_tools",
   "hermes_state",
