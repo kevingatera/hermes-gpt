@@ -51,6 +51,7 @@ py-modules = [
   "fabric_artifacts",
   "fabric_write_guard",
   "operator_fabric_protocol",
+  "operator_fabric_transport",
   "operator_fabric_config",
   "operator_fabric",
   "operator_fabric_store",
