@@ -92,16 +92,26 @@ for workspace, profile, and confinement details.
 2. In ChatGPT developer mode, create an app using that tunnel. Keep it scoped
    to the intended workspace.
 3. Copy the app's `plugin_asdk_app...` connection ID from the browser URL.
-   That ID is needed to map the registered MCP connection into a personal
-   plugin package; it is account-specific and should stay out of the shared
-   repository.
-4. Install the plugin in a new ChatGPT Work conversation and verify tool
+   It is account-specific and should stay out of the shared repository.
+4. Build the account-bound plugin package from the repository root:
+
+   ```bash
+   python tools/build_chatgpt_sessions_plugin.py \
+     --app-id 'plugin_asdk_app_<id-from-chatgpt>' \
+     --output dist-plugin/hermes-sessions
+   ```
+
+   The generated `.app.json` contains the account-specific binding and remains
+   under the git-ignored `dist-plugin/` directory. Install that output folder
+   through a local plugin marketplace on the machine running ChatGPT Desktop.
+5. Install the plugin in a new ChatGPT Work conversation and verify tool
    discovery before asking it to attach to a browser or start a session.
 
 ChatGPT requires the server connection to be registered before a local plugin
 package can map to it. See [OpenAI's plugin packaging guide](https://developers.openai.com/plugins/build/plugins)
-for the current registration and `.app.json` mapping flow. The package manifest
-does not create the tunnel or the ChatGPT connection.
+for the current registration and `.app.json` mapping flow. The plugin source is
+in [`plugins/hermes-sessions`](../plugins/hermes-sessions/README.md). The package
+builder does not create the tunnel or the ChatGPT connection.
 
 ## Use the tools
 

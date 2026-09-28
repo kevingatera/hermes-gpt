@@ -1,0 +1,39 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hermes-sessions",
+  "version": "0.1.0",
+  "description": "Start and resume Hermes sessions and operate authorized Hermes browsers.",
+  "author": {
+    "name": "Hermes GPT contributors"
+  },
+  "homepage": "https://github.com/kevingatera/hermes-gpt",
+  "repository": "https://github.com/kevingatera/hermes-gpt",
+  "license": "MIT",
+  "keywords": [
+    "hermes",
+    "sessions",
+    "browser",
+    "mcp"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Hermes Sessions",
+        "shortDescription": "Start and resume Hermes sessions",
+        "longDescription": "Control Hermes Agent sessions, choose a model and reasoning effort, and use an authorized Hermes browser through the private Hermes GPT connection.",
+        "developerName": "Hermes GPT contributors",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Find and continue a Hermes session, or start one with a chosen model and reasoning effort.",
+          "Inspect or operate an authorized Hermes browser profile."
+        ],
+        "brandColor": "#2563EB"
+      }
+    }
+  }
+}
