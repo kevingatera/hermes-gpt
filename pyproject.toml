@@ -74,6 +74,7 @@ py-modules = [
   "operator_browser_tabs",
   "hermes_gpt_browser_mcp",
   "operator_mission",
+  "operator_mission_common",
   "operator_mission_runtime",
   "operator_mission_plan",
   "operator_mission_ledger",
