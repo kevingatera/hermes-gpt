@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 import operator_fabric as fabric
+import operator_fabric_peer_http as peer_http
 
 
 class FakeBackend:
@@ -528,7 +529,7 @@ def test_cancel_is_attempt_specific(tmp_path, monkeypatch):
 
 def test_http_peer_rejects_generic_text_before_any_agent_path(tmp_path, monkeypatch):
     svc = service(tmp_path, monkeypatch)
-    server = ThreadingHTTPServer(("127.0.0.1", 0), fabric._PeerHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), peer_http.PeerHandler)
     host, port = server.server_address
     server.fabric_service = svc
     server.fabric_advertised_url = f"http://{host}:{port}"

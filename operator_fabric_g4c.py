@@ -16,12 +16,14 @@ import ssl
 import threading
 import time
 from collections.abc import Callable
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import fabric_artifacts as artifacts
 import fabric_write_guard as write_guard
 import operator_fabric as base
+import operator_fabric_peer_http as peer_http
 import operator_fabric_router as router
 import operator_runners as runners
 
@@ -1900,8 +1902,8 @@ def register_runtime() -> None:
     )
 
 
-def _peer_handler_class() -> type[base._PeerHandler]:
-    class G4CPeerHandler(base._PeerHandler):
+def _peer_handler_class() -> type[peer_http.PeerHandler]:
+    class G4CPeerHandler(peer_http.PeerHandler):
         def do_POST(self) -> None:
             outer: Any = None
             try:
@@ -2043,7 +2045,7 @@ def peer_main(argv: list[str] | None = None) -> None:
     advertised = args.advertised_url or f"{scheme}://{args.host}:{args.port}"
     base._require_secure_transport(advertised)
     service = FabricPeerService()
-    server = base.ThreadingHTTPServer((args.host, args.port), _peer_handler_class())
+    server = ThreadingHTTPServer((args.host, args.port), _peer_handler_class())
     server.fabric_service = service
     server.fabric_advertised_url = advertised
     if args.cert and args.key:
