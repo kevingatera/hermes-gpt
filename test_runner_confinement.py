@@ -230,6 +230,37 @@ def test_macos_read_only_profile_denies_host_reads_and_workspace_writes(tmp_path
     assert "allow file-write*" not in profile
 
 
+def test_macos_profile_allows_one_read_only_runtime_file(tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    state_file = tmp_path / "browser-state.json"
+    state_file.write_text("{}", encoding="utf-8")
+
+    profile = confinement._macos_sandbox_profile(
+        str(workspace), writable=False, readonly_paths=(state_file,)
+    )
+
+    assert f'(allow file-read* (literal "{state_file}"))' in profile
+
+
+def test_wrap_argv_accepts_read_only_regular_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    state_file = tmp_path / "browser-state.json"
+    state_file.write_text("{}", encoding="utf-8")
+    captured = {}
+
+    def capture(argv, selected_workspace, tool, **kwargs):
+        captured.update(kwargs)
+        return [tool, *argv]
+
+    monkeypatch.setattr(confinement, "confinement_tool", lambda: "/usr/bin/bwrap")
+    monkeypatch.setattr(confinement, "_wrap_argv_with_tool", capture)
+
+    confinement.wrap_argv(["/usr/bin/true"], workspace, readonly_paths=(state_file,))
+
+    assert captured["readonly_paths"] == (state_file.resolve(),)
+
+
 @pytest.mark.skipif(sys.platform != "linux" or shutil.which("bwrap") is None, reason="requires bwrap on linux")
 def test_wrap_argv_linux_shape(tmp_path: Path):
     ws = tmp_path / "ws"

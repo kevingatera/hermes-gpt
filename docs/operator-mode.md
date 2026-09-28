@@ -359,9 +359,11 @@ These surfaces are independent from the Operator level hierarchy and remain hidd
 
 `HERMES_GPT_ENABLE_SESSION_SEARCH=1` exposes bounded read-only `hermes_session_search`, `hermes_session_list`, `hermes_session_read`, and `hermes_session_export`. Default transcript roles are `user` and `assistant`; internal roles additionally require `HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT=1`. Export is in-memory and bounded, creates no files or paths, and lineage export fails closed.
 
-`HERMES_GPT_ENABLE_SESSION_CONTROL=1` exposes `hermes_session_continue`, `hermes_session_send`, `hermes_session_job_status`, and `hermes_session_job_result`. Session-control jobs use a fixed `hermes --resume <id> --oneshot <prompt>` argv with `shell=False`, bound prompt/timeout/result sizes, permit one active job per session, and persist prompt length/hash rather than raw prompt text. Restart reconciliation marks unowned running jobs orphaned rather than signaling a process from a persisted PID. The configured Hermes provider/model is used and may consume quota.
+`HERMES_GPT_ENABLE_SESSION_CONTROL=1` exposes `hermes_session_continue`, `hermes_session_send`, `hermes_session_job_status`, and `hermes_session_job_result`. Session-control jobs use fixed `hermes --resume <id> --query-file - --oneshot -Q` argv with `shell=False`; optional `model` and `reasoning_effort` values select the turn's model settings. Jobs bound prompt/timeout/result sizes, permit one active job per session, and persist prompt length/hash rather than raw prompt text. Restart reconciliation marks unowned running jobs orphaned rather than signaling a process from a persisted PID. Model calls may consume quota.
 
 See [session history](session-history.md) and [session control](session-control.md). Treat transcript content as private local data.
+
+The separate [managed Hermes session tools](managed-hermes-sessions.md) start scoped sessions with selectable model and reasoning effort. A managed session has a private Hermes home and an isolated browser shared by Hermes and ChatGPT through narrow browser tools.
 
 ## Fleet routing through the local A2A registry
 

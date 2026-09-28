@@ -1,3 +1,4 @@
+import io
 import json
 import os
 import time
@@ -10,10 +11,11 @@ import operator_session as session
 
 
 class _ImmediateThread:
-    def __init__(self, *, target, args, daemon):
+    def __init__(self, *, target, args=(), daemon, name=None):
         self.target = target
         self.args = args
         self.daemon = daemon
+        self.name = name
 
     def start(self):
         self.target(*self.args)
@@ -25,6 +27,7 @@ class _FakeProcess:
         self.kwargs = kwargs
         self.pid = 4321
         self.returncode = None
+        self.stdin = io.StringIO()
 
     def wait(self, timeout=None):
         self.kwargs["stdout"].write("mock Hermes response token=secret-value-123456789")
@@ -71,7 +74,9 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     assert started["success"] is True
     assert len(calls) == 1
     assert Path(calls[0].argv[0]).name.lower() in {"hermes", "hermes.exe"}
-    assert calls[0].argv[1:] == ["--resume", "20260810_143227_6b0982", "--oneshot", prompt]
+    assert calls[0].argv[1:] == [
+        "--resume", "20260810_143227_6b0982", "--query-file", "-", "--oneshot", "-Q"
+    ]
     assert calls[0].kwargs["shell"] is False
     assert calls[0].kwargs["env"]["HERMES_PROFILE"] == "project-manager"
     assert calls[0].kwargs["env"]["HERMES_HOME"] == str(tmp_path / "profiles" / "project-manager")
@@ -92,6 +97,35 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     assert "mock local diagnostic" not in result["response"]
 
 
+def test_continue_accepts_model_and_reasoning_overrides(monkeypatch, tmp_path):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
+    monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "default")
+    (tmp_path / "profiles" / "default").mkdir(parents=True)
+    calls = []
+
+    def fake_popen(argv, **kwargs):
+        proc = _FakeProcess(argv, **kwargs)
+        calls.append(proc)
+        return proc
+
+    monkeypatch.setattr(session.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(session.threading, "Thread", _ImmediateThread)
+    result = session.hermes_session_continue(
+        "session-2",
+        "do one turn",
+        model="deepseek/deepseek-v4.1-flash",
+        reasoning_effort="xhigh",
+        hermes_root=tmp_path,
+    )
+
+    assert result["success"] is True
+    assert calls[0].argv[1:7] == [
+        "--resume", "session-2", "--model", "deepseek/deepseek-v4.1-flash", "--reasoning", "xhigh"
+    ]
+    assert "do one turn" not in calls[0].argv
+
+
 def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     assert session.hermes_session_job_status("not-a-job", tmp_path)["code"] == "JOB_NOT_FOUND"
@@ -100,6 +134,30 @@ def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
         "s", "x" * (session.MAX_PROMPT_CHARS + 1), hermes_root=tmp_path
     )["code"] == "PROMPT_TOO_LARGE"
     assert session.hermes_session_continue("s", "x", timeout=True, hermes_root=tmp_path)["code"] == "INVALID_TIMEOUT"
+
+
+def test_scoped_job_recovers_session_id_from_usage_report(tmp_path):
+    job_id = "a" * 32
+    usage_file = tmp_path / "profiles" / "task" / "usage.json"
+    usage_file.parent.mkdir(parents=True)
+    usage_file.write_text(json.dumps({"session_id": "20260927_203010_ab12cd"}), encoding="utf-8")
+    session._save({
+        "job_id": job_id,
+        "task_id": "b" * 32,
+        "session_id": "",
+        "usage_file": str(usage_file),
+        "task_home": str(usage_file.parent),
+        "active_key": "task:" + "b" * 32,
+        "status": "completed",
+        "profile": "default",
+    }, tmp_path)
+
+    result = session.hermes_session_job_status(job_id, tmp_path)
+
+    assert result["job"]["session_id"] == "20260927_203010_ab12cd"
+    assert "usage_file" not in result["job"]
+    assert "task_home" not in result["job"]
+    assert "active_key" not in result["job"]
 
 
 def test_same_session_cannot_run_concurrently(monkeypatch, tmp_path):

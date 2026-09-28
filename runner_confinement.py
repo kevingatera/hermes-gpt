@@ -138,6 +138,8 @@ def _macos_sandbox_profile(
     *,
     writable: bool,
     runtime_root: Path | None = None,
+    readonly_paths: tuple[Path, ...] = (),
+    writable_paths: tuple[Path, ...] = (),
 ) -> str:
     """Return a sandbox-exec profile for the requested workspace posture."""
     escaped_workspace = _macos_quote(workspace)
@@ -165,6 +167,13 @@ def _macos_sandbox_profile(
     rules.append(f'(allow file-read* (subpath "{escaped_workspace}"))')
     if writable:
         rules.append(f'(allow file-write* (subpath "{escaped_workspace}"))')
+    for path in readonly_paths:
+        qualifier = "subpath" if path.is_dir() else "literal"
+        rules.append(f'(allow file-read* ({qualifier} "{_macos_quote(str(path))}"))')
+    for path in writable_paths:
+        qualifier = "subpath" if path.is_dir() else "literal"
+        rules.append(f'(allow file-read* ({qualifier} "{_macos_quote(str(path))}"))')
+        rules.append(f'(allow file-write* ({qualifier} "{_macos_quote(str(path))}"))')
     return "".join(rules)
 
 
@@ -271,6 +280,8 @@ def _wrap_argv_with_tool(
     *,
     writable: bool = True,
     expose_proc: bool = False,
+    readonly_paths: tuple[Path, ...] = (),
+    writable_paths: tuple[Path, ...] = (),
 ) -> list[str]:
     """Build the platform confinement argv with an already-resolved tool."""
     workspace_path = Path(workspace).expanduser().resolve()
@@ -295,10 +306,37 @@ def _wrap_argv_with_tool(
         # as Bun that require /proc to initialize.
         proc_args = ["--proc", "/proc"] if expose_proc else ["--dir", "/proc"]
         wrapped += [*proc_args, "--dev", "/dev", "--tmpfs", "/tmp", "--tmpfs", "/run"]
+        mounted_dirs: set[str] = set()
+
+        def add_parent_dirs(path: Path) -> None:
+            for parent in reversed(list(path.parents)):
+                parent_value = str(parent)
+                if parent_value == "/" or parent_value in mounted_dirs:
+                    continue
+                # These paths already exist inside bubblewrap's private pseudo-filesystems.
+                if parent_value in {"/tmp", "/run", "/proc", "/dev"}:
+                    continue
+                if any(_path_within(parent, Path(item)) for item in (*_LINUX_RO_PATHS, "/etc")):
+                    continue
+                wrapped.extend(["--dir", parent_value])
+                mounted_dirs.add(parent_value)
+
         if runtime_root is not None:
             runtime = str(runtime_root)
+            add_parent_dirs(runtime_root)
             wrapped += ["--ro-bind", runtime, runtime]
+
+        def add_mount(source: Path, *, read_write: bool) -> None:
+            target = str(source)
+            add_parent_dirs(source)
+            wrapped.extend(["--bind" if read_write else "--ro-bind", target, target])
+
+        for source in readonly_paths:
+            add_mount(source, read_write=False)
+        for source in writable_paths:
+            add_mount(source, read_write=True)
         workspace_bind = "--bind" if writable else "--ro-bind"
+        add_parent_dirs(workspace_path)
         wrapped += [
             workspace_bind, workspace_resolved, workspace_resolved,
             "--chdir", workspace_resolved,
@@ -314,6 +352,8 @@ def _wrap_argv_with_tool(
             workspace_resolved,
             writable=writable,
             runtime_root=runtime_root,
+            readonly_paths=readonly_paths,
+            writable_paths=writable_paths,
         )
         return [tool, "-p", profile, *argv]
     raise RuntimeError(f"confinement unsupported on platform {sys.platform!r}")
@@ -510,6 +550,8 @@ def wrap_argv(
     *,
     writable: bool = True,
     expose_proc: bool = False,
+    readonly_paths: tuple[Path | str, ...] | list[Path | str] = (),
+    writable_paths: tuple[Path | str, ...] | list[Path | str] = (),
 ) -> list[str]:
     """Wrap ``argv`` so the child process is confined to ``workspace``.
 
@@ -517,19 +559,37 @@ def wrap_argv(
     temporary/runtime filesystems, and binds the authorized workspace either
     read-write or read-only according to ``writable``. macOS applies the same
     workspace posture through ``sandbox-exec`` and, for read-only sessions,
-    denies host reads outside the workspace/runtime allowlist. Raises
-    ``RuntimeError`` when no confinement tool is installed; callers that need a
-    trust-boundary decision must gate on :func:`confinement_available` for the
-    same posture.
+    denies host reads outside the runtime allowlist. ``readonly_paths`` and
+    ``writable_paths`` add exact files or directories for session state that
+    must remain separate from the workspace. Extra paths may not overlap the
+    workspace or one another. Raises ``RuntimeError`` when no confinement tool
+    is installed; callers that need a trust-boundary decision must gate on
+    :func:`confinement_available` for the same posture.
     """
     tool = confinement_tool()
     if tool is None:
         raise RuntimeError("no OS confinement tool available (install bubblewrap or sandbox-exec)")
     validated_workspace = validate_workspace_boundary(workspace)
+    normalized_readonly = tuple(Path(item).expanduser().resolve(strict=True) for item in readonly_paths)
+    normalized_writable = tuple(Path(item).expanduser().resolve(strict=True) for item in writable_paths)
+    extra_paths = (*normalized_readonly, *normalized_writable)
+    for path in extra_paths:
+        if not path.is_dir() and not path.is_file():
+            raise PermissionError(f"additional confined path is not a regular file or directory: {path}")
+        if _path_within(path, validated_workspace) or _path_within(validated_workspace, path):
+            raise PermissionError("additional confined paths may not overlap the workspace")
+    if set(normalized_readonly) & set(normalized_writable):
+        raise PermissionError("an additional confined path cannot be both read-only and writable")
+    for index, path in enumerate(extra_paths):
+        for other in extra_paths[index + 1:]:
+            if _path_within(path, other) or _path_within(other, path):
+                raise PermissionError("additional confined paths may not overlap each other")
     return _wrap_argv_with_tool(
         argv,
         validated_workspace,
         tool,
         writable=writable,
         expose_proc=expose_proc,
+        readonly_paths=normalized_readonly,
+        writable_paths=normalized_writable,
     )

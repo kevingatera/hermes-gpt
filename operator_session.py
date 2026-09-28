@@ -28,6 +28,9 @@ MIN_TIMEOUT = 10
 MAX_TIMEOUT = 3_600
 PROGRESS_EVENT_INTERVAL_SECONDS = 15
 SESSION_JOB_TOPIC = "session-job"
+SESSION_ID_LINE_RE = re.compile(r"^\s*session_id:\s*([A-Za-z0-9_.:-]{1,256})\s*$", re.IGNORECASE)
+REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"})
+MODEL_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+/-]{0,255}$")
 
 _lock = threading.RLock()
 _processes: dict[str, subprocess.Popen[str]] = {}
@@ -75,9 +78,23 @@ def _redact(value: Any) -> Any:
 
 def _save(meta: dict[str, Any], hermes_root: Path | None = None) -> None:
     path, _ = _paths(meta["job_id"], hermes_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        path.parent.chmod(0o700)
+    except OSError:
+        pass
+    temp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with temp.open("w", encoding="utf-8") as handle:
+        json.dump(meta, handle, ensure_ascii=False, indent=2, sort_keys=True)
+        handle.flush()
+        try:
+            os.fsync(handle.fileno())
+        except OSError:
+            pass
+    try:
+        temp.chmod(0o600)
+    except OSError:
+        pass
     temp.replace(path)
 
 
@@ -198,6 +215,7 @@ def _publish_job_event(
     session_id: str,
     hermes_root: Path | None,
     elapsed_seconds: int = 0,
+    task_id: str = "",
 ) -> None:
     """Publish bounded lifecycle metadata; job files remain authoritative."""
     try:
@@ -208,7 +226,12 @@ def _publish_job_event(
             subject_id=job_id,
             source="session_control",
             event_id=f"session-job:{job_id}:{kind}:{elapsed_seconds}",
-            payload={"status": kind, "session_id": session_id, "elapsed_seconds": elapsed_seconds},
+            payload={
+                "status": kind,
+                "session_id": session_id,
+                "elapsed_seconds": elapsed_seconds,
+                **({"task_id": task_id} if task_id else {}),
+            },
             hermes_root=hermes_root,
         )
     except (OSError, sqlite3.Error, TypeError, ValueError):
@@ -233,6 +256,7 @@ def _publish_progress_event(
             session_id=str(meta.get("session_id", "")),
             hermes_root=hermes_root,
             elapsed_seconds=elapsed_seconds,
+            task_id=str(meta.get("task_id") or ""),
         )
 
 
@@ -244,47 +268,31 @@ def hermes_session_continue(
     hermes_root: Path | None = None,
     agent_root: Path | None = None,
     profile: str = "default",
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
-    """Start one bounded non-interactive turn in an existing Hermes session."""
+    """Start one bounded turn in an existing Hermes session."""
     checked = _validate_start(session_id, prompt, timeout, profile, hermes_root)
     if isinstance(checked, dict):
         return checked
     safe_id, safe_prompt, safe_timeout, safe_profile = checked
-    argv = [_hermes_executable(agent_root), "--resume", safe_id, "--oneshot", safe_prompt]
-    active_key = f"{safe_profile}:{safe_id}"
-    job_id = uuid4().hex
-    meta = {
-        "job_id": job_id,
-        "session_id": safe_id,
-        "profile": safe_profile,
-        "status": "starting",
-        "created_at": _now(),
-        "started_at": None,
-        "ended_at": None,
-        "pid": None,
-        "return_code": None,
-        "timeout": safe_timeout,
-        "prompt_len": len(safe_prompt),
-        "prompt_sha256": hashlib.sha256(safe_prompt.encode("utf-8")).hexdigest(),
-    }
-    _, output_path = _paths(job_id, hermes_root)
-    stderr_path = output_path.with_suffix(".stderr.txt")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output = open(output_path, "w", encoding="utf-8")  # noqa: SIM115 - the watcher closes it after child exit
-    stderr = open(stderr_path, "w", encoding="utf-8")  # noqa: SIM115 - the watcher closes it after child exit
-    with _lock:
-        active_job = _active_sessions.get(active_key)
-        if active_job:
-            output.close()
-            stderr.close()
-            output_path.unlink(missing_ok=True)
-            stderr_path.unlink(missing_ok=True)
-            return _error(
-                "SESSION_BUSY",
-                "This Hermes session already has a running session-control job.",
-                f"Wait for job {active_job} to finish before sending another turn.",
-            )
-        _active_sessions[active_key] = job_id
+    if model is not None and (not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model)):
+        return _error("INVALID_MODEL", "model must be a provider/model identifier of at most 256 characters.", "Choose a model ID accepted by the Hermes CLI.")
+    if reasoning_effort is not None and (
+        not isinstance(reasoning_effort, str) or reasoning_effort not in REASONING_EFFORTS
+    ):
+        return _error(
+            "INVALID_REASONING_EFFORT",
+            "reasoning_effort is not supported by the Hermes CLI.",
+            f"Choose one of: {', '.join(sorted(REASONING_EFFORTS))}.",
+        )
+    executable = _hermes_executable(agent_root)
+    argv = [executable, "--resume", safe_id]
+    if model:
+        argv.extend(["--model", model])
+    if reasoning_effort:
+        argv.extend(["--reasoning", reasoning_effort])
+    argv.extend(["--query-file", "-", "--oneshot", "-Q"])
     child_env = os.environ.copy()
     base_home = (
         Path(hermes_root)
@@ -294,13 +302,89 @@ def hermes_session_continue(
     profile_home = op.resolve_profile_home(safe_profile, base_home)
     child_env["HERMES_HOME"] = str(profile_home)
     child_env["HERMES_PROFILE"] = safe_profile
+    return start_managed_session_job(
+        argv=argv,
+        prompt=safe_prompt,
+        timeout=safe_timeout,
+        profile=safe_profile,
+        hermes_root=hermes_root,
+        child_env=child_env,
+        cwd=profile_home,
+        active_key=f"{safe_profile}:{safe_id}",
+        metadata={
+            "session_id": safe_id,
+            "model": model or None,
+            "reasoning_effort": reasoning_effort or None,
+        },
+    )
+
+
+def start_managed_session_job(
+    *,
+    argv: list[str],
+    prompt: str,
+    timeout: int,
+    profile: str,
+    hermes_root: Path | None,
+    child_env: dict[str, str],
+    cwd: Path,
+    active_key: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Start a fixed Hermes CLI turn through the durable session-job lifecycle.
+
+    Prompt text travels over stdin, never in process arguments or job metadata.
+    Callers remain responsible for constructing a fixed, scoped command and env.
+    """
+    safe_timeout = max(MIN_TIMEOUT, min(int(timeout), MAX_TIMEOUT))
+    job_id = uuid4().hex
+    meta: dict[str, Any] = dict(metadata)
+    meta.update({
+        "job_id": job_id,
+        "session_id": str(metadata.get("session_id") or ""),
+        "profile": profile,
+        "status": "starting",
+        "created_at": _now(),
+        "started_at": None,
+        "ended_at": None,
+        "pid": None,
+        "return_code": None,
+        "timeout": safe_timeout,
+        "prompt_len": len(prompt),
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+    })
+    _, output_path = _paths(job_id, hermes_root)
+    stderr_path = output_path.with_suffix(".stderr.txt")
+    output_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output = output_path.open("w", encoding="utf-8")
+    stderr = stderr_path.open("w", encoding="utf-8")
+    for path in (output_path, stderr_path):
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+    with _lock:
+        active_job = _active_sessions.get(active_key)
+        if active_job:
+            output.close()
+            stderr.close()
+            output_path.unlink(missing_ok=True)
+            stderr_path.unlink(missing_ok=True)
+            return _error(
+                "SESSION_BUSY",
+                "This Hermes task already has a running job.",
+                f"Wait for job {active_job} to finish before sending another turn.",
+            )
+        _active_sessions[active_key] = job_id
     try:
         proc = subprocess.Popen(
             argv,
+            stdin=subprocess.PIPE,
             stdout=output,
             stderr=stderr,
             text=True,
             shell=False,
+            cwd=str(cwd),
             env=child_env,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
             start_new_session=os.name != "nt",
@@ -316,29 +400,65 @@ def hermes_session_continue(
         return _error(
             "HERMES_START_FAILED",
             op.redact_output(str(exc)),
-            "Check the Hermes CLI installation, provider authentication, and session ID.",
+            "Check the Hermes CLI installation, provider authentication, workspace, and OS confinement.",
         )
-    meta.update({"status": "running", "started_at": _now(), "pid": proc.pid})
-    _save(meta, hermes_root)
+    meta.update({"status": "running", "started_at": _now(), "pid": proc.pid, "active_key": active_key})
+    try:
+        _save(meta, hermes_root)
+    except OSError as exc:
+        try:
+            _terminate(proc)
+        except (OSError, subprocess.SubprocessError):
+            try:
+                proc.kill()
+                proc.wait(timeout=3)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        finally:
+            output.close()
+            stderr.close()
+            output_path.unlink(missing_ok=True)
+            stderr_path.unlink(missing_ok=True)
+            with _lock:
+                if _active_sessions.get(active_key) == job_id:
+                    _active_sessions.pop(active_key, None)
+        return _error(
+            "JOB_PERSIST_FAILED",
+            op.redact_output(str(exc)),
+            "Check permissions on the Hermes task data root and retry.",
+        )
     with _lock:
         _processes[job_id] = proc
     _publish_job_event(
         job_id,
         "running",
-        session_id=safe_id,
+        session_id=str(meta.get("session_id") or ""),
         hermes_root=hermes_root,
+        task_id=str(meta.get("task_id") or ""),
     )
+
+    def _feed_prompt() -> None:
+        try:
+            if proc.stdin is not None:
+                proc.stdin.write(prompt)
+                proc.stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+
+    threading.Thread(target=_feed_prompt, name=f"hermes-input-{job_id[:8]}", daemon=True).start()
     threading.Thread(
         target=_watch,
         args=(job_id, proc, output, stderr, safe_timeout, hermes_root),
+        name=f"hermes-watch-{job_id[:8]}",
         daemon=True,
     ).start()
     return _redact({
         "success": True,
         "job_id": job_id,
-        "session_id": safe_id,
-        "profile": safe_profile,
+        "task_id": str(meta.get("task_id") or "") or None,
+        "session_id": str(meta.get("session_id") or "") or None,
         "status": "running",
+        "model": str(meta.get("model") or "") or None,
     })
 
 
@@ -361,7 +481,7 @@ def _finish_job(
         _processes.pop(job_id, None)
         session_id = str(meta.get("session_id", ""))
         profile = str(meta.get("profile", "default") or "default")
-        active_key = f"{profile}:{session_id}"
+        active_key = str(meta.get("active_key") or f"{profile}:{session_id}")
         if _active_sessions.get(active_key) == job_id:
             _active_sessions.pop(active_key, None)
     if publish_status:
@@ -370,6 +490,7 @@ def _finish_job(
             publish_status,
             session_id=session_id,
             hermes_root=hermes_root,
+            task_id=str(meta.get("task_id") or ""),
         )
     return meta
 
@@ -415,7 +536,53 @@ def _watch(
     finally:
         output.close()
         stderr.close()
+    current = _load(job_id, hermes_root) or {}
+    if not current.get("session_id"):
+        session_id = _session_id_from_stderr(_paths(job_id, hermes_root)[1].with_suffix(".stderr.txt"))
+        if not session_id and current.get("usage_file"):
+            session_id = _session_id_from_usage_file(Path(str(current["usage_file"])))
+        if session_id:
+            with _lock:
+                current = _load(job_id, hermes_root) or {"job_id": job_id}
+                current["session_id"] = session_id
+                _save(current, hermes_root)
     _finish_job(job_id, proc, status, hermes_root)
+
+
+def _session_id_from_stderr(path: Path) -> str:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        match = SESSION_ID_LINE_RE.fullmatch(line)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _session_id_from_usage_file(path: Path) -> str:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    if not isinstance(value, dict):
+        return ""
+    session_id = value.get("session_id")
+    if not isinstance(session_id, str) or not SESSION_ID_LINE_RE.fullmatch(f"session_id: {session_id}"):
+        return ""
+    return session_id
+
+
+def _recover_task_session_id(meta: dict[str, Any]) -> bool:
+    """Recover a one-shot task's session ID from Hermes' structured usage report."""
+    if not meta.get("task_id") or meta.get("session_id") or not meta.get("usage_file"):
+        return False
+    session_id = _session_id_from_usage_file(Path(str(meta["usage_file"])))
+    if not session_id:
+        return False
+    meta["session_id"] = session_id
+    return True
 
 
 def _terminate(proc: subprocess.Popen[str]) -> None:
@@ -468,6 +635,7 @@ def _reconcile(hermes_root: Path | None = None) -> None:
                 "orphaned",
                 session_id=str(meta.get("session_id", "")),
                 hermes_root=hermes_root,
+                task_id=str(meta.get("task_id") or ""),
             )
 
 
@@ -476,7 +644,15 @@ def hermes_session_job_status(job_id: str, hermes_root: Path | None = None) -> d
     meta = _load(job_id, hermes_root)
     if not meta:
         return _error("JOB_NOT_FOUND", "Hermes session job was not found.", "Check the job ID returned by hermes_session_continue.")
-    return _redact({"success": True, "job": meta})
+    public_meta = dict(meta)
+    public_meta.pop("active_key", None)
+    if public_meta.get("task_id"):
+        if _recover_task_session_id(meta):
+            _save(meta, hermes_root)
+            public_meta["session_id"] = meta["session_id"]
+        for key in ("workspace", "task_home", "active_key", "usage_file"):
+            public_meta.pop(key, None)
+    return _redact({"success": True, "job": public_meta})
 
 
 def hermes_session_job_cancel(

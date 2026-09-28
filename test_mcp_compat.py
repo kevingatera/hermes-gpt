@@ -182,6 +182,38 @@ def test_server_registers_core_tools(monkeypatch):
         assert required in names, f"missing registered tool: {required}"
 
 
+def test_managed_hermes_session_and_browser_tools_register(monkeypatch, tmp_path):
+    import server
+
+    monkeypatch.setenv(server.ENABLE_SCOPED_TASKS_ENV, "1")
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    built = server.build_server()
+
+    tools = asyncio.run(built.list_tools())
+    by_name = {tool.name: tool for tool in tools}
+    expected = {
+        "hermes_task_workspaces",
+        "hermes_task_start",
+        "hermes_task_continue",
+        "hermes_task_status",
+        "hermes_task_result",
+        "hermes_task_cancel",
+        "hermes_task_browser_status",
+        "hermes_task_browser_snapshot",
+        "hermes_task_browser_navigate",
+        "hermes_task_browser_click",
+        "hermes_task_browser_type",
+    }
+    assert expected <= set(by_name)
+    start_schema = by_name["hermes_task_start"].model_dump(by_alias=True)["inputSchema"]
+    start_fields = set(start_schema["properties"])
+    assert {"model", "reasoning_effort", "browser_enabled"} <= start_fields
+    continue_schema = by_name["hermes_task_continue"].model_dump(by_alias=True)["inputSchema"]
+    continue_fields = set(continue_schema["properties"])
+    assert {"model", "reasoning_effort"} <= continue_fields
+    assert "hermes_task_panel" not in by_name
+
+
 @pytest.fixture()
 def built_server(monkeypatch):
     """A server built under a clean, read-only default environment."""

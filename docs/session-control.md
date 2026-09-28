@@ -1,6 +1,6 @@
 # Hermes session control
 
-Hermes GPT can send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. This lets an MCP client use the model/provider already configured in Hermes without invoking Codex.
+Hermes GPT can send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. An MCP client can keep the session's configured model/provider or select a model and reasoning effort for that turn without invoking Codex.
 
 ## Enable locally
 
@@ -20,7 +20,7 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 ## Workflow
 
 1. Find a session ID with `hermes_session_list` when history is enabled.
-2. Call `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias.
+2. Call `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias. Optional `model` and `reasoning_effort` values override the resumed session's provider/model and reasoning level for that turn.
 3. Save the returned `job_id`.
 4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`.
 5. Call `hermes_session_job_cancel(job_id)` to stop a running job owned by this server process.
@@ -29,10 +29,10 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 The start call resolves exact or unique-prefix IDs through Hermes' existing read-only `SessionDB` API before launching anything. It invokes the CLI with a fixed argument array equivalent to:
 
 ```text
-hermes --resume <resolved-session-id> --oneshot <prompt>
+hermes --resume <resolved-session-id> [--model <provider/model>] [--reasoning <effort>] --query-file - --oneshot -Q
 ```
 
-No shell is used. Hermes restores the resumed session's recorded working directory using its normal CLI behavior.
+No shell is used. The prompt travels over stdin rather than command arguments. Hermes restores the resumed session's recorded working directory using its normal CLI behavior.
 
 ## Bounds and persistence
 
@@ -51,4 +51,4 @@ Session control can consume the configured provider's quota or incur provider ch
 
 ## Validation without a real model call
 
-The automated tests include a real local child-process cancellation check and replace Hermes process launch with fakes for the other cases. They verify the fixed CLI arguments, `shell=False`, explicit profile authorization, prompt-free metadata, timeout bounds, restart reconciliation, redaction, tool registration gates, and status/result flow. The test suite does not resume a real Hermes session or contact a model provider.
+The automated tests include a real local child-process cancellation check and replace Hermes process launch with fakes for the other cases. They verify the fixed CLI arguments, `shell=False`, explicit profile authorization, prompt-free metadata, timeout bounds, restart reconciliation, redaction, tool registration gates, and status/result flow. The automated test suite does not resume a real Hermes session or contact a model provider.

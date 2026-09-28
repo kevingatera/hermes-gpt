@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import ipaddress
 import importlib.metadata
 import inspect
+import ipaddress
 import json
 import os
 import re
@@ -21,38 +21,39 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Mount, Route
 
 import oauth_auth
-import operator_policy as op_policy
-import operator_cron as op_cron
-import operator_skills as op_skills
-import operator_config as op_config
-import operator_workspace as op_workspace
-import operator_export as op_export
-import operator_diagnostics as op_diagnostics
-import operator_codex as op_codex
-import operator_fleet as op_fleet
-import operator_session as op_session
-import operator_mission as op_mission
-import operator_mission_runtime as op_mission_runtime
-import operator_mission_plan as op_mission_plan
-import operator_contract as op_contract
-import operator_delegations as op_delegations
-import operator_job_supervisor as op_jobs
-import operator_runners as op_runners
-import operator_review as op_review
-import operator_events as op_events
-import operator_live_events as op_live_events
 import operator_capability_manifest as op_capability_manifest
-import operator_mission_ledger as op_mission_ledger
-import operator_mission_budget as op_mission_budget
-import operator_placement as op_placement
-import operator_failure_semantics as op_failure_semantics
+import operator_codex as op_codex
+import operator_config as op_config
+import operator_contract as op_contract
 import operator_controller as op_controller
-import operator_oauth as op_oauth
-import operator_swarm as op_swarm
-import operator_recovery as op_recovery
+import operator_cron as op_cron
+import operator_delegations as op_delegations
+import operator_diagnostics as op_diagnostics
+import operator_events as op_events
+import operator_export as op_export
+import operator_failure_semantics as op_failure_semantics
 import operator_finance as op_finance
+import operator_fleet as op_fleet
+import operator_job_supervisor as op_jobs
+import operator_live_events as op_live_events
+import operator_mission as op_mission
+import operator_mission_budget as op_mission_budget
+import operator_mission_ledger as op_mission_ledger
+import operator_mission_plan as op_mission_plan
+import operator_mission_runtime as op_mission_runtime
+import operator_oauth as op_oauth
+import operator_placement as op_placement
+import operator_policy as op_policy
+import operator_recovery as op_recovery
+import operator_review as op_review
+import operator_runners as op_runners
+import operator_session as op_session
+import operator_session_browser as op_session_browser
+import operator_session_tasks as op_session_tasks
+import operator_skills as op_skills
+import operator_swarm as op_swarm
+import operator_workspace as op_workspace
 from versioning import VERSION
-
 
 LOCAL_DEV_PROFILE = "local-dev"
 REMOTE_PROFILE = "remote"
@@ -66,6 +67,7 @@ ENABLE_SESSION_SEARCH_ENV = "HERMES_GPT_ENABLE_SESSION_SEARCH"
 ENABLE_SESSION_INTERNAL_CONTENT_ENV = "HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT"
 ENABLE_SESSION_CONTROL_ENV = op_session.ENABLE_SESSION_CONTROL_ENV
 SESSION_ALLOWED_PROFILES_ENV = op_session.SESSION_ALLOWED_PROFILES_ENV
+ENABLE_SCOPED_TASKS_ENV = op_session_tasks.ENABLE_SCOPED_TASKS_ENV
 ENABLE_TERMINAL_ENV = "HERMES_GPT_ENABLE_TERMINAL"
 ENABLE_VISION_ENV = "HERMES_GPT_ENABLE_VISION"
 ENABLE_WEB_ENV = "HERMES_GPT_ENABLE_WEB"
@@ -730,9 +732,10 @@ def clean_error(tool_name: str, exc: Exception) -> RuntimeError:
     return RuntimeError(f"{tool_name} failed: {exc}")
 
 
-from mcp_compat import HermesMCP as FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import CallToolResult, ToolAnnotations
+
+from mcp_compat import HermesMCP as FastMCP
 
 import_hermes()
 
@@ -1298,8 +1301,10 @@ def hermes_session_continue(
     prompt: str,
     timeout: int = DEFAULT_SESSION_TIMEOUT,
     profile: str = "default",
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
-    """Start one bounded, asynchronous turn in an existing Hermes session for a profile."""
+    """Continue an existing Hermes session, optionally overriding model and effort for this turn."""
     hermes_root = _default_hermes_root()
     if not env_enabled(ENABLE_SESSION_CONTROL_ENV):
         return op_session.hermes_session_continue(
@@ -1309,6 +1314,8 @@ def hermes_session_continue(
             hermes_root=hermes_root,
             agent_root=HERMES_ROOT,
             profile=profile,
+            model=model,
+            reasoning_effort=reasoning_effort,
         )
     safe_profile = op_session.validate_session_profile(profile, hermes_root)
     if isinstance(safe_profile, dict):
@@ -1332,6 +1339,8 @@ def hermes_session_continue(
             hermes_root=hermes_root,
             agent_root=HERMES_ROOT,
             profile=safe_profile,
+            model=model,
+            reasoning_effort=reasoning_effort,
         )
     except Exception as exc:
         return op_policy.make_error_envelope(
@@ -1349,9 +1358,11 @@ def hermes_session_send(
     prompt: str,
     timeout: int = DEFAULT_SESSION_TIMEOUT,
     profile: str = "default",
+    model: str | None = None,
+    reasoning_effort: str | None = None,
 ) -> dict[str, Any]:
     """Alias for profile-aware hermes_session_continue for clients that use send terminology."""
-    return hermes_session_continue(session_id, prompt, timeout, profile)
+    return hermes_session_continue(session_id, prompt, timeout, profile, model, reasoning_effort)
 
 
 def hermes_session_job_status(job_id: str) -> dict[str, Any]:
@@ -1369,6 +1380,88 @@ def hermes_session_job_result(
 ) -> dict[str, Any]:
     """Return the bounded, redacted response from a Hermes session-control job."""
     return op_session.hermes_session_job_result(job_id, max_chars, _default_hermes_root())
+
+
+def hermes_task_workspaces() -> dict[str, Any]:
+    """List configured workspace aliases for scoped Hermes tasks."""
+    return op_session_tasks.hermes_task_workspaces(_default_hermes_root())
+
+
+def hermes_task_start(
+    prompt: str,
+    workspace_id: str,
+    credential_profile: str = "default",
+    allow_workspace_write: bool = False,
+    confirm: bool = False,
+    dry_run: bool = True,
+    timeout: int = DEFAULT_SESSION_TIMEOUT,
+    model: str = op_session_tasks.MODEL_ID,
+    reasoning_effort: str = "high",
+    browser_enabled: bool = True,
+    headed_browser: bool = False,
+) -> dict[str, Any]:
+    """Start a confined Hermes session with a selectable model and shared browser."""
+    return op_session_tasks.hermes_task_start(
+        prompt=prompt,
+        workspace_id=workspace_id,
+        credential_profile=credential_profile,
+        allow_workspace_write=allow_workspace_write,
+        confirm=confirm,
+        dry_run=dry_run,
+        timeout=timeout,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        browser_enabled=browser_enabled,
+        headed_browser=headed_browser,
+        hermes_root=_default_hermes_root(),
+        agent_root=HERMES_ROOT,
+    )
+
+
+def hermes_task_continue(
+    task_id: str,
+    prompt: str,
+    confirm: bool = False,
+    dry_run: bool = True,
+    timeout: int = DEFAULT_SESSION_TIMEOUT,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+) -> dict[str, Any]:
+    """Continue a managed Hermes session, optionally changing its model or effort."""
+    return op_session_tasks.hermes_task_continue(
+        task_id=task_id,
+        prompt=prompt,
+        confirm=confirm,
+        dry_run=dry_run,
+        timeout=timeout,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        hermes_root=_default_hermes_root(),
+        agent_root=HERMES_ROOT,
+    )
+
+
+def hermes_task_status(task_id: str) -> dict[str, Any]:
+    """Read the durable state for a scoped Hermes task."""
+    return op_session_tasks.hermes_task_status(task_id, _default_hermes_root())
+
+
+def hermes_task_result(task_id: str, max_chars: int = op_session.MAX_RESULT_CHARS) -> dict[str, Any]:
+    """Read the latest bounded, redacted Hermes task answer."""
+    return op_session_tasks.hermes_task_result(task_id, max_chars, _default_hermes_root())
+
+
+def hermes_task_cancel(task_id: str, confirm: bool = False) -> dict[str, Any]:
+    """Cancel the current turn after an explicit client confirmation."""
+    if not confirm:
+        return {"success": False, "code": "CONFIRMATION_REQUIRED", "safe_message": "Cancelling a Hermes task requires explicit confirmation."}
+    status = op_session_tasks.hermes_task_status(task_id, _default_hermes_root())
+    if not status.get("success"):
+        return status
+    job_id = str((status.get("task") or {}).get("latest_job_id") or "")
+    if not job_id:
+        return {"success": False, "code": "TASK_JOB_NOT_FOUND", "safe_message": "Hermes task has no active job."}
+    return op_session.hermes_session_job_cancel(job_id, _default_hermes_root())
 
 
 # ---------------------------------------------------------------------------
@@ -3228,6 +3321,61 @@ def register_tools(server: FastMCP) -> None:
         server.add_tool(hermes_session_job_status, meta=tool_meta())
         server.add_tool(hermes_session_job_result, meta=tool_meta())
         server.add_tool(hermes_session_job_cancel, meta=tool_meta())
+    if env_enabled(ENABLE_SCOPED_TASKS_ENV):
+        server.add_tool(
+            hermes_task_workspaces,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="List configured workspaces for scoped Hermes tasks", readOnlyHint=True),
+        )
+        server.add_tool(
+            hermes_task_start,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="Start a scoped Hermes session", destructiveHint=True),
+        )
+        server.add_tool(
+            hermes_task_continue,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="Continue a scoped Hermes session", destructiveHint=True),
+        )
+        server.add_tool(
+            hermes_task_cancel,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="Cancel a running Hermes session turn", destructiveHint=True),
+        )
+        server.add_tool(
+            hermes_task_status,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="Read scoped Hermes session status", readOnlyHint=True),
+        )
+        server.add_tool(
+            hermes_task_result,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="Read the latest scoped Hermes session result", readOnlyHint=True),
+        )
+        for tool in (
+            op_session_browser.hermes_task_browser_status,
+            op_session_browser.hermes_task_browser_snapshot,
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=tool.__name__.replace("_", " "), readOnlyHint=True),
+            )
+        for tool in (
+            op_session_browser.hermes_task_browser_navigate,
+            op_session_browser.hermes_task_browser_click,
+            op_session_browser.hermes_task_browser_type,
+            op_session_browser.hermes_task_browser_scroll,
+            op_session_browser.hermes_task_browser_back,
+            op_session_browser.hermes_task_browser_press,
+            op_session_browser.hermes_task_browser_close,
+            op_session_browser.hermes_task_browser_restart,
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=tool.__name__.replace("_", " "), destructiveHint=True),
+            )
     if env_enabled(ENABLE_VISION_ENV):
         server.add_tool(hermes_vision_analyze, meta=tool_meta())
     if env_enabled(ENABLE_WEB_ENV):

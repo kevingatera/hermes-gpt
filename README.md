@@ -115,6 +115,7 @@ See the [v0.6.0 release notes](docs/release-notes-v0.6.0.md) and [retention poli
 | Verify the MCP protocol surface | [MCP compatibility manifest](docs/mcp-compatibility.md) |
 | Use Codex as an MCP client | [Codex guide](docs/codex.md) |
 | Use ChatGPT or another trusted client to operate Hermes | [Operator Mode](docs/operator-mode.md) |
+| Start scoped Hermes sessions with a shared browser | [Managed Hermes sessions](docs/managed-hermes-sessions.md) |
 | Group and approve a larger objective under one lifecycle | [Missions (v0.9)](docs/missions.md) |
 | Understand unified delegation lineage across runners | [Delegations (v0.9)](docs/delegations.md) |
 | Consume durable live events / wake-up stream | [Live events (v0.9)](docs/live-events.md) |
@@ -176,7 +177,7 @@ Session history and session control are independent, opt-in surfaces.
 
 With `HERMES_GPT_ENABLE_SESSION_SEARCH=1`, Hermes GPT exposes four bounded read-only history tools: `hermes_session_search`, `hermes_session_list`, `hermes_session_read`, and `hermes_session_export`. The default transcript roles are `user` and `assistant`; `system`, `tool`, and `function` content additionally requires `HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT=1`. Export stays in memory, is size/message bounded, creates no files or paths, and lineage export fails closed.
 
-With `HERMES_GPT_ENABLE_SESSION_CONTROL=1`, Hermes GPT exposes `hermes_session_continue`, `hermes_session_send`, `hermes_session_job_status`, `hermes_session_job_result`, and `hermes_session_job_cancel`. Control jobs are bounded, use fixed argv with `shell=False`, allow only one active job per session, persist prompt length/hash rather than raw prompts, and return bounded redacted stdout. Stderr is kept in a separate local diagnostic file. Durable `session-job` events report running, elapsed-time progress, and terminal states. Cancellation signals a process owned by this server instance; a server restart fails closed by marking unowned running jobs orphaned rather than signaling a persisted PID.
+With `HERMES_GPT_ENABLE_SESSION_CONTROL=1`, Hermes GPT exposes `hermes_session_continue`, `hermes_session_send`, `hermes_session_job_status`, `hermes_session_job_result`, and `hermes_session_job_cancel`. Continue/send accept optional `model` and `reasoning_effort` overrides. Control jobs are bounded, use fixed argv with `shell=False`, allow only one active job per session, persist prompt length/hash rather than raw prompts, and return bounded redacted stdout. Stderr is kept in a separate local diagnostic file. Durable `session-job` events report running, elapsed-time progress, and terminal states. Cancellation signals a process owned by this server instance; a server restart fails closed by marking unowned running jobs orphaned rather than signaling a persisted PID.
 
 Session control also requires an explicit `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` list and a matching `HERMES_GPT_OPERATOR_ALLOWED_PROFILES` entry. It denies `default` unless that profile is explicitly listed; use a dedicated, restricted Hermes profile for remote clients. These profile lists do not replace OS-level filesystem or browser isolation.
 
@@ -373,6 +374,7 @@ Current operational documentation:
 - [OAuth and bearer authentication](docs/oauth.md)
 - [Gemini Spark custom app](docs/gemini-spark.md)
 - [Operator Mode](docs/operator-mode.md)
+- [Managed Hermes sessions and browser access](docs/managed-hermes-sessions.md)
 - [Missions (v0.9)](docs/missions.md)
 - [Delegations (v0.9)](docs/delegations.md)
 - [Live events (v0.9)](docs/live-events.md)
