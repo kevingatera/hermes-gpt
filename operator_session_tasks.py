@@ -20,6 +20,8 @@ import operator_browser as browser
 import operator_browser_profiles as browser_profiles
 import operator_policy as op
 import operator_session as sessions
+import operator_session_job_store as job_store
+import operator_session_jobs as job_runtime
 import operator_session_task_runtime as runtime
 import runner_confinement as confinement
 from operator_session_task_runtime import (
@@ -224,7 +226,7 @@ def hermes_task_start(
         if not confirm:
             return {"success": False, "code": "CONFIRMATION_REQUIRED", "safe_message": "Starting a Hermes task requires explicit confirmation."}
         runtime._model_credentials(model, profile, hermes_root)
-        task_home = (sessions._data_root(hermes_root) / "profiles" / task_id).resolve()
+        task_home = (job_store._data_root(hermes_root) / "profiles" / task_id).resolve()
         task_home.mkdir(parents=True, mode=0o700)
         try:
             task_home.chmod(0o700)
@@ -250,7 +252,7 @@ def hermes_task_start(
             "workspace_id": alias,
             "workspace": str(workspace),
             "task_home": str(task_home),
-            "hermes_root": str(sessions._data_root(hermes_root)),
+            "hermes_root": str(job_store._data_root(hermes_root)),
             "credential_profile": profile,
             "allow_workspace_write": bool(allow_workspace_write),
             "model": model,
@@ -326,9 +328,9 @@ def hermes_task_continue(
         task["model"] = selected_model
         task["reasoning_effort"] = selected_effort
         task["toolsets"] = TOOLSETS if bool(task.get("browser_enabled")) else FILE_ONLY_TOOLSETS
-        latest_job = sessions._load(str(task.get("latest_job_id") or ""), hermes_root) or {}
-        if sessions._recover_task_session_id(latest_job, hermes_root):
-            sessions._save(latest_job, hermes_root)
+        latest_job = job_store._load(str(task.get("latest_job_id") or ""), hermes_root) or {}
+        if job_runtime._recover_task_session_id(latest_job, hermes_root):
+            job_store._save(latest_job, hermes_root)
         if latest_job.get("status") in {"starting", "running"}:
             return {"success": False, "code": "TASK_BUSY", "safe_message": "Wait for the current Hermes task turn to finish."}
         session_id = str(latest_job.get("session_id") or task.get("session_id") or "")
@@ -362,7 +364,7 @@ def hermes_task_status(task_id: str, hermes_root: Path | None = None) -> dict[st
             return {"success": False, "code": "TASK_NOT_FOUND", "safe_message": "Hermes task was not found."}
         job_id = str(task.get("latest_job_id") or "")
         if not job_id:
-            jobs_root = sessions._root(hermes_root)
+            jobs_root = job_store._root(hermes_root)
             candidates = []
             for path in jobs_root.glob("*.json") if jobs_root.is_dir() else ():
                 job = _read_json(path)
@@ -372,7 +374,7 @@ def hermes_task_status(task_id: str, hermes_root: Path | None = None) -> dict[st
                 latest = max(candidates, key=lambda item: (int(item.get("task_turn", 0)), str(item.get("created_at", ""))))
                 job_id = str(latest.get("job_id") or "")
                 task["latest_job_id"] = job_id
-        job = sessions.hermes_session_job_status(job_id, hermes_root).get("job") if job_id else None
+        job = job_runtime.hermes_session_job_status(job_id, hermes_root).get("job") if job_id else None
         if isinstance(job, dict):
             if job.get("session_id"):
                 task["session_id"] = job["session_id"]
@@ -412,7 +414,7 @@ def hermes_task_result(task_id: str, max_chars: int = sessions.MAX_RESULT_CHARS,
     job_id = str((status.get("task") or {}).get("latest_job_id") or "")
     if not job_id:
         return {"success": False, "code": "TASK_RESULT_UNAVAILABLE", "safe_message": "Hermes task has no completed turn yet."}
-    return sessions.hermes_session_job_result(job_id, max_chars, hermes_root)
+    return job_runtime.hermes_session_job_result(job_id, max_chars, hermes_root)
 
 
 __all__ = [

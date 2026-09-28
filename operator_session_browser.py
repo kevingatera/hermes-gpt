@@ -7,7 +7,7 @@ from typing import Any
 
 import operator_browser as browser
 import operator_policy as op
-import operator_session as sessions
+import operator_session_job_store as session_store
 import operator_session_tasks as tasks
 
 
@@ -25,7 +25,7 @@ def _authorized_task(task_id: str, hermes_root: Path | None) -> tuple[dict[str, 
         if not task or task.get("task_id") != task_id:
             return {"success": False, "code": "TASK_NOT_FOUND", "safe_message": "Hermes task was not found."}
         task_home = Path(str(task.get("task_home") or "")).expanduser().resolve(strict=True)
-        task_root = (sessions._data_root(hermes_root) / "profiles").resolve(strict=True)
+        task_root = (session_store._data_root(hermes_root) / "profiles").resolve(strict=True)
         if task_home.name != task_id or task_root not in task_home.parents:
             return {
                 "success": False,
@@ -180,7 +180,7 @@ def hermes_task_browser_restart(
             "code": "CONFIRMATION_REQUIRED",
             "safe_message": "Restarting the browser requires confirm=true.",
         }
-    root = Path(str(task.get("hermes_root") or sessions._data_root(None)))
+    root = Path(str(task.get("hermes_root") or session_store._data_root(None)))
     return browser.create_browser_session(
         task_id,
         task_home,

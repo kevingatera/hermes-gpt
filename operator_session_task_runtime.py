@@ -17,6 +17,8 @@ import operator_config as op_config
 import operator_policy as op
 import operator_runners as runners
 import operator_session as sessions
+import operator_session_job_store as job_store
+import operator_session_jobs as job_runtime
 import runner_confinement as confinement
 
 MODEL_ID = "deepseek/deepseek-v4.1-flash"
@@ -210,10 +212,10 @@ def start_turn(
             "safe_message": f"Hermes tasks require usable {posture} OS confinement; enable {confinement.CONFINEMENT_ENABLE_ENV} and install a working bwrap or sandbox-exec.",
         }
 
-    executable = sessions._hermes_executable(agent_root)
+    executable = job_runtime._hermes_executable(agent_root)
     source_root = _source_root(executable, agent_root)
     task_home = Path(str(task["task_home"])).expanduser().resolve(strict=True)
-    task_root = (sessions._data_root(hermes_root) / "profiles").resolve(strict=True)
+    task_root = (job_store._data_root(hermes_root) / "profiles").resolve(strict=True)
     try:
         task_home.relative_to(task_root)
     except ValueError as exc:
@@ -278,7 +280,7 @@ def start_turn(
         "HERMES_HOME": str(task_home),
         key_env: key,
     })
-    result = sessions.start_managed_session_job(
+    result = job_runtime.start_managed_session_job(
         argv=sandboxed_argv,
         prompt=prompt,
         timeout=timeout,

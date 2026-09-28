@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import operator_session as sessions
+import operator_session_job_store as session_store
 from operator_session_task_runtime import MODEL_ID
 
 _TASK_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -22,7 +22,7 @@ def _now() -> str:
 
 
 def _task_root(hermes_root: Path | None) -> Path:
-    return sessions._root(hermes_root) / "tasks"
+    return session_store._root(hermes_root) / "tasks"
 
 
 def _task_path(task_id: str, hermes_root: Path | None) -> Path:

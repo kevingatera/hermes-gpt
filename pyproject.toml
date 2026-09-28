@@ -61,6 +61,8 @@ py-modules = [
   "operator_diagnostics",
   "operator_codex",
   "operator_session",
+  "operator_session_jobs",
+  "operator_session_job_store",
   "operator_session_tasks",
   "operator_session_task_store",
   "operator_session_task_runtime",

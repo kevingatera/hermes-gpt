@@ -26,7 +26,7 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     root = _configure(monkeypatch, tmp_path, workspace)
     source_root = tmp_path / "hermes-agent"
     source_root.mkdir()
-    monkeypatch.setattr(tasks.sessions, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
+    monkeypatch.setattr(tasks.job_runtime, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
     monkeypatch.setattr(tasks.runtime, "_source_root", lambda _executable, _root: source_root)
     monkeypatch.setattr(tasks.confinement, "confinement_available", lambda *, writable: True)
     wrapped = {}
@@ -48,7 +48,7 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
         launched.update(kwargs)
         return {"success": True, "job_id": "a" * 32, "task_id": kwargs["metadata"]["task_id"], "status": "running"}
 
-    monkeypatch.setattr(tasks.sessions, "start_managed_session_job", start_managed)
+    monkeypatch.setattr(tasks.job_runtime, "start_managed_session_job", start_managed)
     result = tasks.hermes_task_start(
         "Inspect the readme and summarize the project.",
         "demo",
@@ -290,7 +290,7 @@ def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, 
 
     source_root = tmp_path / "hermes-agent"
     source_root.mkdir()
-    monkeypatch.setattr(tasks.sessions, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
+    monkeypatch.setattr(tasks.job_runtime, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
     monkeypatch.setattr(tasks.runtime, "_source_root", lambda _executable, _root: source_root)
     monkeypatch.setattr(tasks.confinement, "confinement_available", lambda *, writable: True)
     wrapped = {}
@@ -306,7 +306,7 @@ def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, 
 
     monkeypatch.setattr(tasks.confinement, "wrap_argv", wrap)
     monkeypatch.setattr(
-        tasks.sessions,
+        tasks.job_runtime,
         "start_managed_session_job",
         lambda **kwargs: {
             "success": True,
@@ -379,7 +379,7 @@ def test_task_continue_resumes_recorded_session(monkeypatch, tmp_path):
     tasks._write_json(tasks._task_path(task_id, root), task_record)
     source_root = tmp_path / "hermes-agent"
     source_root.mkdir()
-    monkeypatch.setattr(tasks.sessions, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
+    monkeypatch.setattr(tasks.job_runtime, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
     monkeypatch.setattr(tasks.runtime, "_source_root", lambda _executable, _root: source_root)
     monkeypatch.setattr(tasks.confinement, "confinement_available", lambda *, writable: True)
     captured = {}
@@ -389,8 +389,8 @@ def test_task_continue_resumes_recorded_session(monkeypatch, tmp_path):
         return argv
 
     monkeypatch.setattr(tasks.confinement, "wrap_argv", wrap)
-    monkeypatch.setattr(tasks.sessions, "_load", lambda *_args: {"status": "completed", "session_id": "20260927_203010_ab12cd"})
-    monkeypatch.setattr(tasks.sessions, "start_managed_session_job", lambda **kwargs: {"success": True, "job_id": "d" * 32, "status": "running"})
+    monkeypatch.setattr(tasks.job_store, "_load", lambda *_args: {"status": "completed", "session_id": "20260927_203010_ab12cd"})
+    monkeypatch.setattr(tasks.job_runtime, "start_managed_session_job", lambda **kwargs: {"success": True, "job_id": "d" * 32, "status": "running"})
 
     result = tasks.hermes_task_continue(task_id, "Now list the main modules.", confirm=True, dry_run=False, hermes_root=root)
 

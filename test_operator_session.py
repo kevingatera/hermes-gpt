@@ -8,6 +8,8 @@ import pytest
 
 import operator_live_events as live_events
 import operator_session as session
+import operator_session_job_store as job_store
+import operator_session_jobs as job_runtime
 
 
 class _ImmediateThread:
@@ -53,7 +55,7 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "project-manager")
     monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "project-manager")
     (tmp_path / "profiles" / "project-manager").mkdir(parents=True)
-    monkeypatch.setattr(session.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(job_runtime.threading, "Thread", _ImmediateThread)
     calls = []
 
     def fake_popen(argv, **kwargs):
@@ -61,7 +63,7 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
         calls.append(proc)
         return proc
 
-    monkeypatch.setattr(session.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(job_runtime.subprocess, "Popen", fake_popen)
     prompt = "private follow-up prompt"
     started = session.hermes_session_continue(
         "20260810_143227_6b0982",
@@ -109,8 +111,8 @@ def test_continue_accepts_model_and_reasoning_overrides(monkeypatch, tmp_path):
         calls.append(proc)
         return proc
 
-    monkeypatch.setattr(session.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(session.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(job_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(job_runtime.threading, "Thread", _ImmediateThread)
     result = session.hermes_session_continue(
         "session-2",
         "do one turn",
@@ -138,11 +140,11 @@ def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
 
 def test_scoped_job_recovers_session_id_from_hermes_stderr(tmp_path):
     job_id = "a" * 32
-    output_path = session._paths(job_id, tmp_path)[1]
+    output_path = job_store._paths(job_id, tmp_path)[1]
     stderr_path = output_path.with_suffix(".stderr.txt")
     stderr_path.parent.mkdir(parents=True)
     stderr_path.write_text("session_id: 20260927_203010_ab12cd\n", encoding="utf-8")
-    session._save({
+    job_store._save({
         "job_id": job_id,
         "task_id": "b" * 32,
         "session_id": "",
@@ -162,7 +164,7 @@ def test_scoped_job_recovers_legacy_usage_report_after_stderr_miss(tmp_path):
     usage_file = tmp_path / "profiles" / "task" / "usage.json"
     usage_file.parent.mkdir(parents=True)
     usage_file.write_text(json.dumps({"session_id": "20260927_203010_ab12cd"}), encoding="utf-8")
-    session._save({
+    job_store._save({
         "job_id": job_id,
         "task_id": "d" * 32,
         "session_id": "",
@@ -180,7 +182,7 @@ def test_scoped_job_recovers_legacy_usage_report_after_stderr_miss(tmp_path):
 def test_same_session_cannot_run_concurrently(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
-    monkeypatch.setitem(session._active_sessions, "default:session-1", "b" * 32)
+    monkeypatch.setitem(job_runtime._active_sessions, "default:session-1", "b" * 32)
     result = session.hermes_session_continue("session-1", "next", hermes_root=tmp_path)
     assert result["code"] == "SESSION_BUSY"
 
@@ -235,7 +237,7 @@ def test_session_profile_must_also_pass_operator_allowlist(monkeypatch, tmp_path
 def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
-    monkeypatch.setattr(session, "PROGRESS_EVENT_INTERVAL_SECONDS", 0.1)
+    monkeypatch.setattr(job_runtime, "PROGRESS_EVENT_INTERVAL_SECONDS", 0.1)
     agent_root = tmp_path / "agent"
     executable = agent_root / "venv" / "bin" / "hermes"
     executable.parent.mkdir(parents=True)
@@ -258,12 +260,12 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     )
     assert started["success"] is True
     job_id = started["job_id"]
-    job_meta = session._load(job_id, tmp_path)
+    job_meta = job_store._load(job_id, tmp_path)
     assert job_meta is not None
     pid = job_meta["pid"]
 
     deadline = time.monotonic() + 3
-    output_path = session._paths(job_id, tmp_path)[1]
+    output_path = job_store._paths(job_id, tmp_path)[1]
     while time.monotonic() < deadline:
         if output_path.exists() and "session-started" in output_path.read_text(encoding="utf-8"):
             break
@@ -275,7 +277,7 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     while time.monotonic() < deadline:
         events, _ = live_events.read_since(
             0,
-            topic=session.SESSION_JOB_TOPIC,
+            topic=job_runtime.SESSION_JOB_TOPIC,
             hermes_root=tmp_path,
         )
         if any(event["kind"] == "progress" for event in events):
@@ -298,7 +300,7 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     assert "diagnostic-only" not in result["response"]
     events, _ = live_events.read_since(
         0,
-        topic=session.SESSION_JOB_TOPIC,
+        topic=job_runtime.SESSION_JOB_TOPIC,
         hermes_root=tmp_path,
     )
     event_kinds = [event["kind"] for event in events]
@@ -316,12 +318,12 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
 
 def test_cancel_marks_unowned_job_orphaned_without_signaling_pid(monkeypatch, tmp_path):
     job_id = "c" * 32
-    session._save(
+    job_store._save(
         {"job_id": job_id, "session_id": "session-1", "status": "running", "pid": 999999},
         tmp_path,
     )
     monkeypatch.setattr(
-        session,
+        job_runtime,
         "_terminate",
         lambda _proc: pytest.fail("cancel must not signal a persisted PID"),
     )
@@ -333,7 +335,7 @@ def test_cancel_marks_unowned_job_orphaned_without_signaling_pid(monkeypatch, tm
     assert result["cancelled"] is False
     events, _ = live_events.read_since(
         0,
-        topic=session.SESSION_JOB_TOPIC,
+        topic=job_runtime.SESSION_JOB_TOPIC,
         hermes_root=tmp_path,
     )
     assert [event["kind"] for event in events] == ["orphaned"]
@@ -341,7 +343,7 @@ def test_cancel_marks_unowned_job_orphaned_without_signaling_pid(monkeypatch, tm
 
 def test_reconcile_marks_unowned_running_job_orphaned(tmp_path):
     job_id = "a" * 32
-    session._save({"job_id": job_id, "session_id": "s", "status": "running"}, tmp_path)
+    job_store._save({"job_id": job_id, "session_id": "s", "status": "running"}, tmp_path)
     result = session.hermes_session_job_status(job_id, tmp_path)
     assert result["job"]["status"] == "orphaned"
     assert "ownership" in result["job"]["reconciliation"]

@@ -11,6 +11,7 @@ import operator_browser as browser
 import operator_browser_profiles as browser_profiles
 import operator_policy as op
 import operator_session as sessions
+import operator_session_job_store as session_store
 import operator_session_tasks as tasks
 
 
@@ -38,7 +39,7 @@ def _profile_browser_target(profile: str) -> ProfileBrowserTarget | dict[str, An
         return checked
 
     try:
-        hermes_root = sessions._data_root(None).resolve(strict=True)
+        hermes_root = session_store._data_root(None).resolve(strict=True)
         cdp_port = browser_profiles.profile_cdp_port(checked, hermes_root)
         browser_id = hashlib.sha256(
             f"profile-browser\0{hermes_root}\0{checked}\0{cdp_port}".encode()
