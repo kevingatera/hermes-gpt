@@ -138,6 +138,7 @@ py-modules = [
   "versioning",
   "hermes_session_history",
   "server_session_tools",
+  "server_job_tools",
   "server_session_control_tools",
   "server_session_task_tools",
   "server_session_browser_tools",

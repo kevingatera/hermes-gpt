@@ -41,6 +41,15 @@ class HermesSkillTools:
 
     MAX_VIEW_BYTES = 80_000
 
+    def register_mcp_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        for tool in (self.hermes_skill_list, self.hermes_skill_view):
+            server.add_tool(tool, meta=tool_meta())
+
     def __init__(
         self,
         *,

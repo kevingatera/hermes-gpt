@@ -77,6 +77,26 @@ class SessionHistoryTools:
         # server configuration is read when a tool is called.
         self.context = context
 
+    def register_mcp_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+        history_enabled: bool,
+        send_enabled: bool,
+    ) -> None:
+        if history_enabled:
+            for tool in (
+                self.hermes_session_search,
+                self.hermes_session_list,
+                self.hermes_session_read,
+                self.hermes_session_export,
+                self.hermes_bot_chat_get,
+            ):
+                server.add_tool(tool, meta=tool_meta())
+        if send_enabled:
+            server.add_tool(self.hermes_bot_chat_send, meta=tool_meta())
+
     def _session_error(self, code: str, message: str) -> str:
         payload = {
             "success": False,

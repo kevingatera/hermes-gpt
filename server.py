@@ -13,7 +13,6 @@ from typing import Any
 
 import oauth_auth
 import operator_finance as op_finance
-import operator_job_supervisor as op_jobs
 import operator_policy as op_policy
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
@@ -21,8 +20,8 @@ import operator_status as op_status
 import operator_swarm as op_swarm
 import server_codex_tools as codex_tools
 import server_hermes_runtime as hermes_runtime
-import server_http as http_server
 import server_hermes_tools as hermes_tools
+import server_http as http_server
 import server_skill_tools as skill_tools
 from hermes_session_history import (
     INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
@@ -52,6 +51,7 @@ from hermes_session_history import (
 )
 from server_fleet_tools import FleetTools
 from server_hermes_profile_tools import HermesProfileTools
+from server_job_tools import DurableJobTools
 from server_mission_tools import MissionTools
 from server_operator_tools import OperatorTools
 from server_session_browser_tools import register_session_browser_tools
@@ -229,7 +229,6 @@ def clean_error(tool_name: str, exc: Exception) -> RuntimeError:
 
 
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
 
 from mcp_compat import HermesMCP as FastMCP
 
@@ -501,30 +500,9 @@ hermes_codex_cancel = _codex_tools.hermes_codex_cancel
 # --- Durable background-job lifecycle ------------------------------------
 
 
-def hermes_job_status(job_id: str, cursor: int = 0, max_lines: int = 50) -> str:
-    """Read durable runner-neutral job state and a cursor-based log tail."""
-    return op_jobs.hermes_job_status(
-        job_id,
-        cursor=cursor,
-        max_lines=max_lines,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_job_wait(
-    job_id: str,
-    cursor: int = 0,
-    wait_seconds: int = op_jobs.MAX_WAIT_SECONDS,
-    max_lines: int = 50,
-) -> str:
-    """Long-poll durable job state for up to 120 seconds and return early on terminal state."""
-    return op_jobs.hermes_job_wait(
-        job_id,
-        cursor=cursor,
-        wait_seconds=wait_seconds,
-        max_lines=max_lines,
-        hermes_root=_default_hermes_root(),
-    )
+_job_tools = DurableJobTools(_default_hermes_root)
+hermes_job_status = _job_tools.hermes_job_status
+hermes_job_wait = _job_tools.hermes_job_wait
 
 
 _mission_tools = MissionTools(_hermes_root_for_operator)
@@ -681,25 +659,21 @@ def build_server(
 
 
 def register_tools(server: FastMCP) -> None:
-    server.add_tool(hermes_read_file, meta=tool_meta())
-    server.add_tool(hermes_search_files, meta=tool_meta())
-    server.add_tool(hermes_memory, meta=tool_meta())
-    server.add_tool(hermes_skill_list, meta=tool_meta())
-    server.add_tool(hermes_skill_view, meta=tool_meta())
-
-    if env_enabled(ENABLE_WRITE_ENV):
-        server.add_tool(hermes_write_file, meta=tool_meta())
-        server.add_tool(hermes_patch, meta=tool_meta())
-    if env_enabled(ENABLE_TERMINAL_ENV):
-        server.add_tool(hermes_run_command, meta=tool_meta())
-    if env_enabled(ENABLE_SESSION_SEARCH_ENV):
-        server.add_tool(hermes_session_search, meta=tool_meta())
-        server.add_tool(hermes_session_list, meta=tool_meta())
-        server.add_tool(hermes_session_read, meta=tool_meta())
-        server.add_tool(hermes_session_export, meta=tool_meta())
-        server.add_tool(hermes_bot_chat_get, meta=tool_meta())
-    if env_enabled(ENABLE_SESSION_CONTROL_ENV) and env_enabled(ENABLE_SESSION_SEARCH_ENV):
-        server.add_tool(hermes_bot_chat_send, meta=tool_meta())
+    _hermes_tools.register_read_tools(server, tool_meta=tool_meta)
+    _skill_tools.register_mcp_tools(server, tool_meta=tool_meta)
+    _hermes_tools.register_local_tools(
+        server,
+        tool_meta=tool_meta,
+        write_enabled=env_enabled(ENABLE_WRITE_ENV),
+        terminal_enabled=env_enabled(ENABLE_TERMINAL_ENV),
+    )
+    _session_history_tools.register_mcp_tools(
+        server,
+        tool_meta=tool_meta,
+        history_enabled=env_enabled(ENABLE_SESSION_SEARCH_ENV),
+        send_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV)
+        and env_enabled(ENABLE_SESSION_SEARCH_ENV),
+    )
     _session_control_tools.register_mcp_tools(
         server,
         tool_meta=tool_meta,
@@ -713,11 +687,12 @@ def register_tools(server: FastMCP) -> None:
     )
     if scoped_tasks_enabled:
         register_session_browser_tools(server, tool_meta=tool_meta)
-    if env_enabled(ENABLE_VISION_ENV):
-        server.add_tool(hermes_vision_analyze, meta=tool_meta())
-    if env_enabled(ENABLE_WEB_ENV):
-        server.add_tool(hermes_web_search, meta=tool_meta())
-        server.add_tool(hermes_web_extract, meta=tool_meta())
+    _hermes_tools.register_online_tools(
+        server,
+        tool_meta=tool_meta,
+        vision_enabled=env_enabled(ENABLE_VISION_ENV),
+        web_enabled=env_enabled(ENABLE_WEB_ENV),
+    )
     if op_finance.finance_enabled(_default_hermes_root()):
         server.add_tool(hermes_finance_analyze, meta=tool_meta())
 
@@ -731,90 +706,16 @@ def register_tools(server: FastMCP) -> None:
     # its own read-only, dry-run, workspace, or Owner policy gates.
     _mission_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
-    # Work Contracts (v0.6 M1): define/dispatch/validate/status. Registered
-    # unconditionally; dispatch enforces workspace level + dry-run-first +
-    # confirm gates; validate enforces D6 test gating internally.
-    for _contract_tool in (
-        hermes_contract_define,
-        hermes_contract_dispatch,
-        hermes_contract_validate,
-        hermes_contract_status,
-    ):
-        server.add_tool(_contract_tool, meta=tool_meta())
-
-    # Pluggable execution backends: list/status are read-only; cancellation is
-    # workspace/direct gated internally and dry-run-first.
-    for _runner_tool in (
-        hermes_runner_list,
-        hermes_runner_status,
-        hermes_runner_cancel,
-    ):
-        server.add_tool(_runner_tool, meta=tool_meta())
-
-    # Runner-neutral durable job status. The wait tool carries the polling
-    # contract so chat clients can make one bounded decisive call per turn.
-    server.add_tool(
-        hermes_job_status,
-        meta=tool_meta(),
-        annotations=ToolAnnotations(
-            title="Read durable background-job status and log cursor",
-            readOnlyHint=True,
-        ),
+    _work_tools.register_contract_and_runner_tools(server, tool_meta=tool_meta)
+    _job_tools.register_mcp_tools(server, tool_meta=tool_meta)
+    _work_tools.register_delegation_review_and_swarm_tools(
+        server, tool_meta=tool_meta
     )
-    server.add_tool(
-        hermes_job_wait,
-        meta=tool_meta(),
-        annotations=ToolAnnotations(
-            title="Wait up to 120 seconds for a background job to finish",
-            readOnlyHint=True,
-        ),
-    )
-
-    # Unified delegation lifecycle (v0.9): normalized durable lineage over
-    # runner/Fabric execution. Get/list are read-only; dispatch/cancel/reconcile
-    # preserve the underlying authority and dry-run gates.
-    for _delegation_tool in (
-        hermes_delegation_dispatch,
-        hermes_delegation_get,
-        hermes_delegation_list,
-        hermes_delegation_reconcile,
-        hermes_delegation_cancel,
-    ):
-        server.add_tool(_delegation_tool, meta=tool_meta())
-
-    # Review-evidence writer (v0.7 S3): owner-gated, distinct reviewer.
-    server.add_tool(
-        hermes_review_accept,
-        meta=tool_meta(),
-        annotations=ToolAnnotations(
-            title="Accept a review verdict for a Work Contract"
-        ),
-    )
-
-    # Swarm Orchestration (v0.6 M2): workflow engine on contracts. Registered
-    # unconditionally; each tool enforces its own level/apply/dry-run gates
-    # and audits every call (D-SW9/D-SW10).
-    for _swarm_tool in (
-        hermes_swarm_workflow_create,
-        hermes_swarm_workflow_list,
-        hermes_swarm_workflow_status,
-        hermes_swarm_workflow_validate,
-        hermes_swarm_stage_dispatch,
-        hermes_swarm_stage_advance,
-        hermes_swarm_approve,
-    ):
-        server.add_tool(_swarm_tool, meta=tool_meta())
 
     _profile_tools.register_admin_tools(server, tool_meta=tool_meta)
 
     _workspace_tools.register_mcp_tools(server, tool_meta=tool_meta)
-
-    for tool in (
-        hermes_codex_status, hermes_codex_plan, hermes_codex_start,
-        hermes_codex_review_start, hermes_codex_jobs, hermes_codex_job_status,
-        hermes_codex_job_result, hermes_codex_cancel,
-    ):
-        server.add_tool(tool, meta=tool_meta())
+    _codex_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
 
 def _codex_gateway_diagnostics() -> dict[str, Any]:

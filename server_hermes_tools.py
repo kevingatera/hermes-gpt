@@ -34,6 +34,43 @@ class HermesTools:
     def __init__(self, context: HermesToolContext) -> None:
         self.context = context
 
+    def register_read_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        for tool in (self.hermes_read_file, self.hermes_search_files, self.hermes_memory):
+            server.add_tool(tool, meta=tool_meta())
+
+    def register_local_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+        write_enabled: bool,
+        terminal_enabled: bool,
+    ) -> None:
+        if write_enabled:
+            server.add_tool(self.hermes_write_file, meta=tool_meta())
+            server.add_tool(self.hermes_patch, meta=tool_meta())
+        if terminal_enabled:
+            server.add_tool(self.hermes_run_command, meta=tool_meta())
+
+    def register_online_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+        vision_enabled: bool,
+        web_enabled: bool,
+    ) -> None:
+        if vision_enabled:
+            server.add_tool(self.hermes_vision_analyze, meta=tool_meta())
+        if web_enabled:
+            server.add_tool(self.hermes_web_search, meta=tool_meta())
+            server.add_tool(self.hermes_web_extract, meta=tool_meta())
+
     def hermes_read_file(self, path: str, offset: int = 1, limit: int = 500) -> str:
         try:
             self.context.require_imports()

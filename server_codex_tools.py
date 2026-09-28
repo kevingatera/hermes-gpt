@@ -15,6 +15,24 @@ class CodexTools:
     def __init__(self, get_hermes_root: Callable[[], Path | None]) -> None:
         self.get_hermes_root = get_hermes_root
 
+    def register_mcp_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        for tool in (
+            self.hermes_codex_status,
+            self.hermes_codex_plan,
+            self.hermes_codex_start,
+            self.hermes_codex_review_start,
+            self.hermes_codex_jobs,
+            self.hermes_codex_job_status,
+            self.hermes_codex_job_result,
+            self.hermes_codex_cancel,
+        ):
+            server.add_tool(tool, meta=tool_meta())
+
     def hermes_codex_status(self) -> dict[str, Any]:
         return operator_codex.hermes_codex_status(self.get_hermes_root())
 

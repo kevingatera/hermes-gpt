@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
+
+from mcp.types import ToolAnnotations
 
 import operator_contract as op_contract
 import operator_delegations as op_delegations
@@ -17,6 +20,55 @@ class WorkTools:
 
     def __init__(self, get_hermes_root: Callable[[], Path | None]):
         self.get_hermes_root = get_hermes_root
+
+    def register_contract_and_runner_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        for tool in (
+            self.hermes_contract_define,
+            self.hermes_contract_dispatch,
+            self.hermes_contract_validate,
+            self.hermes_contract_status,
+            self.hermes_runner_list,
+            self.hermes_runner_status,
+            self.hermes_runner_cancel,
+        ):
+            server.add_tool(tool, meta=tool_meta())
+
+    def register_delegation_review_and_swarm_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        for tool in (
+            self.hermes_delegation_dispatch,
+            self.hermes_delegation_get,
+            self.hermes_delegation_list,
+            self.hermes_delegation_reconcile,
+            self.hermes_delegation_cancel,
+        ):
+            server.add_tool(tool, meta=tool_meta())
+        server.add_tool(
+            self.hermes_review_accept,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(
+                title="Accept a review verdict for a Work Contract"
+            ),
+        )
+        for tool in (
+            self.hermes_swarm_workflow_create,
+            self.hermes_swarm_workflow_list,
+            self.hermes_swarm_workflow_status,
+            self.hermes_swarm_workflow_validate,
+            self.hermes_swarm_stage_dispatch,
+            self.hermes_swarm_stage_advance,
+            self.hermes_swarm_approve,
+        ):
+            server.add_tool(tool, meta=tool_meta())
 
     def hermes_contract_define(self, contract_json: str) -> str:
         return op_contract.hermes_contract_define(
