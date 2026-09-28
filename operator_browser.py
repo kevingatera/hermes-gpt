@@ -405,13 +405,23 @@ def browser_session_state(task_home: Path) -> dict[str, Any]:
         return result
     url = _run(state, "get", ["url"])
     data = result.get("data") or {}
+    url_data = url.get("data")
+    current_url = (
+        url_data.get("url")
+        if url.get("success") and isinstance(url_data, dict)
+        else None
+    )
     return {
         "success": True,
         "browser": {
             "status": "running" if data.get("active") else "stopped",
             "source": str(state.get("browser_source") or "isolated"),
             "headed": bool(state.get("headed")),
-            "current_url": (url.get("data") or {}).get("url") if url.get("success") else None,
+            "current_url": (
+                op.redact_output(current_url)[:_MAX_OUTPUT_CHARS]
+                if isinstance(current_url, str)
+                else None
+            ),
             "page_count": data.get("pageCount"),
             "created_at": state.get("created_at"),
         },

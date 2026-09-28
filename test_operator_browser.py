@@ -84,6 +84,39 @@ def test_browser_rejects_malformed_urls_before_running_command(monkeypatch, tmp_
     shutil.rmtree(browser._socket_path(task_id), ignore_errors=True)
 
 
+def test_browser_session_status_redacts_current_url_secrets(monkeypatch, tmp_path):
+    task_home = tmp_path / "task"
+    task_home.mkdir()
+    monkeypatch.setattr(
+        browser,
+        "_read_task_state",
+        lambda _home: {"status": "running", "browser_source": "hermes_profile"},
+    )
+
+    def run(_state, command, _args):
+        if command == "session":
+            return {"success": True, "data": {"active": True, "pageCount": 1}}
+        return {
+            "success": True,
+            "data": {
+                "url": (
+                    "https://alice:password@example.test/path?code=oauth-code"
+                    "&q=public-search#access_token=fragment-token"
+                )
+            },
+        }
+
+    monkeypatch.setattr(browser, "_run", run)
+
+    result = browser.browser_session_state(task_home)
+    current_url = result["browser"]["current_url"]
+
+    assert "alice:password" not in current_url
+    assert "oauth-code" not in current_url
+    assert "fragment-token" not in current_url
+    assert "q=public-search" in current_url
+
+
 def test_browser_restart_reuses_its_socket_directory(monkeypatch, tmp_path):
     task_id = uuid4().hex
     task_home = tmp_path / "profiles" / task_id

@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from operator_redaction import redact_output
+
 # ---------------------------------------------------------------------------
 # Env var names
 # ---------------------------------------------------------------------------
@@ -1001,25 +1003,6 @@ def _truncate(text: str, limit: int = 4096) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n... [truncated {len(text) - limit} chars]"
-
-
-def redact_output(text: str) -> str:
-    """Best-effort redaction of secret-looking substrings in command output."""
-    if not text:
-        return ""
-    # Redact common secret shapes: long hex/base64 strings after key/token-like
-    # labels, Bearer tokens, sk-... / sk-proj-... OpenAI keys, AKIA... AWS keys.
-    patterns: list[tuple[str, str]] = [
-        (r"(?i)\b(sk(?:-proj)?-[A-Za-z0-9_-]{20,})\b", "[REDACTED_OPENAI_KEY]"),
-        (r"(?i)\b(AKIA[0-9A-Z.]{6,})\b", "[REDACTED_AWS_KEY]"),
-        (r"(?i)\b(AKIA[0-9A-Z]{16})\b", "[REDACTED_AWS_KEY]"),
-        (r"(?i)(\bBearer\s+)([A-Za-z0-9._\-]{16,})\b", r"\1[REDACTED]"),
-        (r"(?i)(\b(?:token|secret|password|api[_-]?key|passwd)\s*[:=]\s*[\"']?)([^\s\"']{8,})", r"\1[REDACTED]"),
-    ]
-    out = text
-    for pattern, repl in patterns:
-        out = re.sub(pattern, repl, out)
-    return out
 
 
 # ---------------------------------------------------------------------------

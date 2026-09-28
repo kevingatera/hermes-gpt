@@ -468,6 +468,21 @@ def test_redact_output_masks_bearer_tokens():
     assert "Bearer [REDACTED]" in out
 
 
+def test_redact_output_masks_browser_url_credentials_and_secret_parameters():
+    text = (
+        "https://alice:password@example.test/path?code=oauth-code"
+        "&q=public-search#access_token=fragment-token"
+    )
+
+    out = op.redact_output(text)
+
+    assert "alice:password" not in out
+    assert "oauth-code" not in out
+    assert "fragment-token" not in out
+    assert "q=public-search" in out
+    assert "[REDACTED]" in out
+
+
 @pytest.mark.parametrize(
     "text",
     [
