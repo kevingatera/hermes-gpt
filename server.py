@@ -15,8 +15,6 @@ from typing import Any
 import oauth_auth
 import operator_capability_manifest as op_capability_manifest
 import operator_codex as op_codex
-import operator_contract as op_contract
-import operator_delegations as op_delegations
 import operator_diagnostics as op_diagnostics
 import operator_events as op_events
 import operator_export as op_export
@@ -28,8 +26,6 @@ import operator_mission_ledger as op_mission_ledger
 import operator_oauth as op_oauth
 import operator_policy as op_policy
 import operator_recovery as op_recovery
-import operator_review as op_review
-import operator_runners as op_runners
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
 import operator_swarm as op_swarm
@@ -67,6 +63,7 @@ from server_session_browser_tools import register_session_browser_tools
 from server_session_control_tools import SessionControlTools
 from server_session_task_tools import ManagedSessionTaskTools
 from server_session_tools import SessionHistoryTools, SessionToolContext
+from server_work_tools import WorkTools
 from versioning import VERSION
 
 LOCAL_DEV_PROFILE = "local-dev"
@@ -1367,220 +1364,28 @@ hermes_controller_lease_list = _mission_tools.hermes_controller_lease_list
 hermes_controller_trigger = _mission_tools.hermes_controller_trigger
 
 
-# --- Work Contracts (v0.6 M1) ----------------------------------------------
+_work_tools = WorkTools(_hermes_root_for_operator)
 
-
-def hermes_contract_define(contract_json: str) -> str:
-    return op_contract.hermes_contract_define(contract_json=contract_json, hermes_root=_default_hermes_root())
-
-
-def hermes_contract_dispatch(
-    contract_json: str,
-    confirm: bool = False,
-    dry_run: bool = True,
-    timeout: int = 30,
-) -> str:
-    return op_contract.hermes_contract_dispatch(
-        contract_json=contract_json,
-        confirm=confirm,
-        dry_run=dry_run,
-        timeout=timeout,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_contract_validate(contract_json: str) -> str:
-    return op_contract.hermes_contract_validate(contract_json=contract_json, hermes_root=_default_hermes_root())
-
-
-def hermes_contract_status(contract_json: str) -> str:
-    return op_contract.hermes_contract_status(contract_json=contract_json, hermes_root=_default_hermes_root())
-
-
-# --- Pluggable Runner Backends ---------------------------------------------
-
-
-def hermes_runner_list() -> str:
-    return op_runners.hermes_runner_list(hermes_root=_default_hermes_root())
-
-
-def hermes_runner_status(task_id: str) -> str:
-    return op_runners.hermes_runner_status(task_id=task_id, hermes_root=_default_hermes_root())
-
-
-def hermes_runner_cancel(
-    task_id: str,
-    backend: str = "",
-    confirm: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_runners.hermes_runner_cancel(
-        task_id=task_id,
-        backend=backend,
-        confirm=confirm,
-        dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-# --- Unified Delegation Lifecycle (v0.9) -----------------------------------
-
-
-def hermes_delegation_dispatch(
-    contract_json: str,
-    mission_id: str = "",
-    delegation_id: str = "",
-    confirm: bool = False,
-    dry_run: bool = True,
-    timeout: int = 30,
-) -> str:
-    return op_delegations.hermes_delegation_dispatch(
-        contract_json=contract_json,
-        mission_id=mission_id,
-        delegation_id=delegation_id,
-        confirm=confirm,
-        dry_run=dry_run,
-        timeout=timeout,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_delegation_get(delegation_id: str) -> str:
-    return op_delegations.hermes_delegation_get(
-        delegation_id=delegation_id,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_delegation_list(
-    mission_id: str = "",
-    state: str = "",
-    limit: int = 50,
-) -> str:
-    return op_delegations.hermes_delegation_list(
-        mission_id=mission_id,
-        state=state,
-        limit=limit,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_delegation_reconcile(
-    delegation_id: str,
-    contract_json: str = "",
-    apply: bool = False,
-) -> str:
-    return op_delegations.hermes_delegation_reconcile(
-        delegation_id=delegation_id,
-        contract_json=contract_json,
-        apply=apply,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_delegation_cancel(
-    delegation_id: str,
-    confirm: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_delegations.hermes_delegation_cancel(
-        delegation_id=delegation_id,
-        confirm=confirm,
-        dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_review_accept(
-    contract_sha256: str,
-    task_id: str,
-    assignee: str,
-    reviewer: str,
-    verdict: str,
-    evidence_refs: list[str] | None = None,
-    approval_reference: str = "",
-    dry_run: bool = True,
-    confirm: bool = False,
-) -> str:
-    """Write a review-acceptance record for a contract (owner-gated, distinct
-    reviewer enforced, audited). Evidence is referenced, never copied."""
-    return op_review.hermes_review_accept(
-        contract_sha256=contract_sha256,
-        task_id=task_id,
-        assignee=assignee,
-        reviewer=reviewer,
-        verdict=verdict,
-        evidence_refs=evidence_refs,
-        approval_reference=approval_reference,
-        dry_run=dry_run,
-        confirm=confirm,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-# --- Swarm Orchestration (v0.6 M2) ----------------------------------------
-
-
-def hermes_swarm_workflow_create(workflow_json: str, confirm: bool = False, dry_run: bool = True) -> str:
-    return op_swarm.hermes_swarm_workflow_create(
-        workflow_json=workflow_json,
-        confirm=confirm,
-        dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_swarm_workflow_list() -> str:
-    return op_swarm.hermes_swarm_workflow_list(hermes_root=_default_hermes_root())
-
-
-def hermes_swarm_workflow_status(workflow_id: str) -> str:
-    return op_swarm.hermes_swarm_workflow_status(workflow_id=workflow_id, hermes_root=_default_hermes_root())
-
-
-def hermes_swarm_workflow_validate(workflow_json: str) -> str:
-    return op_swarm.hermes_swarm_workflow_validate(workflow_json=workflow_json, hermes_root=_default_hermes_root())
-
-
-def hermes_swarm_stage_dispatch(
-    workflow_id: str,
-    stage_id: str,
-    confirm: bool = False,
-    dry_run: bool = True,
-    timeout: int = 30,
-) -> str:
-    return op_swarm.hermes_swarm_stage_dispatch(
-        workflow_id=workflow_id,
-        stage_id=stage_id,
-        confirm=confirm,
-        dry_run=dry_run,
-        timeout=timeout,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_swarm_stage_advance(
-    workflow_id: str,
-    stage_id: str,
-    confirm: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_swarm.hermes_swarm_stage_advance(
-        workflow_id=workflow_id,
-        stage_id=stage_id,
-        confirm=confirm,
-        dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_swarm_approve(workflow_id: str, confirm: bool = False, dry_run: bool = True) -> str:
-    return op_swarm.hermes_swarm_approve(
-        workflow_id=workflow_id,
-        confirm=confirm,
-        dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
+hermes_contract_define = _work_tools.hermes_contract_define
+hermes_contract_dispatch = _work_tools.hermes_contract_dispatch
+hermes_contract_validate = _work_tools.hermes_contract_validate
+hermes_contract_status = _work_tools.hermes_contract_status
+hermes_runner_list = _work_tools.hermes_runner_list
+hermes_runner_status = _work_tools.hermes_runner_status
+hermes_runner_cancel = _work_tools.hermes_runner_cancel
+hermes_delegation_dispatch = _work_tools.hermes_delegation_dispatch
+hermes_delegation_get = _work_tools.hermes_delegation_get
+hermes_delegation_list = _work_tools.hermes_delegation_list
+hermes_delegation_reconcile = _work_tools.hermes_delegation_reconcile
+hermes_delegation_cancel = _work_tools.hermes_delegation_cancel
+hermes_review_accept = _work_tools.hermes_review_accept
+hermes_swarm_workflow_create = _work_tools.hermes_swarm_workflow_create
+hermes_swarm_workflow_list = _work_tools.hermes_swarm_workflow_list
+hermes_swarm_workflow_status = _work_tools.hermes_swarm_workflow_status
+hermes_swarm_workflow_validate = _work_tools.hermes_swarm_workflow_validate
+hermes_swarm_stage_dispatch = _work_tools.hermes_swarm_stage_dispatch
+hermes_swarm_stage_advance = _work_tools.hermes_swarm_stage_advance
+hermes_swarm_approve = _work_tools.hermes_swarm_approve
 
 
 def oauth_state_from_env() -> oauth_auth.OAuthState | None:

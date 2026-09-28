@@ -125,6 +125,7 @@ py-modules = [
   "server_session_browser_tools",
   "server_hermes_profile_tools",
   "server_mission_tools",
+  "server_work_tools",
   "hermes_state",
   "ui_api",
   "ui_security",
