@@ -81,6 +81,86 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert "test-deepseek-key" not in json.dumps(launched["metadata"])
 
 
+def test_task_list_is_paginated_and_projects_only_resumable_metadata(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    records = [
+        {
+            "task_id": task_id,
+            "workspace_id": "demo",
+            "workspace": str(workspace),
+            "task_home": str(root / "profiles" / task_id),
+            "credential_profile": "chatgpt-task",
+            "session_id": "private-session-id",
+            "prompt": "private prompt text",
+            "provider_api_key": "must-never-appear",
+            "status": "completed",
+            "model": "deepseek/deepseek-v4.1-flash",
+            "reasoning_effort": "high",
+            "browser_enabled": True,
+            "turn_count": 2,
+            "created_at": created_at,
+            "updated_at": created_at,
+        }
+        for task_id, created_at in (
+            ("a" * 32, "2026-09-26T10:00:00+00:00"),
+            ("b" * 32, "2026-09-27T10:00:00+00:00"),
+            ("c" * 32, "2026-09-28T10:00:00+00:00"),
+        )
+    ]
+    for record in records:
+        tasks._write_json(tasks._task_path(record["task_id"], root), record)
+
+    first = tasks.hermes_task_list(limit=2, hermes_root=root)
+    second = tasks.hermes_task_list(limit=2, offset=2, hermes_root=root)
+
+    assert first["success"] is True
+    assert [item["task_id"] for item in first["tasks"]] == ["c" * 32, "b" * 32]
+    assert first["returned_count"] == 2
+    assert first["total_count"] == 3
+    assert first["next_offset"] == 2
+    assert first["has_more"] is True
+    assert second["success"] is True
+    assert [item["task_id"] for item in second["tasks"]] == ["a" * 32]
+    assert second["has_more"] is False
+    assert first["tasks"][0] == {
+        "task_id": "c" * 32,
+        "workspace_id": "demo",
+        "status": "completed",
+        "model": "deepseek/deepseek-v4.1-flash",
+        "reasoning_effort": "high",
+        "browser_enabled": True,
+        "turn_count": 2,
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "updated_at": "2026-09-28T10:00:00+00:00",
+    }
+    serialized = json.dumps(first)
+    for private_value in (
+        str(workspace),
+        "task_home",
+        "credential_profile",
+        "chatgpt-task",
+        "private-session-id",
+        "private prompt text",
+        "must-never-appear",
+    ):
+        assert private_value not in serialized
+
+
+def test_task_list_validates_pagination_and_scoped_task_gate(monkeypatch, tmp_path):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+
+    assert tasks.hermes_task_list(limit=True, hermes_root=root)["code"] == "TASK_LIST_ERROR"
+    assert tasks.hermes_task_list(offset=-1, hermes_root=root)["code"] == "TASK_LIST_ERROR"
+    monkeypatch.delenv(tasks.ENABLE_SCOPED_TASKS_ENV)
+    assert tasks.hermes_task_list(hermes_root=root)["success"] is False
+
+
 def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, tmp_path):
     workspace = tmp_path / "authorized" / "demo"
     workspace.mkdir(parents=True)

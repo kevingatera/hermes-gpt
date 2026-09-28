@@ -17,6 +17,7 @@ from starlette.testclient import TestClient
 import oauth_auth
 import server
 import versioning
+from conftest import wire
 
 
 GATE_ENVS = [
@@ -24,6 +25,7 @@ GATE_ENVS = [
     server.ENABLE_MEMORY_WRITE_ENV,
     server.ENABLE_SESSION_SEARCH_ENV,
     server.ENABLE_SESSION_CONTROL_ENV,
+    server.ENABLE_SCOPED_TASKS_ENV,
     server.SESSION_ALLOWED_PROFILES_ENV,
     server.ENABLE_TERMINAL_ENV,
     server.ENABLE_VISION_ENV,
@@ -914,6 +916,47 @@ def test_phase2_tools_are_gated_and_registered(monkeypatch):
     assert "hermes_session_export" in names
     assert "hermes_bot_chat_get" in names
     assert "hermes_session_lineage_export" not in names
+
+
+def test_managed_task_list_is_registered_only_when_scoped_tasks_are_enabled(monkeypatch):
+    clear_gate_envs(monkeypatch)
+    assert "hermes_task_list" not in tool_names(server.build_server())
+
+    monkeypatch.setenv(server.ENABLE_SCOPED_TASKS_ENV, "1")
+    tools = tools_by_name(server.build_server())
+    assert "hermes_task_list" in tools
+    assert tools["hermes_task_list"].annotations.read_only_hint is True
+
+
+def test_managed_task_list_runs_through_mcp_tool_call(monkeypatch, tmp_path):
+    monkeypatch.setenv(server.ENABLE_SCOPED_TASKS_ENV, "1")
+    monkeypatch.setenv(server.op_policy.OPERATOR_ENABLED_ENV, "1")
+    monkeypatch.setenv(server.op_policy.OPERATOR_LEVEL_ENV, "read_only")
+    monkeypatch.setattr(server, "_default_hermes_root", lambda: tmp_path)
+    task_id = "d" * 32
+    record = {
+        "task_id": task_id,
+        "workspace_id": "demo",
+        "status": "completed",
+        "model": "deepseek/deepseek-v4.1-flash",
+        "reasoning_effort": "high",
+        "browser_enabled": True,
+        "turn_count": 1,
+        "created_at": "2026-09-28T10:00:00+00:00",
+        "updated_at": "2026-09-28T10:00:00+00:00",
+    }
+    server.op_session_tasks._write_json(
+        server.op_session_tasks._task_path(task_id, tmp_path), record
+    )
+
+    mcp = server.build_server()
+    result = asyncio.run(mcp.call_tool("hermes_task_list", {"limit": 5}))
+
+    assert wire(result)["isError"] is False
+    listed = wire(result)["structuredContent"]
+    assert listed["success"] is True
+    assert listed["tasks"][0]["task_id"] == task_id
+    assert listed["tasks"][0]["model"] == "deepseek/deepseek-v4.1-flash"
 
 
 def test_session_continue_resolves_id_before_runner_dispatch(monkeypatch, tmp_path):

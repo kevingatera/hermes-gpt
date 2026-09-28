@@ -181,6 +181,8 @@ With `HERMES_GPT_ENABLE_SESSION_CONTROL=1`, Hermes GPT exposes `hermes_session_c
 
 Session control also requires an explicit `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` list and a matching `HERMES_GPT_OPERATOR_ALLOWED_PROFILES` entry. It denies `default` unless that profile is explicitly listed; use a dedicated, restricted Hermes profile for remote clients. These profile lists do not replace OS-level filesystem or browser isolation.
 
+The separately gated managed-session tools include `hermes_task_list` for finding sessions to resume in a later conversation, plus start, continue, status, result, cancel, and shared-browser controls. See [managed Hermes sessions](docs/managed-hermes-sessions.md) for workspace and confirmation gates.
+
 See [session history](docs/session-history.md) and [session control](docs/session-control.md). Treat transcript data as private local data.
 
 ## Run modes

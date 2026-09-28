@@ -34,6 +34,8 @@ ENABLE_SCOPED_TASKS_ENV = "HERMES_GPT_ENABLE_SCOPED_TASKS"
 TASK_WORKSPACES_ENV = "HERMES_GPT_TASK_WORKSPACES"
 _ALIAS_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 _TASK_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+MAX_TASK_LIST_LIMIT = 100
+MAX_TASK_LIST_OFFSET = 100_000
 
 
 def _now() -> str:
@@ -82,6 +84,33 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 def _save_task_record(task: dict[str, Any], hermes_root: Path | None) -> None:
     task["updated_at"] = _now()
     _write_json(_task_path(str(task["task_id"]), hermes_root), task)
+
+
+def _public_task_summary(task: dict[str, Any]) -> dict[str, Any] | None:
+    """Project a task record onto fields needed to choose a session to resume."""
+    task_id = task.get("task_id")
+    if not isinstance(task_id, str) or not _TASK_ID_RE.fullmatch(task_id):
+        return None
+
+    def text_field(name: str, maximum: int, default: str = "") -> str:
+        value = task.get(name)
+        return value[:maximum] if isinstance(value, str) else default
+
+    turn_count = task.get("turn_count")
+    if not isinstance(turn_count, int) or isinstance(turn_count, bool):
+        turn_count = 0
+
+    return {
+        "task_id": task_id,
+        "workspace_id": text_field("workspace_id", 64),
+        "status": text_field("status", 32, "unknown"),
+        "model": text_field("model", 128, MODEL_ID),
+        "reasoning_effort": text_field("reasoning_effort", 32, "high"),
+        "browser_enabled": task.get("browser_enabled") is True,
+        "turn_count": max(0, turn_count),
+        "created_at": text_field("created_at", 64),
+        "updated_at": text_field("updated_at", 64),
+    }
 
 
 def _workspaces(policy: op.OperatorPolicy) -> dict[str, Path]:
@@ -133,6 +162,53 @@ def hermes_task_workspaces(hermes_root: Path | None = None) -> dict[str, Any]:
         }
     except (OSError, ValueError) as exc:
         return {"success": False, "code": "TASK_WORKSPACES_UNAVAILABLE", "safe_message": str(exc)}
+
+
+def hermes_task_list(
+    limit: int = 20,
+    offset: int = 0,
+    hermes_root: Path | None = None,
+) -> dict[str, Any]:
+    """List resumable managed sessions without returning private task fields."""
+    try:
+        if not op.env_truthy(ENABLE_SCOPED_TASKS_ENV):
+            raise PermissionError(f"Scoped Hermes tasks are disabled. Set {ENABLE_SCOPED_TASKS_ENV}=1.")
+        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_TASK_LIST_LIMIT:
+            raise ValueError(f"limit must be an integer from 1 to {MAX_TASK_LIST_LIMIT}")
+        if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= MAX_TASK_LIST_OFFSET:
+            raise ValueError(f"offset must be an integer from 0 to {MAX_TASK_LIST_OFFSET}")
+
+        op.OperatorPolicy().require_level("read_only")
+        tasks_root = _task_root(hermes_root)
+        summaries = []
+        if tasks_root.is_dir():
+            for path in tasks_root.glob("*.json"):
+                if not _TASK_ID_RE.fullmatch(path.stem):
+                    continue
+                task = _read_json(path)
+                if not task or task.get("task_id") != path.stem:
+                    continue
+                summary = _public_task_summary(task)
+                if summary is not None:
+                    summaries.append(summary)
+
+        summaries.sort(
+            key=lambda item: (item["created_at"], item["task_id"]),
+            reverse=True,
+        )
+        page = summaries[offset : offset + limit]
+        has_more = offset + len(page) < len(summaries)
+        return {
+            "success": True,
+            "tasks": page,
+            "returned_count": len(page),
+            "total_count": len(summaries),
+            "offset": offset,
+            "next_offset": offset + len(page) if has_more else None,
+            "has_more": has_more,
+        }
+    except (OSError, TypeError, ValueError) as exc:
+        return {"success": False, "code": "TASK_LIST_ERROR", "safe_message": str(exc)}
 
 
 def hermes_task_start(
@@ -382,6 +458,7 @@ __all__ = [
     "TASK_WORKSPACES_ENV",
     "TOOLSETS",
     "hermes_task_continue",
+    "hermes_task_list",
     "hermes_task_result",
     "hermes_task_start",
     "hermes_task_status",

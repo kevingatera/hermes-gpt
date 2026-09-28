@@ -117,6 +117,16 @@ class SessionControlTools:
             self.context.get_hermes_root()
         )
 
+    def hermes_task_list(
+        self, limit: int = 20, offset: int = 0
+    ) -> dict[str, Any]:
+        """List managed Hermes sessions that can be resumed by task ID."""
+        return self.context.managed_tasks.hermes_task_list(
+            limit=limit,
+            offset=offset,
+            hermes_root=self.context.get_hermes_root(),
+        )
+
     def hermes_task_start(
         self,
         prompt: str,

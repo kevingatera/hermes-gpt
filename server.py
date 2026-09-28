@@ -596,6 +596,7 @@ hermes_session_send = _session_control_tools.hermes_session_send
 hermes_session_job_status = _session_control_tools.hermes_session_job_status
 hermes_session_job_cancel = _session_control_tools.hermes_session_job_cancel
 hermes_session_job_result = _session_control_tools.hermes_session_job_result
+hermes_task_list = _session_control_tools.hermes_task_list
 hermes_task_workspaces = _session_control_tools.hermes_task_workspaces
 hermes_task_start = _session_control_tools.hermes_task_start
 hermes_task_continue = _session_control_tools.hermes_task_continue
@@ -2462,6 +2463,11 @@ def register_tools(server: FastMCP) -> None:
         server.add_tool(hermes_session_job_result, meta=tool_meta())
         server.add_tool(hermes_session_job_cancel, meta=tool_meta())
     if env_enabled(ENABLE_SCOPED_TASKS_ENV):
+        server.add_tool(
+            hermes_task_list,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(title="List managed Hermes sessions for resuming", readOnlyHint=True),
+        )
         server.add_tool(
             hermes_task_workspaces,
             meta=tool_meta(),

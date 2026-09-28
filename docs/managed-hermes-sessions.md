@@ -27,7 +27,9 @@ Create a dedicated Hermes profile listed in both profile allowlists. Put the pro
 
 ## Start and resume a session
 
-Enable the scoped-session feature to register `hermes_task_workspaces`, `hermes_task_start`, `hermes_task_continue`, `hermes_task_status`, `hermes_task_result`, and `hermes_task_cancel`.
+Enable the scoped-session feature to register `hermes_task_workspaces`, `hermes_task_list`, `hermes_task_start`, `hermes_task_continue`, `hermes_task_status`, `hermes_task_result`, and `hermes_task_cancel`.
+
+Use `hermes_task_list` to find a managed session in a later conversation. Its bounded pages include the task ID, workspace alias, status, model, effort, browser setting, turn count, and timestamps. It omits workspace paths, credential profile names, session IDs, prompts, and job output. Pass a listed task ID to `hermes_task_status` or `hermes_task_continue`.
 
 Start a session with a workspace alias, prompt, allowed credential profile, model, reasoning effort, and optional workspace-write or headed-browser access. Starts require `dry_run=false`, `confirm=true`, Operator workspace level, and direct apply mode. Workspace access is read-only by default. A dry run reports the selected model, effort, and toolsets without launching Hermes or the browser.
 
