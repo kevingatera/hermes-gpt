@@ -883,27 +883,7 @@ def register_tools(server: FastMCP) -> None:
     if op_finance.finance_enabled(_default_hermes_root()):
         server.add_tool(hermes_finance_analyze, meta=tool_meta())
 
-    # --- Operator / Owner Mode tools -----------------------------------
-    #
-    # Read-only tools are always registered. Mutating tools are registered
-    # unconditionally too (per spec: "register with refusal so the user can
-    # see why unavailable") — the wrappers above return a JSON error string
-    # when the operator policy is not enabled / level is insufficient /
-    # apply_mode is dry_run / owner ack is missing.
-    server.add_tool(hermes_operator_policy, meta=tool_meta())
-    server.add_tool(hermes_operator_status, meta=tool_meta())
-    server.add_tool(hermes_operator_audit_tail, meta=tool_meta())
-    server.add_tool(hermes_operator_doctor, meta=tool_meta())
-    server.add_tool(hermes_operator_snapshot, meta=tool_meta())
-    server.add_tool(hermes_release_doctor, meta=tool_meta())
-    server.add_tool(hermes_operator_recover, meta=tool_meta())
-    server.add_tool(
-        hermes_swarm_reconcile,
-        meta=tool_meta(),
-        annotations=ToolAnnotations(
-            title="Reconcile state after a restart (dry-run by default; apply requires workspace + direct)"
-        ),
-    )
+    _operator_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
     _fleet_tools.register_mcp_tools(server, tool_meta=tool_meta)
 

@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
+
+from mcp.types import ToolAnnotations
 
 import operator_capability_manifest as op_capability_manifest
 import operator_diagnostics as op_diagnostics
@@ -32,6 +35,75 @@ class OperatorTools:
         self.get_agent_root = get_agent_root
         self.get_project_root = get_project_root
         self.get_active_profile = get_active_profile
+
+    def register_mcp_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        """Register operator tools with their read-only or mutation hints."""
+        for tool in (
+            self.hermes_operator_policy,
+            self.hermes_operator_status,
+            self.hermes_operator_audit_tail,
+            self.hermes_operator_doctor,
+            self.hermes_operator_snapshot,
+            self.hermes_release_doctor,
+            self.hermes_operator_recover,
+        ):
+            server.add_tool(tool, meta=tool_meta())
+
+        server.add_tool(
+            self.hermes_swarm_reconcile,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(
+                title="Reconcile state after a restart (dry-run by default; apply requires workspace + direct)"
+            ),
+        )
+
+        for tool, title in (
+            (
+                self.hermes_events_query,
+                "Query the normalized Hermes GPT event timeline",
+            ),
+            (
+                self.hermes_events_tail,
+                "Tail recent Hermes GPT events across allowed sources",
+            ),
+            (self.hermes_live_events_cursor, "Read the durable v0.9 live-event cursor"),
+            (
+                self.hermes_live_events_since,
+                "Read or wait for durable v0.9 live events",
+            ),
+            (
+                self.hermes_capability_manifest,
+                "Query the derived capability manifest (read-only)",
+            ),
+            (
+                self.hermes_mission_ledger,
+                "Query the merged, replayable per-mission ledger (read-only)",
+            ),
+            (
+                self.hermes_mission_ledger_replay,
+                "Replay a mission's full ledger event history (read-only)",
+            ),
+            (self.hermes_oauth_status, "Durable OAuth token store status"),
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=title, readOnlyHint=True),
+            )
+
+        server.add_tool(
+            self.hermes_oauth_revoke,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(
+                title="Revoke durable OAuth tokens",
+                destructiveHint=True,
+            ),
+        )
 
     def hermes_operator_policy(self) -> str:
         """Return the current operator policy summary without secrets."""
