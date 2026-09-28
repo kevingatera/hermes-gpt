@@ -51,10 +51,10 @@ All five tools accept an optional `profile` argument. It defaults to `default` f
 Canonical Bot Chat registry rows and compression continuations may be marked hidden by Hermes and therefore omitted from `hermes_session_list`, which intentionally lists regular visible sessions. This is not a missing-session condition. Use `hermes_bot_chat_get(profile)` to resolve the authoritative registry/current IDs and `hermes_bot_chat_send(profile, prompt)` to act on the current tip. The `current_session_id` is also actionable through `hermes_session_continue` or `hermes_session_send` when the same explicit `profile` is supplied.
 
 Session control is a separate feature with a separate gate. Reading history
-does not enable `hermes_session_continue`, `hermes_session_send`, or
-`hermes_bot_chat_send`.
+does not enable `hermes_session_start`, `hermes_session_continue`,
+`hermes_session_send`, or `hermes_bot_chat_send`.
 
-## Sending ChatGPT output back into Hermes sessions
+## Starting and continuing Hermes sessions from ChatGPT
 
 Enable session control only on a trusted local MCP server:
 
@@ -66,6 +66,7 @@ The session-control tools are profile-aware:
 
 | Tool | Purpose |
 | --- | --- |
+| `hermes_session_start` | Start one bounded asynchronous turn in a new authorized profile session. |
 | `hermes_session_continue` | Start one bounded asynchronous turn in an existing session. |
 | `hermes_session_send` | Send terminology alias for `hermes_session_continue`. |
 | `hermes_bot_chat_send` | Resolve a profile's canonical Bot Chat/current compression tip and send one bounded turn directly to it. |

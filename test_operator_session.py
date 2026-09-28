@@ -128,6 +128,97 @@ def test_continue_accepts_model_and_reasoning_overrides(monkeypatch, tmp_path):
     assert "do one turn" not in calls[0].argv
 
 
+def test_start_uses_authorized_profile_and_recovers_new_session_id(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "chatgpt")
+    monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "chatgpt")
+    profile_home = tmp_path / "profiles" / "chatgpt"
+    profile_home.mkdir(parents=True)
+    monkeypatch.setattr(job_runtime.threading, "Thread", _ImmediateThread)
+    calls = []
+
+    class _NewSessionProcess(_FakeProcess):
+        def wait(self, timeout=None):
+            self.kwargs["stdout"].write("started safely")
+            self.kwargs["stdout"].flush()
+            self.kwargs["stderr"].write(
+                "session_id: 20260928_120000_ab12cd\n"
+            )
+            self.kwargs["stderr"].flush()
+            self.returncode = 0
+            return 0
+
+    def fake_popen(argv, **kwargs):
+        proc = _NewSessionProcess(argv, **kwargs)
+        calls.append(proc)
+        return proc
+
+    monkeypatch.setattr(job_runtime.subprocess, "Popen", fake_popen)
+    prompt = "Reply exactly SESSION_STARTED."
+    started = session.hermes_session_start(
+        prompt,
+        hermes_root=tmp_path,
+        agent_root=tmp_path / "agent",
+        profile="chatgpt",
+        model="opencode-go/deepseek-v4.1-flash",
+        reasoning_effort="high",
+    )
+
+    assert started["success"] is True
+    assert len(calls) == 1
+    assert calls[0].argv[1:] == [
+        "chat",
+        "--model",
+        "opencode-go/deepseek-v4.1-flash",
+        "--reasoning",
+        "high",
+        "--query-file",
+        "-",
+        "--oneshot",
+        "-Q",
+    ]
+    assert prompt not in calls[0].argv
+    assert calls[0].kwargs["shell"] is False
+    assert calls[0].kwargs["cwd"] == str(profile_home)
+    assert calls[0].kwargs["env"]["HERMES_PROFILE"] == "chatgpt"
+    assert calls[0].kwargs["env"]["HERMES_HOME"] == str(profile_home)
+
+    status = session.hermes_session_job_status(started["job_id"], tmp_path)
+    assert status["job"]["status"] == "completed"
+    assert status["job"]["session_id"] == "20260928_120000_ab12cd"
+    assert status["job"]["profile"] == "chatgpt"
+    assert prompt not in json.dumps(status)
+
+
+def test_start_rejects_unauthorized_profiles_and_invalid_overrides(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "chatgpt")
+    monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "chatgpt")
+    (tmp_path / "profiles" / "chatgpt").mkdir(parents=True)
+
+    denied = session.hermes_session_start(
+        "start", hermes_root=tmp_path, profile="other"
+    )
+    invalid_model = session.hermes_session_start(
+        "start", hermes_root=tmp_path, profile="chatgpt", model="bad model"
+    )
+    invalid_effort = session.hermes_session_start(
+        "start",
+        hermes_root=tmp_path,
+        profile="chatgpt",
+        reasoning_effort="extreme",
+    )
+
+    assert denied["code"] == "SESSION_PROFILE_NOT_ALLOWED"
+    assert invalid_model["code"] == "INVALID_MODEL"
+    assert invalid_effort["code"] == "INVALID_REASONING_EFFORT"
+    assert not (tmp_path / "session-jobs").exists()
+
+
 def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     assert session.hermes_session_job_status("not-a-job", tmp_path)["code"] == "JOB_NOT_FOUND"

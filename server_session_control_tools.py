@@ -31,14 +31,26 @@ class SessionControlTools:
     ) -> None:
         """Register this module's session and browser tools with the MCP server."""
         if session_control_enabled:
-            for tool in (
-                self.hermes_session_continue,
-                self.hermes_session_send,
-                self.hermes_session_job_status,
-                self.hermes_session_job_result,
-                self.hermes_session_job_cancel,
+            for tool, title in (
+                (self.hermes_session_job_status, "Read Hermes session job status"),
+                (self.hermes_session_job_result, "Read Hermes session job result"),
             ):
-                server.add_tool(tool, meta=tool_meta())
+                server.add_tool(
+                    tool,
+                    meta=tool_meta(),
+                    annotations=ToolAnnotations(title=title, readOnlyHint=True),
+                )
+            for tool, title in (
+                (self.hermes_session_start, "Start a Hermes session"),
+                (self.hermes_session_continue, "Continue a Hermes session"),
+                (self.hermes_session_send, "Send a turn to a Hermes session"),
+                (self.hermes_session_job_cancel, "Cancel a running Hermes session turn"),
+            ):
+                server.add_tool(
+                    tool,
+                    meta=tool_meta(),
+                    annotations=ToolAnnotations(title=title, destructiveHint=True),
+                )
 
         if not scoped_tasks_enabled:
             return
@@ -161,6 +173,25 @@ class SessionControlTools:
                 meta=tool_meta(),
                 annotations=ToolAnnotations(title=title, destructiveHint=True),
             )
+
+    def hermes_session_start(
+        self,
+        prompt: str,
+        timeout: int = DEFAULT_SESSION_TIMEOUT,
+        profile: str = "default",
+        model: str | None = None,
+        reasoning_effort: str | None = None,
+    ) -> dict[str, Any]:
+        """Start a new Hermes profile session with optional model and effort overrides."""
+        return self.context.session_control.hermes_session_start(
+            prompt,
+            timeout,
+            hermes_root=self.context.get_hermes_root(),
+            agent_root=self.context.get_agent_root(),
+            profile=profile,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
 
     def hermes_session_continue(
         self,

@@ -105,6 +105,7 @@ def test_default_tool_surface_is_read_or_local_metadata_only(monkeypatch):
         "hermes_patch",
         "hermes_run_command",
         "hermes_session_search",
+        "hermes_session_start",
         "hermes_session_continue",
         "hermes_session_send",
         "hermes_bot_chat_send",
@@ -162,6 +163,7 @@ def test_env_gates_expose_high_risk_tools(monkeypatch):
     assert "hermes_patch" in names
     assert "hermes_run_command" in names
     assert "hermes_session_search" in names
+    assert "hermes_session_start" in names
     assert "hermes_session_continue" in names
     assert "hermes_session_send" in names
     assert "hermes_bot_chat_send" in names

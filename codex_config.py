@@ -39,6 +39,7 @@ OPERATOR_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
 SESSION_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
     "hermes_bot_chat_get",
     "hermes_session_list",
+    "hermes_session_start",
     "hermes_session_continue",
     "hermes_session_job_cancel",
     "hermes_task_start",

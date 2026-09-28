@@ -93,6 +93,7 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     by_name = {tool.name: tool for tool in tools}
     expected = {
         "hermes_session_list",
+        "hermes_session_start",
         "hermes_session_continue",
         "hermes_task_start",
         "hermes_task_continue",
@@ -108,7 +109,12 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     )
     continue_schema = by_name["hermes_session_continue"].model_dump(by_alias=True)["inputSchema"]
     assert {"model", "reasoning_effort"} <= set(continue_schema["properties"])
+    start_schema = by_name["hermes_session_start"].model_dump(by_alias=True)["inputSchema"]
+    assert {"model", "reasoning_effort", "profile"} <= set(start_schema["properties"])
     assert by_name["hermes_session_list"].annotations.read_only_hint is True
+    assert by_name["hermes_session_start"].annotations.destructive_hint is True
+    assert by_name["hermes_session_job_status"].annotations.read_only_hint is True
+    assert by_name["hermes_session_job_result"].annotations.read_only_hint is True
     assert by_name["hermes_task_start"].annotations.destructive_hint is True
     assert by_name["hermes_session_list"].meta == codex_mcp.NOAUTH_META
 
@@ -120,6 +126,7 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     }
     assert not {
         "hermes_session_list",
+        "hermes_session_start",
         "hermes_session_continue",
         "hermes_task_start",
         "hermes_browser_profile_tabs",
@@ -130,6 +137,7 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
         tool.name for tool in asyncio.run(server.build_codex_mcp_server().list_tools())
     }
     assert "hermes_task_start" not in core_names
+    assert "hermes_session_start" not in core_names
     assert "hermes_session_list" not in core_names
 
 

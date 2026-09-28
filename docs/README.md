@@ -43,7 +43,7 @@ PyPI is an independent distribution channel. Check the PyPI badge in the root RE
 | [`updating.md`](updating.md) | current | check-first Git and PyPI update behavior |
 | [`retention-policy.md`](retention-policy.md) | current | local diagnostic artifact retention and cleanup |
 | [`session-history.md`](session-history.md) | current | gated read-only session history surface and privacy defaults |
-| [`session-control.md`](session-control.md) | current | gated asynchronous session continue/send jobs with optional model and reasoning overrides |
+| [`session-control.md`](session-control.md) | current | gated asynchronous session start/continue/send jobs with optional model and reasoning overrides |
 | [`managed-hermes-sessions.md`](managed-hermes-sessions.md) | current | scoped Hermes sessions with selectable model and effort plus direct or task-shared local browser controls |
 | [`ui-security-boundary.md`](ui-security-boundary.md) | current | conversational UI browser security boundary and opt-in UI mount |
 | [`flight-deck-coverage.md`](flight-deck-coverage.md) | current | Flight Deck browser coverage and mutation safety decisions |

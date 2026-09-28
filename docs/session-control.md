@@ -1,6 +1,6 @@
 # Hermes session control
 
-Hermes GPT can send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. An MCP client can keep the session's configured model/provider or select a model and reasoning effort for that turn without invoking Codex.
+Hermes GPT can start a new session or send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. An MCP client can use the selected profile's configured provider or choose a model and reasoning effort for that turn without invoking Codex.
 
 ## Enable locally
 
@@ -19,17 +19,18 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 
 ## Workflow
 
-1. Find a session ID with `hermes_session_list` when history is enabled.
-2. Call `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias. Optional `model` and `reasoning_effort` values override the resumed session's provider/model and reasoning level for that turn.
+1. Call `hermes_session_start(prompt, profile="chatgpt", timeout=900)` to create a new session, or find a session ID with `hermes_session_list` when history is enabled and use `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias.
+2. For either path, optional `model` and `reasoning_effort` values select the provider/model and reasoning level for that turn. The profile must be explicitly authorized in both allowlists.
 3. Save the returned `job_id`.
-4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`.
+4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`. The new session ID appears in the job status after Hermes reports it.
 5. Call `hermes_session_job_cancel(job_id)` to stop a running job owned by this server process.
 6. Call `hermes_session_job_result(job_id)` for the bounded, redacted output.
 
-The start call resolves exact or unique-prefix IDs through Hermes' existing read-only `SessionDB` API before launching anything. It invokes the CLI with a fixed argument array equivalent to:
+The continue call resolves exact or unique-prefix IDs through Hermes' existing read-only `SessionDB` API before launching anything. New sessions omit `--resume`. Both paths invoke the CLI with a fixed argument array equivalent to:
 
 ```text
 hermes chat --resume <resolved-session-id> [--model <provider/model>] [--reasoning <effort>] --query-file - --oneshot -Q
+hermes chat [--model <provider/model>] [--reasoning <effort>] --query-file - --oneshot -Q
 ```
 
 No shell is used. The prompt travels over stdin rather than command arguments. Hermes restores the resumed session's recorded working directory using its normal CLI behavior.

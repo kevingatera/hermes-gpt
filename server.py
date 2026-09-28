@@ -582,6 +582,7 @@ hermes_session_list = _session_history_tools.hermes_session_list
 hermes_session_read = _session_history_tools.hermes_session_read
 hermes_session_export = _session_history_tools.hermes_session_export
 hermes_session_search = _session_history_tools.hermes_session_search
+hermes_session_start = _session_control_tools.hermes_session_start
 hermes_session_continue = _session_control_tools.hermes_session_continue
 hermes_session_send = _session_control_tools.hermes_session_send
 hermes_session_job_status = _session_control_tools.hermes_session_job_status
