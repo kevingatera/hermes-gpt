@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import oauth_auth
-import operator_codex as op_codex
 import operator_finance as op_finance
 import operator_job_supervisor as op_jobs
 import operator_policy as op_policy
@@ -20,6 +19,7 @@ import operator_session as op_session
 import operator_session_tasks as op_session_tasks
 import operator_status as op_status
 import operator_swarm as op_swarm
+import server_codex_tools as codex_tools
 import server_hermes_runtime as hermes_runtime
 import server_http as http_server
 import server_hermes_tools as hermes_tools
@@ -485,44 +485,17 @@ hermes_owner_patch = _workspace_tools.hermes_owner_patch
 hermes_owner_write_file = _workspace_tools.hermes_owner_write_file
 
 
-# --- Codex background jobs ------------------------------------------------
-
-def hermes_codex_status() -> dict[str, Any]:
-    return op_codex.hermes_codex_status(_default_hermes_root())
-
-
-def hermes_codex_plan(prompt: str, workdir: str, sandbox: str = "read-only", model: str | None = None,
-                      ignore_user_config: bool = False, timeout: int = 900, execution_mode: str = "normal") -> dict[str, Any]:
-    return op_codex.hermes_codex_plan(prompt, workdir, sandbox, model, ignore_user_config, timeout, execution_mode=execution_mode)
-
-
-def hermes_codex_start(prompt: str, workdir: str, sandbox: str = "read-only", model: str | None = None,
-                       ignore_user_config: bool = False, timeout: int = 900, confirm: bool = False,
-                       dry_run: bool = True, execution_mode: str = "normal") -> dict[str, Any]:
-    return op_codex.hermes_codex_start(prompt, workdir, sandbox, model, ignore_user_config, timeout, confirm, dry_run,
-                                       _default_hermes_root(), execution_mode=execution_mode)
-
-
-def hermes_codex_review_start(workdir: str, target: str = "uncommitted", instructions: str = "", model: str | None = None,
-                              ignore_user_config: bool = False, timeout: int = 900, confirm: bool = False,
-                              dry_run: bool = True) -> dict[str, Any]:
-    return op_codex.hermes_codex_review_start(workdir, target, instructions, model, ignore_user_config, timeout, confirm, dry_run, _default_hermes_root())
-
-
-def hermes_codex_jobs(limit: int = 50) -> dict[str, Any]:
-    return op_codex.hermes_codex_jobs(limit, _default_hermes_root())
-
-
-def hermes_codex_job_status(job_id: str) -> dict[str, Any]:
-    return op_codex.hermes_codex_job_status(job_id, _default_hermes_root())
-
-
-def hermes_codex_job_result(job_id: str, max_chars: int = op_codex.MAX_RESULT_CHARS) -> dict[str, Any]:
-    return op_codex.hermes_codex_job_result(job_id, max_chars, _default_hermes_root())
-
-
-def hermes_codex_cancel(job_id: str, confirm: bool = False, dry_run: bool = True) -> dict[str, Any]:
-    return op_codex.hermes_codex_cancel(job_id, confirm, dry_run, _default_hermes_root())
+_codex_tools = codex_tools.CodexTools(
+    get_hermes_root=lambda: _default_hermes_root()
+)
+hermes_codex_status = _codex_tools.hermes_codex_status
+hermes_codex_plan = _codex_tools.hermes_codex_plan
+hermes_codex_start = _codex_tools.hermes_codex_start
+hermes_codex_review_start = _codex_tools.hermes_codex_review_start
+hermes_codex_jobs = _codex_tools.hermes_codex_jobs
+hermes_codex_job_status = _codex_tools.hermes_codex_job_status
+hermes_codex_job_result = _codex_tools.hermes_codex_job_result
+hermes_codex_cancel = _codex_tools.hermes_codex_cancel
 
 
 # --- Durable background-job lifecycle ------------------------------------
