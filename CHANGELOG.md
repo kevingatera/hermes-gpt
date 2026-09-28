@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Add opt-in scoped Hermes sessions with selectable model and reasoning effort, workspace confinement, durable resume, and an isolated browser shared with ChatGPT through a narrow MCP toolset. The read-only `hermes_task_list` tool finds managed sessions to resume in later conversations. The Hermes run does not enable the built-in browser, raw CDP, terminal, or vault tools.
+- Add opt-in scoped Hermes sessions with selectable model and reasoning effort, workspace confinement, durable resume, and a browser shared with ChatGPT through a narrow MCP toolset. Browsers are isolated by default; a separate profile allowlist can enable attachment to a local browser configured by a Hermes profile. The read-only `hermes_task_list` tool finds managed sessions to resume in later conversations. The Hermes run does not enable the built-in browser, raw CDP, terminal, or vault tools.
 - Run managed turns through Hermes' supported `chat` interface, recover session IDs from quiet-mode stderr, and keep the task's browser MCP active inside the confined process. Browser descriptors use private per-task mount directories, and both an installed CLI symlink and its target are exposed read-only.
 - Require session-control requests to use a profile explicitly named by `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` and authorized by the Operator profile allowlist. This prevents session execution from bypassing profile restrictions through the default-profile path.
 - Add `hermes_session_job_cancel`, which signals only a process owned by the current server instance and records cancellation in the durable job status. POSIX cancellation targets the dedicated process group and escalates to `SIGKILL` when members remain.

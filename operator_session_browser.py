@@ -143,6 +143,7 @@ def hermes_task_browser_press(
 def hermes_task_browser_close(
     task_id: str, confirm: bool = False, dry_run: bool = True,
 ) -> dict[str, Any]:
+    """Close a task-owned isolated browser after its mutation gates pass."""
     return _browser_action(task_id, "close", [], confirm, dry_run, None)
 
 
@@ -158,6 +159,12 @@ def hermes_task_browser_restart(
             "success": False,
             "code": "TASK_BROWSER_DISABLED",
             "safe_message": "This Hermes task was created without browser access.",
+        }
+    if task.get("browser_source") == "hermes_profile":
+        return {
+            "success": False,
+            "code": "SHARED_BROWSER_RESTART_UNAVAILABLE",
+            "safe_message": "A browser attached from a Hermes profile cannot be restarted by a managed task.",
         }
     try:
         policy = op.OperatorPolicy()

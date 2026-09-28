@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import operator_policy as op
+from operator_browser_profiles import validate_local_cdp_port
 
 _TASK_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _SESSION_NAME_RE = re.compile(r"^[a-z0-9_-]{1,64}$")
@@ -180,6 +181,13 @@ def _read_state(path: Path, *, expected_path: Path | None = None) -> dict[str, A
         installed_executable = Path(_browser_executable(hermes_root)).expanduser().resolve(strict=True)
     except (OSError, RuntimeError, ValueError):
         return None
+    browser_source = raw.get("browser_source", "isolated")
+    if browser_source not in {"isolated", "hermes_profile"}:
+        return None
+    if browser_source == "hermes_profile":
+        port = raw.get("cdp_port")
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            return None
     if (
         task_home.name != task_id
         or state_path != expected_state
@@ -221,7 +229,10 @@ def _run(
     *,
     headed: bool = False,
 ) -> dict[str, Any]:
-    argv = [str(state["executable"]), "--session", str(state["session_name"])]
+    argv = [str(state["executable"])]
+    if state.get("browser_source") == "hermes_profile":
+        argv += ["--cdp", str(state["cdp_port"])]
+    argv += ["--session", str(state["session_name"])]
     if headed:
         argv.append("--headed")
     argv += ["--json", "--max-output", str(_MAX_OUTPUT_CHARS), command, *(args or [])]
@@ -233,7 +244,10 @@ def _run(
             text=True,
             shell=False,
             cwd=str(state["task_home"]),
-            env=_safe_browser_env(Path(str(state["socket_dir"])), Path(str(state["hermes_root"]))),
+            env=_safe_browser_env(
+                Path(str(state["socket_dir"])),
+                Path(str(state["hermes_root"])) if state.get("hermes_root") else None,
+            ),
             timeout=_COMMAND_TIMEOUT_SECONDS,
             check=False,
         )
@@ -271,6 +285,11 @@ def create_browser_session(
     state_path = _state_path(home)
     previous = _read_task_state(home)
     if previous:
+        if previous.get("browser_source") == "hermes_profile":
+            return _error(
+                "SHARED_BROWSER_REPLACEMENT_UNAVAILABLE",
+                "A browser attached from a Hermes profile cannot be replaced by an isolated session.",
+            )
         _run(previous, "close")
     socket_dir = _socket_path(task_id)
     # The browser daemon may still own files here after `close`; removing its
@@ -304,7 +323,64 @@ def create_browser_session(
         "browser": {
             "task_id": task_id,
             "status": "running",
+            "source": "isolated",
             "headed": bool(headed),
+            "created_at": state["created_at"],
+        },
+    }
+
+
+def create_profile_browser_session(
+    task_id: str,
+    task_home: Path,
+    hermes_root: Path | None,
+    cdp_port: int,
+) -> dict[str, Any]:
+    """Attach a task's browser bridge to a configured local Hermes browser."""
+    if not _TASK_ID_RE.fullmatch(task_id or ""):
+        return _error("INVALID_TASK_ID", "task_id has an invalid format.")
+    home = Path(task_home).expanduser().resolve(strict=True)
+    try:
+        if isinstance(cdp_port, bool) or not isinstance(cdp_port, int):
+            raise TypeError("The selected browser profile needs a valid local browser.cdp_url.")
+        validate_local_cdp_port(f"http://127.0.0.1:{cdp_port}")
+        executable = _browser_executable(hermes_root)
+    except (FileNotFoundError, TypeError, ValueError) as exc:
+        return _error("BROWSER_PROFILE_UNAVAILABLE", str(exc))
+    state_path = _state_path(home)
+    socket_dir = _socket_path(task_id)
+    try:
+        _ensure_private_directory(socket_dir)
+    except OSError as exc:
+        return _error("BROWSER_SOCKET_DIR_UNAVAILABLE", op.redact_output(str(exc))[:500])
+    state = {
+        "version": 1,
+        "task_id": task_id,
+        "task_home": str(home),
+        "hermes_root": str(Path(hermes_root).expanduser().resolve()) if hermes_root else "",
+        "executable": executable,
+        "session_name": f"hg_{task_id[:16]}",
+        "socket_dir": str(socket_dir.resolve()),
+        "browser_source": "hermes_profile",
+        "cdp_port": cdp_port,
+        "headed": False,
+        "created_at": _now(),
+        "status": "starting",
+    }
+    _write_state(state_path, state)
+    result = browser_command(home, "snapshot")
+    if not result.get("success"):
+        state_path.unlink(missing_ok=True)
+        return result
+    state.update({"status": "running", "updated_at": _now()})
+    _write_state(state_path, state)
+    return {
+        "success": True,
+        "browser": {
+            "task_id": task_id,
+            "status": "running",
+            "source": "hermes_profile",
+            "headed": False,
             "created_at": state["created_at"],
         },
     }
@@ -316,7 +392,14 @@ def browser_session_state(task_home: Path) -> dict[str, Any]:
         return _error("BROWSER_SESSION_NOT_FOUND", "This task has no managed browser session.")
     state["task_home"] = str(Path(task_home).expanduser().resolve(strict=True))
     if state.get("status") == "closed":
-        return {"success": True, "browser": {"status": "closed", "headed": bool(state.get("headed"))}}
+        return {
+            "success": True,
+            "browser": {
+                "status": "closed",
+                "source": str(state.get("browser_source") or "isolated"),
+                "headed": bool(state.get("headed")),
+            },
+        }
     result = _run(state, "session", ["info", "--json"])
     if not result.get("success"):
         return result
@@ -326,6 +409,7 @@ def browser_session_state(task_home: Path) -> dict[str, Any]:
         "success": True,
         "browser": {
             "status": "running" if data.get("active") else "stopped",
+            "source": str(state.get("browser_source") or "isolated"),
             "headed": bool(state.get("headed")),
             "current_url": (url.get("data") or {}).get("url") if url.get("success") else None,
             "page_count": data.get("pageCount"),
@@ -349,6 +433,11 @@ def browser_command(
     allowed = {"navigate", "snapshot", "click", "type", "fill", "scroll", "back", "press", "close"}
     if command not in allowed:
         return _error("BROWSER_COMMAND_NOT_ALLOWED", "That browser command is not available through this integration.")
+    if command == "close" and state.get("browser_source") == "hermes_profile":
+        return _error(
+            "SHARED_BROWSER_CLOSE_UNAVAILABLE",
+            "A browser attached from a Hermes profile cannot be closed by a managed task.",
+        )
     checked_args = list(args or [])
     if command == "navigate":
         if len(checked_args) != 1 or not isinstance(checked_args[0], str):

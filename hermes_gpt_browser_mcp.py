@@ -19,7 +19,7 @@ def build_server(state_file: Path) -> HermesMCP:
     server = HermesMCP("hermes-gpt-browser", version="0.1.0")
 
     def browser_navigate(url: str) -> dict[str, Any]:
-        """Open an http(s) page or about:blank in this Hermes session's isolated browser."""
+        """Open an http(s) page or about:blank in this task's configured browser."""
         return browser_state_file_command(state_file, "navigate", [url])
 
     def browser_snapshot() -> dict[str, Any]:

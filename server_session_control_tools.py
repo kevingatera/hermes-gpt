@@ -140,8 +140,13 @@ class SessionControlTools:
         reasoning_effort: str = "high",
         browser_enabled: bool = True,
         headed_browser: bool = False,
+        browser_profile: str | None = None,
     ) -> dict[str, Any]:
-        """Start a confined Hermes session with a selectable model and shared browser."""
+        """Start a confined Hermes session with an isolated or configured Hermes browser.
+
+        Set browser_profile to attach the session to that allowlisted profile's local
+        browser.cdp_url. Omit it to start a task-owned isolated browser.
+        """
         return self.context.managed_tasks.hermes_task_start(
             prompt=prompt,
             workspace_id=workspace_id,
@@ -154,6 +159,7 @@ class SessionControlTools:
             reasoning_effort=reasoning_effort,
             browser_enabled=browser_enabled,
             headed_browser=headed_browser,
+            browser_profile=browser_profile,
             hermes_root=self.context.get_hermes_root(),
             agent_root=self.context.get_agent_root(),
         )

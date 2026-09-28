@@ -18,6 +18,7 @@ from typing import Any
 from uuid import uuid4
 
 import operator_browser as browser
+import operator_browser_profiles as browser_profiles
 import operator_policy as op
 import operator_session as sessions
 import operator_session_task_runtime as runtime
@@ -224,12 +225,14 @@ def hermes_task_start(
     reasoning_effort: str = "high",
     browser_enabled: bool = True,
     headed_browser: bool = False,
+    browser_profile: str | None = None,
     hermes_root: Path | None = None,
     agent_root: Path | None = None,
 ) -> dict[str, Any]:
     """Start a scoped Hermes session with a private workspace and browser."""
     task_home: Path | None = None
     task_record: Path | None = None
+    browser_cdp_port: int | None = None
     try:
         if not op.env_truthy(ENABLE_SCOPED_TASKS_ENV):
             raise PermissionError(f"Scoped Hermes tasks are disabled. Set {ENABLE_SCOPED_TASKS_ENV}=1.")
@@ -240,6 +243,18 @@ def hermes_task_start(
             raise TypeError("browser_enabled and headed_browser must be booleans")
         if headed_browser and not browser_enabled:
             raise ValueError("headed_browser requires browser_enabled=true")
+        if browser_profile is not None and not isinstance(browser_profile, str):
+            raise TypeError("browser_profile must be a Hermes profile name or omitted")
+        selected_browser_profile = str(browser_profile or "").strip()
+        if selected_browser_profile:
+            if not browser_enabled:
+                raise ValueError("browser_profile requires browser_enabled=true")
+            if headed_browser:
+                raise ValueError("headed_browser cannot be used with a configured Hermes browser")
+            selected_browser_profile = runtime._profile_key_source(selected_browser_profile, hermes_root)
+            browser_cdp_port = browser_profiles.profile_cdp_port(
+                selected_browser_profile, hermes_root
+            )
         model, reasoning_effort = runtime._validate_model_and_effort(model, reasoning_effort)
         policy = op.OperatorPolicy()
         policy.require_level("workspace")
@@ -264,6 +279,7 @@ def hermes_task_start(
                 "reasoning_effort": reasoning_effort,
                 "toolsets": toolsets,
                 "browser_enabled": browser_enabled,
+                "browser_source": "hermes_profile" if browser_cdp_port is not None else "isolated",
                 "headed_browser": headed_browser,
                 "allow_workspace_write": allow_workspace_write,
             }
@@ -276,12 +292,17 @@ def hermes_task_start(
         except OSError:
             pass
         if browser_enabled:
-            browser_result = browser.create_browser_session(
-                task_id,
-                task_home,
-                hermes_root,
-                headed=headed_browser,
-            )
+            if browser_cdp_port is not None:
+                browser_result = browser.create_profile_browser_session(
+                    task_id, task_home, hermes_root, browser_cdp_port
+                )
+            else:
+                browser_result = browser.create_browser_session(
+                    task_id,
+                    task_home,
+                    hermes_root,
+                    headed=headed_browser,
+                )
             if not browser_result.get("success"):
                 shutil.rmtree(task_home, ignore_errors=True)
                 return browser_result
@@ -297,6 +318,7 @@ def hermes_task_start(
             "reasoning_effort": reasoning_effort,
             "toolsets": toolsets,
             "browser_enabled": browser_enabled,
+            "browser_source": "hermes_profile" if browser_cdp_port is not None else "isolated",
             "headed_browser": headed_browser,
             "session_id": "",
             "latest_job_id": "",
@@ -318,8 +340,9 @@ def hermes_task_start(
             save_task=lambda record: _save_task_record(record, hermes_root),
         )
         if dry_result.get("dry_run") or not dry_result.get("success"):
-            if browser_enabled:
+            if browser_enabled and browser_cdp_port is None:
                 browser.browser_command(task_home, "close")
+            if browser_enabled:
                 browser.delete_browser_state(task_home)
             shutil.rmtree(task_home, ignore_errors=True)
             task_record.unlink(missing_ok=True)
@@ -327,7 +350,8 @@ def hermes_task_start(
         return dry_result
     except (OSError, TypeError, ValueError, RuntimeError) as exc:
         if task_home is not None:
-            browser.browser_command(task_home, "close")
+            if browser_cdp_port is None:
+                browser.browser_command(task_home, "close")
             browser.delete_browser_state(task_home)
         if task_record is not None:
             task_record.unlink(missing_ok=True)
