@@ -65,6 +65,7 @@ ENABLE_MEMORY_WRITE_ENV = "HERMES_GPT_ENABLE_MEMORY_WRITE"
 ENABLE_SESSION_SEARCH_ENV = "HERMES_GPT_ENABLE_SESSION_SEARCH"
 ENABLE_SESSION_INTERNAL_CONTENT_ENV = "HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT"
 ENABLE_SESSION_CONTROL_ENV = op_session.ENABLE_SESSION_CONTROL_ENV
+SESSION_ALLOWED_PROFILES_ENV = op_session.SESSION_ALLOWED_PROFILES_ENV
 ENABLE_TERMINAL_ENV = "HERMES_GPT_ENABLE_TERMINAL"
 ENABLE_VISION_ENV = "HERMES_GPT_ENABLE_VISION"
 ENABLE_WEB_ENV = "HERMES_GPT_ENABLE_WEB"
@@ -1299,19 +1300,22 @@ def hermes_session_continue(
     profile: str = "default",
 ) -> dict[str, Any]:
     """Start one bounded, asynchronous turn in an existing Hermes session for a profile."""
-    safe_profile = _validate_session_profile(profile)
+    hermes_root = _default_hermes_root()
+    if not env_enabled(ENABLE_SESSION_CONTROL_ENV):
+        return op_session.hermes_session_continue(
+            session_id,
+            prompt,
+            timeout,
+            hermes_root=hermes_root,
+            agent_root=HERMES_ROOT,
+            profile=profile,
+        )
+    safe_profile = op_session.validate_session_profile(profile, hermes_root)
+    if isinstance(safe_profile, dict):
+        return safe_profile
     adapter = ReadOnlySessionAdapter(profile=safe_profile)
     try:
         require_imports()
-        if not env_enabled(ENABLE_SESSION_CONTROL_ENV):
-            return op_session.hermes_session_continue(
-                session_id,
-                prompt,
-                timeout,
-                hermes_root=_default_hermes_root(),
-                agent_root=HERMES_ROOT,
-                profile=safe_profile,
-            )
         adapter.open()
         resolved_id = adapter.resolve_session_id(session_id)
         if not resolved_id:
@@ -1325,7 +1329,7 @@ def hermes_session_continue(
             resolved_id,
             prompt,
             timeout,
-            hermes_root=_default_hermes_root(),
+            hermes_root=hermes_root,
             agent_root=HERMES_ROOT,
             profile=safe_profile,
         )

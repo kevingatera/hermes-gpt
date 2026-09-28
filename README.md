@@ -178,6 +178,8 @@ With `HERMES_GPT_ENABLE_SESSION_SEARCH=1`, Hermes GPT exposes four bounded read-
 
 With `HERMES_GPT_ENABLE_SESSION_CONTROL=1`, Hermes GPT exposes `hermes_session_continue`, `hermes_session_send`, `hermes_session_job_status`, and `hermes_session_job_result`. Control jobs are bounded, use fixed argv with `shell=False`, allow only one active job per session, persist prompt length/hash rather than raw prompts, and return bounded redacted results. A server restart fails closed by marking unowned running jobs orphaned rather than signaling a persisted PID.
 
+Session control also requires an explicit `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` list and a matching `HERMES_GPT_OPERATOR_ALLOWED_PROFILES` entry. It denies `default` unless that profile is explicitly listed; use a dedicated, restricted Hermes profile for remote clients. These profile lists do not replace OS-level filesystem or browser isolation.
+
 See [session history](docs/session-history.md) and [session control](docs/session-control.md). Treat transcript data as private local data.
 
 ## Run modes

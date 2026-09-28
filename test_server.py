@@ -24,6 +24,7 @@ GATE_ENVS = [
     server.ENABLE_MEMORY_WRITE_ENV,
     server.ENABLE_SESSION_SEARCH_ENV,
     server.ENABLE_SESSION_CONTROL_ENV,
+    server.SESSION_ALLOWED_PROFILES_ENV,
     server.ENABLE_TERMINAL_ENV,
     server.ENABLE_VISION_ENV,
     server.ENABLE_WEB_ENV,
@@ -915,6 +916,7 @@ def test_phase2_tools_are_gated_and_registered(monkeypatch):
 
 def test_session_continue_resolves_id_before_runner_dispatch(monkeypatch, tmp_path):
     monkeypatch.setenv(server.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(server.SESSION_ALLOWED_PROFILES_ENV, "default")
     monkeypatch.setattr(server, "require_imports", lambda: None)
     connection = sqlite3.connect(":memory:")
     fake_db = _Phase1FakeSessionDB(connection)
@@ -943,6 +945,9 @@ def test_session_continue_resolves_id_before_runner_dispatch(monkeypatch, tmp_pa
 
 def test_session_continue_resolves_id_in_requested_profile(monkeypatch, tmp_path):
     monkeypatch.setenv(server.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(server.SESSION_ALLOWED_PROFILES_ENV, "project-manager")
+    monkeypatch.setenv(server.op_policy.OPERATOR_ALLOWED_PROFILES_ENV, "project-manager")
+    (tmp_path / "profiles" / "project-manager").mkdir(parents=True)
     monkeypatch.setattr(server, "require_imports", lambda: None)
     monkeypatch.setattr(server, "_validate_session_profile", lambda profile="default": profile)
     connection = sqlite3.connect(":memory:")

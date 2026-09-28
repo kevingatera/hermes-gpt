@@ -4,12 +4,16 @@ Hermes GPT can send one bounded non-interactive turn to an existing Hermes sessi
 
 ## Enable locally
 
-Session control is off and hidden by default. Enable it only on a trusted local MCP server:
+Session control is off and hidden by default. Before enabling it, create a dedicated Hermes profile with the tool, filesystem, and browser access intended for this MCP client. The selected profile must be named in both session-control and Operator allowlists:
 
 ```powershell
+$env:HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES="chatgpt"
+$env:HERMES_GPT_OPERATOR_ALLOWED_PROFILES="chatgpt"
 $env:HERMES_GPT_ENABLE_SESSION_CONTROL="1"
 python server.py
 ```
+
+The session-control allowlist is empty by default and does not accept `*`. The built-in `default` profile is denied unless it is explicitly listed. Do not list `default` for a remote client unless you intend to grant it the full authority of that profile. Profile selection is not an OS sandbox: the Hermes process receives the capabilities configured for that profile, so use Hermes tool restrictions and OS/container isolation to enforce filesystem and browser boundaries.
 
 Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SEARCH=1`. Enable both when the client needs to list or inspect sessions before choosing one to continue. See [session history](session-history.md) for its four-tool read-only workflow and privacy defaults.
 
@@ -44,4 +48,4 @@ Session control can consume the configured provider's quota or incur provider ch
 
 ## Validation without a real model call
 
-The automated tests replace process launch with a fake Hermes process. They verify the fixed CLI arguments, `shell=False`, prompt-free metadata, timeout bounds, restart reconciliation, redaction, tool registration gates, and status/result flow. The test suite does not resume a real session or contact a model provider.
+The automated tests replace process launch with a fake Hermes process. They verify the fixed CLI arguments, `shell=False`, explicit profile authorization, prompt-free metadata, timeout bounds, restart reconciliation, redaction, tool registration gates, and status/result flow. The test suite does not resume a real session or contact a model provider.

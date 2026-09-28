@@ -19,6 +19,7 @@ import operator_policy as op
 
 
 ENABLE_SESSION_CONTROL_ENV = "HERMES_GPT_ENABLE_SESSION_CONTROL"
+SESSION_ALLOWED_PROFILES_ENV = "HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES"
 MAX_PROMPT_CHARS = 65_536
 MAX_RESULT_CHARS = 24_000
 MIN_TIMEOUT = 10
@@ -34,10 +35,17 @@ def _now() -> str:
 
 
 def _root(hermes_root: Path | None = None) -> Path:
-    base = op.normalize_hermes_data_root(
-        hermes_root or Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
+    return _data_root(hermes_root) / "session-jobs"
+
+
+def _data_root(hermes_root: Path | None = None) -> Path:
+    configured_root = hermes_root or Path(
+        os.environ.get("HERMES_HOME", Path.home() / ".hermes")
     )
-    return Path(base or Path.home() / ".hermes") / "session-jobs"
+    base = op.normalize_hermes_data_root(
+        configured_root
+    )
+    return Path(base or Path.home() / ".hermes")
 
 
 def _paths(job_id: str, hermes_root: Path | None = None) -> tuple[Path, Path]:
@@ -90,8 +98,74 @@ def _hermes_executable(agent_root: Path | None = None) -> str:
     return shutil.which("hermes") or "hermes"
 
 
+def validate_session_profile(
+    profile: str, hermes_root: Path | None = None
+) -> str | dict[str, Any]:
+    """Require an explicitly scoped profile for Hermes task execution."""
+    try:
+        safe_profile = op.validate_profile_name(profile)
+    except (TypeError, ValueError):
+        return _error(
+            "INVALID_PROFILE",
+            "profile is not a valid Hermes profile name.",
+            "Choose a valid profile name.",
+        )
+
+    configured = [
+        item.strip()
+        for item in os.environ.get(SESSION_ALLOWED_PROFILES_ENV, "").split(",")
+        if item.strip()
+    ]
+    if not configured:
+        return _error(
+            "SESSION_PROFILE_NOT_ALLOWED",
+            "No Hermes profiles are authorized for session control.",
+            f"Set {SESSION_ALLOWED_PROFILES_ENV} to the restricted profile names this server may run.",
+        )
+    if "*" in configured:
+        return _error(
+            "SESSION_PROFILE_ALLOWLIST_INVALID",
+            "The session-control profile allowlist does not accept wildcards.",
+            f"Set {SESSION_ALLOWED_PROFILES_ENV} to explicit Hermes profile names.",
+        )
+    try:
+        allowed = {op.validate_profile_name(item) for item in configured}
+    except (TypeError, ValueError):
+        return _error(
+            "SESSION_PROFILE_ALLOWLIST_INVALID",
+            "The session-control profile allowlist contains an invalid profile name.",
+            f"Correct {SESSION_ALLOWED_PROFILES_ENV} and retry.",
+        )
+    if safe_profile not in allowed:
+        return _error(
+            "SESSION_PROFILE_NOT_ALLOWED",
+            "The requested Hermes profile is not authorized for session control.",
+            f"Choose a profile listed in {SESSION_ALLOWED_PROFILES_ENV}.",
+        )
+
+    try:
+        op.OperatorPolicy().require_profile(safe_profile, _data_root(hermes_root))
+    except FileNotFoundError:
+        return _error(
+            "SESSION_PROFILE_NOT_FOUND",
+            "The requested Hermes profile does not exist.",
+            "Create and configure the restricted Hermes profile before enabling session control.",
+        )
+    except PermissionError:
+        return _error(
+            "SESSION_PROFILE_NOT_ALLOWED",
+            "The requested Hermes profile is not authorized by Operator policy.",
+            f"Allow the profile with {op.OPERATOR_ALLOWED_PROFILES_ENV} as well.",
+        )
+    return safe_profile
+
+
 def _validate_start(
-    session_id: str, prompt: str, timeout: int, profile: str = "default"
+    session_id: str,
+    prompt: str,
+    timeout: int,
+    profile: str = "default",
+    hermes_root: Path | None = None,
 ) -> tuple[str, str, int, str] | dict[str, Any]:
     if not op.env_truthy(ENABLE_SESSION_CONTROL_ENV):
         return _error(
@@ -107,10 +181,9 @@ def _validate_start(
         return _error("PROMPT_TOO_LARGE", f"prompt exceeds the {MAX_PROMPT_CHARS}-character limit.", "Send a shorter prompt.")
     if isinstance(timeout, bool) or not isinstance(timeout, int):
         return _error("INVALID_TIMEOUT", "timeout must be an integer number of seconds.", f"Choose {MIN_TIMEOUT} to {MAX_TIMEOUT} seconds.")
-    try:
-        safe_profile = op.validate_profile_name(profile)
-    except Exception:
-        return _error("INVALID_PROFILE", "profile is not a valid Hermes profile name.", "Use an authorized profile name.")
+    safe_profile = validate_session_profile(profile, hermes_root)
+    if isinstance(safe_profile, dict):
+        return safe_profile
     return session_id.strip(), prompt, max(MIN_TIMEOUT, min(timeout, MAX_TIMEOUT)), safe_profile
 
 
@@ -124,7 +197,7 @@ def hermes_session_continue(
     profile: str = "default",
 ) -> dict[str, Any]:
     """Start one bounded non-interactive turn in an existing Hermes session."""
-    checked = _validate_start(session_id, prompt, timeout, profile)
+    checked = _validate_start(session_id, prompt, timeout, profile, hermes_root)
     if isinstance(checked, dict):
         return checked
     safe_id, safe_prompt, safe_timeout, safe_profile = checked

@@ -41,6 +41,9 @@ def test_session_control_is_disabled_by_default(monkeypatch, tmp_path):
 
 def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "project-manager")
+    monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "project-manager")
+    (tmp_path / "profiles" / "project-manager").mkdir(parents=True)
     monkeypatch.setattr(session.threading, "Thread", _ImmediateThread)
     calls = []
 
@@ -94,9 +97,56 @@ def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
 
 def test_same_session_cannot_run_concurrently(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
     monkeypatch.setitem(session._active_sessions, "default:session-1", "b" * 32)
     result = session.hermes_session_continue("session-1", "next", hermes_root=tmp_path)
     assert result["code"] == "SESSION_BUSY"
+
+
+def test_default_profile_requires_explicit_session_allowlist(monkeypatch, tmp_path):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.delenv(session.SESSION_ALLOWED_PROFILES_ENV, raising=False)
+
+    result = session.hermes_session_continue("session-1", "next", hermes_root=tmp_path)
+
+    assert result["success"] is False
+    assert result["code"] == "SESSION_PROFILE_NOT_ALLOWED"
+    assert not (tmp_path / "session-jobs").exists()
+
+
+def test_session_profile_allowlist_rejects_wildcards(monkeypatch, tmp_path):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "*")
+
+    result = session.hermes_session_continue("session-1", "next", hermes_root=tmp_path)
+
+    assert result["success"] is False
+    assert result["code"] == "SESSION_PROFILE_ALLOWLIST_INVALID"
+
+
+def test_named_session_profile_uses_configured_hermes_home(monkeypatch, tmp_path):
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "project-manager")
+    monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "project-manager")
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    (tmp_path / "profiles" / "project-manager").mkdir(parents=True)
+
+    result = session.validate_session_profile("project-manager")
+
+    assert result == "project-manager"
+
+
+def test_session_profile_must_also_pass_operator_allowlist(monkeypatch, tmp_path):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "project-manager")
+    monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "default")
+    (tmp_path / "profiles" / "project-manager").mkdir(parents=True)
+
+    result = session.hermes_session_continue(
+        "session-1", "next", hermes_root=tmp_path, profile="project-manager"
+    )
+
+    assert result["success"] is False
+    assert result["code"] == "SESSION_PROFILE_NOT_ALLOWED"
 
 
 def test_reconcile_marks_unowned_running_job_orphaned(tmp_path):
