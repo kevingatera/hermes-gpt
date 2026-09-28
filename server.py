@@ -19,7 +19,6 @@ import operator_diagnostics as op_diagnostics
 import operator_events as op_events
 import operator_export as op_export
 import operator_finance as op_finance
-import operator_fleet as op_fleet
 import operator_job_supervisor as op_jobs
 import operator_live_events as op_live_events
 import operator_mission_ledger as op_mission_ledger
@@ -57,6 +56,7 @@ from hermes_session_history import (
     validate_query as _validate_query,
     validate_session_id as _validate_session_id,
 )
+from server_fleet_tools import FleetTools
 from server_hermes_profile_tools import HermesProfileTools
 from server_mission_tools import MissionTools
 from server_session_browser_tools import register_session_browser_tools
@@ -1076,70 +1076,16 @@ def hermes_oauth_revoke(
     )
 
 
-# --- Fleet wrappers (named A2A peers only) ---------------------------------
+# Fleet MCP handlers keep their A2A registration list with their adapters.
+_fleet_tools = FleetTools()
 
-
-def hermes_fleet_list() -> str:
-    """List locally registered A2A fleet peers without exposing tokens."""
-    return op_fleet.hermes_fleet_list()
-
-
-def hermes_fleet_status(agent: str, timeout: int = 10) -> str:
-    """Check metadata-only compatibility status for one registered fleet peer."""
-    return op_fleet.hermes_fleet_status(agent=agent, timeout=timeout)
-
-
-def hermes_fleet_dispatch(
-    agent: str,
-    message: str,
-    confirm: bool = False,
-    dry_run: bool = True,
-    timeout: int = 30,
-) -> str:
-    """Submit a confirmed bounded task to one registered A2A fleet peer."""
-    return op_fleet.hermes_fleet_dispatch(
-        agent=agent, message=message, confirm=confirm, dry_run=dry_run, timeout=timeout,
-    )
-
-
-def hermes_fleet_task(agent: str, task_id: str, timeout: int = 15) -> str:
-    """Return a safe status summary for one task on a registered fleet peer."""
-    return op_fleet.hermes_fleet_task(agent=agent, task_id=task_id, timeout=timeout)
-
-
-def hermes_fleet_dispatch_work_order(
-    agent: str,
-    task_id: str,
-    target_profile: str,
-    objective: str,
-    workspace: str,
-    inputs: list[str],
-    constraints: list[str],
-    acceptance_checks: list[str],
-    deliverables: list[str],
-    authorization: dict[str, Any],
-    confirm: bool = False,
-    dry_run: bool = True,
-    timeout: int = 30,
-) -> str:
-    """Dispatch a canonical, profile-authorized work order to a registered peer."""
-    return op_fleet.hermes_fleet_dispatch_work_order(
-        agent=agent, task_id=task_id, target_profile=target_profile,
-        objective=objective, workspace=workspace, inputs=inputs,
-        constraints=constraints, acceptance_checks=acceptance_checks,
-        deliverables=deliverables, authorization=authorization,
-        confirm=confirm, dry_run=dry_run, timeout=timeout,
-    )
-
-
-def hermes_fleet_result(agent: str, task_id: str, timeout: int = 15) -> str:
-    """Return a schema-filtered safe completion bundle."""
-    return op_fleet.hermes_fleet_result(agent=agent, task_id=task_id, timeout=timeout)
-
-
-def hermes_fleet_authority_drift() -> str:
-    """Compare registered peers, authority, roles, profiles, and Agent Cards."""
-    return op_fleet.hermes_fleet_authority_drift()
+hermes_fleet_list = _fleet_tools.hermes_fleet_list
+hermes_fleet_status = _fleet_tools.hermes_fleet_status
+hermes_fleet_dispatch = _fleet_tools.hermes_fleet_dispatch
+hermes_fleet_task = _fleet_tools.hermes_fleet_task
+hermes_fleet_dispatch_work_order = _fleet_tools.hermes_fleet_dispatch_work_order
+hermes_fleet_result = _fleet_tools.hermes_fleet_result
+hermes_fleet_authority_drift = _fleet_tools.hermes_fleet_authority_drift
 
 
 # Profile administration adapters are kept separate from server registration
@@ -1532,14 +1478,7 @@ def register_tools(server: FastMCP) -> None:
         ),
     )
 
-    # Fleet routing: named peers in the local authenticated A2A registry only.
-    server.add_tool(hermes_fleet_list, meta=tool_meta())
-    server.add_tool(hermes_fleet_status, meta=tool_meta())
-    server.add_tool(hermes_fleet_dispatch, meta=tool_meta())
-    server.add_tool(hermes_fleet_dispatch_work_order, meta=tool_meta())
-    server.add_tool(hermes_fleet_task, meta=tool_meta())
-    server.add_tool(hermes_fleet_result, meta=tool_meta())
-    server.add_tool(hermes_fleet_authority_drift, meta=tool_meta())
+    _fleet_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
     _profile_tools.register_cron_tools(server, tool_meta=tool_meta)
 
