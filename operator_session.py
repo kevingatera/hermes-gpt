@@ -5,18 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import signal
 import subprocess
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 import operator_policy as op
-
 
 ENABLE_SESSION_CONTROL_ENV = "HERMES_GPT_ENABLE_SESSION_CONTROL"
 SESSION_ALLOWED_PROFILES_ENV = "HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES"
@@ -220,7 +219,7 @@ def hermes_session_continue(
     }
     _, output_path = _paths(job_id, hermes_root)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output = open(output_path, "w", encoding="utf-8")
+    output = open(output_path, "w", encoding="utf-8")  # noqa: SIM115 - the watcher closes it after child exit
     with _lock:
         active_job = _active_sessions.get(active_key)
         if active_job:
@@ -281,6 +280,28 @@ def hermes_session_continue(
     })
 
 
+def _finish_job(
+    job_id: str,
+    proc: subprocess.Popen[str],
+    status: str,
+    hermes_root: Path | None,
+) -> dict[str, Any]:
+    with _lock:
+        meta = _load(job_id, hermes_root) or {"job_id": job_id}
+        if meta.get("status") not in {"completed", "failed", "timed_out", "cancelled", "orphaned"}:
+            if meta.get("cancel_requested"):
+                status = "cancelled"
+            meta.update({"status": status, "return_code": proc.poll(), "ended_at": _now()})
+            _save(meta, hermes_root)
+        _processes.pop(job_id, None)
+        session_id = str(meta.get("session_id", ""))
+        profile = str(meta.get("profile", "default") or "default")
+        active_key = f"{profile}:{session_id}"
+        if _active_sessions.get(active_key) == job_id:
+            _active_sessions.pop(active_key, None)
+        return meta
+
+
 def _watch(job_id: str, proc: subprocess.Popen[str], output: Any, timeout: int, hermes_root: Path | None) -> None:
     try:
         proc.wait(timeout=timeout)
@@ -290,29 +311,33 @@ def _watch(job_id: str, proc: subprocess.Popen[str], output: Any, timeout: int, 
         status = "timed_out"
     finally:
         output.close()
-    with _lock:
-        _processes.pop(job_id, None)
-    meta = _load(job_id, hermes_root) or {"job_id": job_id}
-    session_id = str(meta.get("session_id", ""))
-    profile = str(meta.get("profile", "default") or "default")
-    active_key = f"{profile}:{session_id}"
-    with _lock:
-        if _active_sessions.get(active_key) == job_id:
-            _active_sessions.pop(active_key, None)
-    meta.update({"status": status, "return_code": proc.poll(), "ended_at": _now()})
-    _save(meta, hermes_root)
+    _finish_job(job_id, proc, status, hermes_root)
 
 
 def _terminate(proc: subprocess.Popen[str]) -> None:
+    if proc.poll() is not None:
+        return
     try:
         if os.name == "nt":
             proc.send_signal(signal.CTRL_BREAK_EVENT)
-            proc.wait(timeout=3)
         else:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-            proc.wait(timeout=3)
-    except Exception:
+            process_group = os.getpgid(proc.pid)
+            os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        pass
+    if os.name != "nt":
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    elif proc.poll() is None:
         proc.kill()
+    if proc.poll() is None:
+        proc.wait()
 
 
 def _reconcile(hermes_root: Path | None = None) -> None:
@@ -342,6 +367,70 @@ def hermes_session_job_status(job_id: str, hermes_root: Path | None = None) -> d
     if not meta:
         return _error("JOB_NOT_FOUND", "Hermes session job was not found.", "Check the job ID returned by hermes_session_continue.")
     return _redact({"success": True, "job": meta})
+
+
+def hermes_session_job_cancel(
+    job_id: str, hermes_root: Path | None = None
+) -> dict[str, Any]:
+    """Stop a session job only when this server process still owns it."""
+    _reconcile(hermes_root)
+    with _lock:
+        meta = _load(job_id, hermes_root)
+        if not meta:
+            return _error(
+                "JOB_NOT_FOUND",
+                "Hermes session job was not found.",
+                "Check the job ID returned by hermes_session_continue.",
+            )
+        status = str(meta.get("status", "unknown"))
+        if status != "running":
+            return _redact({
+                "success": True,
+                "job_id": job_id,
+                "status": status,
+                "cancelled": status == "cancelled",
+            })
+        proc = _processes.get(job_id)
+        if proc is None:
+            return _redact({
+                "success": True,
+                "job_id": job_id,
+                "status": "orphaned",
+                "cancelled": False,
+            })
+        if proc.poll() is not None:
+            status = "completed" if proc.returncode == 0 else "failed"
+            finished = _finish_job(job_id, proc, status, hermes_root)
+            return _redact({
+                "success": True,
+                "job_id": job_id,
+                "status": finished.get("status", status),
+                "cancelled": finished.get("status") == "cancelled",
+            })
+        meta["cancel_requested"] = True
+        _save(meta, hermes_root)
+
+    try:
+        _terminate(proc)
+    except (OSError, subprocess.TimeoutExpired):
+        with _lock:
+            meta = _load(job_id, hermes_root)
+            if meta and meta.get("status") == "running":
+                meta.pop("cancel_requested", None)
+                _save(meta, hermes_root)
+        return _error(
+            "CANCEL_FAILED",
+            "The running Hermes session process could not be stopped.",
+            "Check the local process state and retry while the job is still running.",
+        )
+
+    finished = _finish_job(job_id, proc, "cancelled", hermes_root)
+    return _redact({
+        "success": True,
+        "job_id": job_id,
+        "status": finished.get("status", "cancelled"),
+        "cancelled": finished.get("status") == "cancelled",
+    })
 
 
 def hermes_session_job_result(job_id: str, max_chars: int = MAX_RESULT_CHARS, hermes_root: Path | None = None) -> dict[str, Any]:

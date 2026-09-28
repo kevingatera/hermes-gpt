@@ -109,6 +109,7 @@ def test_default_tool_surface_is_read_or_local_metadata_only(monkeypatch):
         "hermes_bot_chat_send",
         "hermes_session_job_status",
         "hermes_session_job_result",
+        "hermes_session_job_cancel",
         "hermes_vision_analyze",
         "hermes_web_search",
         "hermes_web_extract",
@@ -165,6 +166,7 @@ def test_env_gates_expose_high_risk_tools(monkeypatch):
     assert "hermes_bot_chat_send" in names
     assert "hermes_session_job_status" in names
     assert "hermes_session_job_result" in names
+    assert "hermes_session_job_cancel" in names
     assert "hermes_vision_analyze" in names
     assert "hermes_web_search" in names
     assert "hermes_web_extract" in names

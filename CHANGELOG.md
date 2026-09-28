@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Require session-control requests to use a profile explicitly named by `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` and authorized by the Operator profile allowlist. This prevents session execution from bypassing profile restrictions through the default-profile path.
+- Add `hermes_session_job_cancel`, which signals only a process owned by the current server instance and records cancellation in the durable job status. POSIX cancellation targets the dedicated process group and escalates to `SIGKILL` when members remain.
 
 ## 0.12.0 - 2026-09-22
 

@@ -1,6 +1,9 @@
 import json
-import subprocess
+import os
+import time
 from pathlib import Path
+
+import pytest
 
 import operator_session as session
 
@@ -147,6 +150,79 @@ def test_session_profile_must_also_pass_operator_allowlist(monkeypatch, tmp_path
 
     assert result["success"] is False
     assert result["code"] == "SESSION_PROFILE_NOT_ALLOWED"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX process-group cancellation")
+def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_path):
+    monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
+    agent_root = tmp_path / "agent"
+    executable = agent_root / "venv" / "bin" / "hermes"
+    executable.parent.mkdir(parents=True)
+    executable.write_text(
+        "#!/usr/bin/env python3\n"
+        "import time\n"
+        "print('session-started', flush=True)\n"
+        "time.sleep(60)\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+
+    started = session.hermes_session_continue(
+        "session-cancel-test",
+        "run the local cancellation fixture",
+        hermes_root=tmp_path,
+        agent_root=agent_root,
+    )
+    assert started["success"] is True
+    job_id = started["job_id"]
+    job_meta = session._load(job_id, tmp_path)
+    assert job_meta is not None
+    pid = job_meta["pid"]
+
+    deadline = time.monotonic() + 3
+    output_path = session._paths(job_id, tmp_path)[1]
+    while time.monotonic() < deadline:
+        if output_path.exists() and "session-started" in output_path.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.02)
+    else:
+        pytest.fail("Hermes cancellation fixture did not start")
+
+    cancelled = session.hermes_session_job_cancel(job_id, tmp_path)
+    assert cancelled["success"] is True
+    assert cancelled["cancelled"] is True
+    assert cancelled["status"] == "cancelled"
+
+    status = session.hermes_session_job_status(job_id, tmp_path)
+    result = session.hermes_session_job_result(job_id, hermes_root=tmp_path)
+    assert status["job"]["status"] == "cancelled"
+    assert result["status"] == "cancelled"
+    with pytest.raises(ProcessLookupError):
+        os.kill(pid, 0)
+
+    repeated = session.hermes_session_job_cancel(job_id, tmp_path)
+    assert repeated["success"] is True
+    assert repeated["cancelled"] is True
+
+
+def test_cancel_marks_unowned_job_orphaned_without_signaling_pid(monkeypatch, tmp_path):
+    job_id = "c" * 32
+    session._save(
+        {"job_id": job_id, "session_id": "session-1", "status": "running", "pid": 999999},
+        tmp_path,
+    )
+    monkeypatch.setattr(
+        session,
+        "_terminate",
+        lambda _proc: pytest.fail("cancel must not signal a persisted PID"),
+    )
+
+    result = session.hermes_session_job_cancel(job_id, tmp_path)
+
+    assert result["success"] is True
+    assert result["status"] == "orphaned"
+    assert result["cancelled"] is False
 
 
 def test_reconcile_marks_unowned_running_job_orphaned(tmp_path):

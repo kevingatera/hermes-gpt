@@ -1359,6 +1359,11 @@ def hermes_session_job_status(job_id: str) -> dict[str, Any]:
     return op_session.hermes_session_job_status(job_id, _default_hermes_root())
 
 
+def hermes_session_job_cancel(job_id: str) -> dict[str, Any]:
+    """Cancel a running Hermes session job owned by this server process."""
+    return op_session.hermes_session_job_cancel(job_id, _default_hermes_root())
+
+
 def hermes_session_job_result(
     job_id: str, max_chars: int = op_session.MAX_RESULT_CHARS
 ) -> dict[str, Any]:
@@ -3222,6 +3227,7 @@ def register_tools(server: FastMCP) -> None:
             server.add_tool(hermes_bot_chat_send, meta=tool_meta())
         server.add_tool(hermes_session_job_status, meta=tool_meta())
         server.add_tool(hermes_session_job_result, meta=tool_meta())
+        server.add_tool(hermes_session_job_cancel, meta=tool_meta())
     if env_enabled(ENABLE_VISION_ENV):
         server.add_tool(hermes_vision_analyze, meta=tool_meta())
     if env_enabled(ENABLE_WEB_ENV):

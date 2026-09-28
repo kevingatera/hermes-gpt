@@ -22,8 +22,9 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 1. Find a session ID with `hermes_session_list` when history is enabled.
 2. Call `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias.
 3. Save the returned `job_id`.
-4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, or `orphaned`.
-5. Call `hermes_session_job_result(job_id)` for the bounded, redacted final output.
+4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`.
+5. Call `hermes_session_job_cancel(job_id)` to stop a running job owned by this server process.
+6. Call `hermes_session_job_result(job_id)` for the bounded, redacted output.
 
 The start call resolves exact or unique-prefix IDs through Hermes' existing read-only `SessionDB` API before launching anything. It invokes the CLI with a fixed argument array equivalent to:
 
@@ -39,6 +40,7 @@ No shell is used. Hermes restores the resumed session's recorded working directo
 - Timeout: clamped to 10–3600 seconds; default 900.
 - Returned result: clamped to 500–24,000 characters.
 - Concurrency: only one session-control job may run for a given session at a time.
+- Cancellation: only a process still owned by this server instance can be signaled; persisted PIDs are never trusted. POSIX cancellation signals the task's process group and force-stops remaining group members after the main process exits or the three-second grace period expires.
 - Job metadata: stored under the Hermes data root in `session-jobs/`.
 - Prompt privacy: raw prompts are not stored in metadata; only length and SHA-256 digest are retained.
 - Output: captured locally for later result retrieval and redacted before MCP exposure.
@@ -48,4 +50,4 @@ Session control can consume the configured provider's quota or incur provider ch
 
 ## Validation without a real model call
 
-The automated tests replace process launch with a fake Hermes process. They verify the fixed CLI arguments, `shell=False`, explicit profile authorization, prompt-free metadata, timeout bounds, restart reconciliation, redaction, tool registration gates, and status/result flow. The test suite does not resume a real session or contact a model provider.
+The automated tests include a real local child-process cancellation check and replace Hermes process launch with fakes for the other cases. They verify the fixed CLI arguments, `shell=False`, explicit profile authorization, prompt-free metadata, timeout bounds, restart reconciliation, redaction, tool registration gates, and status/result flow. The test suite does not resume a real Hermes session or contact a model provider.
