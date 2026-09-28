@@ -18,6 +18,49 @@ class HermesProfileTools:
         # are read using the same runtime configuration as the rest of server.py.
         self.get_hermes_root = get_hermes_root
 
+    def register_cron_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        """Register the profile-scoped scheduler tools."""
+        for tool in (
+            self.hermes_cron_list,
+            self.hermes_cron_status,
+            self.hermes_cron_create,
+            self.hermes_cron_run,
+            self.hermes_cron_pause,
+            self.hermes_cron_copy,
+            self.hermes_cron_move,
+        ):
+            server.add_tool(tool, meta=tool_meta())
+
+    def register_admin_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        """Register profile-scoped skill, config, and environment tools."""
+        for tool in (
+            self.hermes_skill_diff,
+            self.hermes_skill_create,
+            self.hermes_skill_edit,
+            self.hermes_skill_patch,
+            self.hermes_skill_write_file,
+            self.hermes_skill_copy,
+            self.hermes_skill_sync_to_default,
+            self.hermes_skill_delete,
+            self.hermes_config_get,
+            self.hermes_config_set,
+            self.hermes_config_patch,
+            self.hermes_env_status,
+            self.hermes_env_set_nonsecret,
+            self.hermes_env_copy_nonsecret,
+        ):
+            server.add_tool(tool, meta=tool_meta())
+
     def hermes_cron_list(self, profile: str = "default", include_disabled: bool = False) -> str:
         return op_cron.hermes_cron_list(
             profile=profile,

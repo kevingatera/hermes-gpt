@@ -1980,14 +1980,7 @@ def register_tools(server: FastMCP) -> None:
     server.add_tool(hermes_fleet_result, meta=tool_meta())
     server.add_tool(hermes_fleet_authority_drift, meta=tool_meta())
 
-    # Cron
-    server.add_tool(hermes_cron_list, meta=tool_meta())
-    server.add_tool(hermes_cron_status, meta=tool_meta())
-    server.add_tool(hermes_cron_create, meta=tool_meta())
-    server.add_tool(hermes_cron_run, meta=tool_meta())
-    server.add_tool(hermes_cron_pause, meta=tool_meta())
-    server.add_tool(hermes_cron_copy, meta=tool_meta())
-    server.add_tool(hermes_cron_move, meta=tool_meta())
+    _profile_tools.register_cron_tools(server, tool_meta=tool_meta)
 
     # The mission adapter owns its registration list; each handler still applies
     # its own read-only, dry-run, workspace, or Owner policy gates.
@@ -2154,23 +2147,7 @@ def register_tools(server: FastMCP) -> None:
     ):
         server.add_tool(_swarm_tool, meta=tool_meta())
 
-    # Skills
-    server.add_tool(hermes_skill_diff, meta=tool_meta())
-    server.add_tool(hermes_skill_create, meta=tool_meta())
-    server.add_tool(hermes_skill_edit, meta=tool_meta())
-    server.add_tool(hermes_skill_patch, meta=tool_meta())
-    server.add_tool(hermes_skill_write_file, meta=tool_meta())
-    server.add_tool(hermes_skill_copy, meta=tool_meta())
-    server.add_tool(hermes_skill_sync_to_default, meta=tool_meta())
-    server.add_tool(hermes_skill_delete, meta=tool_meta())
-
-    # Config / env
-    server.add_tool(hermes_config_get, meta=tool_meta())
-    server.add_tool(hermes_config_set, meta=tool_meta())
-    server.add_tool(hermes_config_patch, meta=tool_meta())
-    server.add_tool(hermes_env_status, meta=tool_meta())
-    server.add_tool(hermes_env_set_nonsecret, meta=tool_meta())
-    server.add_tool(hermes_env_copy_nonsecret, meta=tool_meta())
+    _profile_tools.register_admin_tools(server, tool_meta=tool_meta)
 
     # Gateway / workspace / git / owner
     server.add_tool(hermes_gateway_status, meta=tool_meta())
