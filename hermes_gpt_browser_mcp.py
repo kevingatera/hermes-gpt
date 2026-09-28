@@ -66,7 +66,12 @@ def main() -> None:
     except OSError as exc:
         print(f"Browser session state is unavailable: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
-    if state_file.parent.name != ".managed-browser" or not re.fullmatch(r"[0-9a-f]{32}\.json", state_file.name):
+    task_id = state_file.parent.name
+    if (
+        state_file.parent.parent.name != ".managed-browser"
+        or not re.fullmatch(r"[0-9a-f]{32}", task_id)
+        or state_file.name != f"{task_id}.json"
+    ):
         print("Browser session state file has an invalid name", file=sys.stderr)
         raise SystemExit(2)
     build_server(state_file).run(transport="stdio")

@@ -75,7 +75,7 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     assert len(calls) == 1
     assert Path(calls[0].argv[0]).name.lower() in {"hermes", "hermes.exe"}
     assert calls[0].argv[1:] == [
-        "--resume", "20260810_143227_6b0982", "--query-file", "-", "--oneshot", "-Q"
+        "chat", "--resume", "20260810_143227_6b0982", "--query-file", "-", "--oneshot", "-Q"
     ]
     assert calls[0].kwargs["shell"] is False
     assert calls[0].kwargs["env"]["HERMES_PROFILE"] == "project-manager"
@@ -120,8 +120,8 @@ def test_continue_accepts_model_and_reasoning_overrides(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
-    assert calls[0].argv[1:7] == [
-        "--resume", "session-2", "--model", "deepseek/deepseek-v4.1-flash", "--reasoning", "xhigh"
+    assert calls[0].argv[1:8] == [
+        "chat", "--resume", "session-2", "--model", "deepseek/deepseek-v4.1-flash", "--reasoning", "xhigh"
     ]
     assert "do one turn" not in calls[0].argv
 
@@ -136,17 +136,16 @@ def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
     assert session.hermes_session_continue("s", "x", timeout=True, hermes_root=tmp_path)["code"] == "INVALID_TIMEOUT"
 
 
-def test_scoped_job_recovers_session_id_from_usage_report(tmp_path):
+def test_scoped_job_recovers_session_id_from_hermes_stderr(tmp_path):
     job_id = "a" * 32
-    usage_file = tmp_path / "profiles" / "task" / "usage.json"
-    usage_file.parent.mkdir(parents=True)
-    usage_file.write_text(json.dumps({"session_id": "20260927_203010_ab12cd"}), encoding="utf-8")
+    output_path = session._paths(job_id, tmp_path)[1]
+    stderr_path = output_path.with_suffix(".stderr.txt")
+    stderr_path.parent.mkdir(parents=True)
+    stderr_path.write_text("session_id: 20260927_203010_ab12cd\n", encoding="utf-8")
     session._save({
         "job_id": job_id,
         "task_id": "b" * 32,
         "session_id": "",
-        "usage_file": str(usage_file),
-        "task_home": str(usage_file.parent),
         "active_key": "task:" + "b" * 32,
         "status": "completed",
         "profile": "default",
@@ -155,9 +154,27 @@ def test_scoped_job_recovers_session_id_from_usage_report(tmp_path):
     result = session.hermes_session_job_status(job_id, tmp_path)
 
     assert result["job"]["session_id"] == "20260927_203010_ab12cd"
-    assert "usage_file" not in result["job"]
-    assert "task_home" not in result["job"]
     assert "active_key" not in result["job"]
+
+
+def test_scoped_job_recovers_legacy_usage_report_after_stderr_miss(tmp_path):
+    job_id = "c" * 32
+    usage_file = tmp_path / "profiles" / "task" / "usage.json"
+    usage_file.parent.mkdir(parents=True)
+    usage_file.write_text(json.dumps({"session_id": "20260927_203010_ab12cd"}), encoding="utf-8")
+    session._save({
+        "job_id": job_id,
+        "task_id": "d" * 32,
+        "session_id": "",
+        "usage_file": str(usage_file),
+        "status": "completed",
+        "profile": "default",
+    }, tmp_path)
+
+    result = session.hermes_session_job_status(job_id, tmp_path)
+
+    assert result["job"]["session_id"] == "20260927_203010_ab12cd"
+    assert "usage_file" not in result["job"]
 
 
 def test_same_session_cannot_run_concurrently(monkeypatch, tmp_path):

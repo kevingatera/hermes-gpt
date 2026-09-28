@@ -70,13 +70,107 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert wrapped["writable_paths"] == (root / "profiles" / result["task_id"],)
     assert "--toolsets" in wrapped["argv"]
     assert wrapped["argv"][wrapped["argv"].index("--toolsets") + 1] == "file"
-    assert "--usage-file" in wrapped["argv"]
+    assert wrapped["argv"][1] == "chat"
+    assert "--usage-file" not in wrapped["argv"]
+    assert "--safe-mode" not in wrapped["argv"]
     assert "--resume" not in wrapped["argv"]
     assert "hermes-gpt-browser" not in wrapped["argv"]
     assert launched["argv"][0] == "/usr/bin/bwrap"
     assert launched["child_env"]["DEEPSEEK_API_KEY"] == "test-deepseek-key-never-return-this"
     assert "DEEPSEEK_API_KEY" not in json.dumps(result)
     assert "test-deepseek-key" not in json.dumps(launched["metadata"])
+
+
+def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, tmp_path):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    task_id = "e" * 32
+    task_home = root / "profiles" / task_id
+    task_home.mkdir()
+
+    cli_dir = tmp_path / "node" / "bin"
+    target_dir = tmp_path / "node_modules" / "agent-browser" / "bin"
+    cli_dir.mkdir(parents=True)
+    target_dir.mkdir(parents=True)
+    target = target_dir / "agent-browser-linux-x64"
+    target.write_text("browser cli", encoding="utf-8")
+    cli_path = cli_dir / "agent-browser"
+    cli_path.symlink_to(target)
+
+    state_dir = root / "profiles" / ".managed-browser" / task_id
+    state_dir.mkdir(parents=True, mode=0o700)
+    state_file = state_dir / f"{task_id}.json"
+    socket_dir = tmp_path / "hgpt-test-socket"
+    socket_dir.mkdir(mode=0o700)
+    state_file.write_text(
+        json.dumps({"executable": str(cli_path), "socket_dir": str(socket_dir)}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(tasks.runtime.browser, "browser_state_file", lambda _home: state_file)
+
+    source_root = tmp_path / "hermes-agent"
+    source_root.mkdir()
+    monkeypatch.setattr(tasks.sessions, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
+    monkeypatch.setattr(tasks.runtime, "_source_root", lambda _executable, _root: source_root)
+    monkeypatch.setattr(tasks.confinement, "confinement_available", lambda *, writable: True)
+    wrapped = {}
+
+    def wrap(argv, selected_workspace, *, writable, readonly_paths=(), writable_paths=()):
+        wrapped.update({
+            "argv": list(argv),
+            "workspace": selected_workspace,
+            "readonly_paths": readonly_paths,
+            "writable_paths": writable_paths,
+        })
+        return ["/usr/bin/bwrap", *argv]
+
+    monkeypatch.setattr(tasks.confinement, "wrap_argv", wrap)
+    monkeypatch.setattr(
+        tasks.sessions,
+        "start_managed_session_job",
+        lambda **kwargs: {
+            "success": True,
+            "job_id": "f" * 32,
+            "task_id": kwargs["metadata"]["task_id"],
+            "status": "running",
+        },
+    )
+    task = {
+        "task_id": task_id,
+        "workspace_id": "demo",
+        "workspace": str(workspace),
+        "task_home": str(task_home),
+        "credential_profile": "default",
+        "allow_workspace_write": False,
+        "model": tasks.MODEL_ID,
+        "reasoning_effort": "high",
+        "browser_enabled": True,
+        "session_id": "",
+        "turn_count": 0,
+    }
+
+    result = tasks.runtime.start_turn(
+        task=task,
+        prompt="Inspect the current page.",
+        timeout=10,
+        confirm=True,
+        dry_run=False,
+        hermes_root=root,
+        agent_root=source_root,
+        save_task=lambda _record: None,
+    )
+
+    readonly = set(wrapped["readonly_paths"])
+    writable = set(wrapped["writable_paths"])
+    assert result["success"] is True
+    assert state_dir in readonly
+    assert state_file not in readonly
+    assert cli_dir in readonly
+    assert target_dir in readonly
+    assert task_home not in readonly
+    assert task_home in writable
+    assert socket_dir in writable
 
 
 def test_task_continue_resumes_recorded_session(monkeypatch, tmp_path):

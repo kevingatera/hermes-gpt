@@ -287,7 +287,7 @@ def hermes_session_continue(
             f"Choose one of: {', '.join(sorted(REASONING_EFFORTS))}.",
         )
     executable = _hermes_executable(agent_root)
-    argv = [executable, "--resume", safe_id]
+    argv = [executable, "chat", "--resume", safe_id]
     if model:
         argv.extend(["--model", model])
     if reasoning_effort:
@@ -574,11 +574,16 @@ def _session_id_from_usage_file(path: Path) -> str:
     return session_id
 
 
-def _recover_task_session_id(meta: dict[str, Any]) -> bool:
-    """Recover a one-shot task's session ID from Hermes' structured usage report."""
-    if not meta.get("task_id") or meta.get("session_id") or not meta.get("usage_file"):
+def _recover_task_session_id(
+    meta: dict[str, Any], hermes_root: Path | None = None
+) -> bool:
+    """Recover a task session ID from Hermes' stderr line or an older usage report."""
+    if not meta.get("task_id") or meta.get("session_id"):
         return False
-    session_id = _session_id_from_usage_file(Path(str(meta["usage_file"])))
+    _job_path, output_path = _paths(str(meta.get("job_id") or ""), hermes_root)
+    session_id = _session_id_from_stderr(output_path.with_suffix(".stderr.txt"))
+    if not session_id and meta.get("usage_file"):
+        session_id = _session_id_from_usage_file(Path(str(meta["usage_file"])))
     if not session_id:
         return False
     meta["session_id"] = session_id
@@ -647,7 +652,7 @@ def hermes_session_job_status(job_id: str, hermes_root: Path | None = None) -> d
     public_meta = dict(meta)
     public_meta.pop("active_key", None)
     if public_meta.get("task_id"):
-        if _recover_task_session_id(meta):
+        if _recover_task_session_id(meta, hermes_root):
             _save(meta, hermes_root)
             public_meta["session_id"] = meta["session_id"]
         for key in ("workspace", "task_home", "active_key", "usage_file"):

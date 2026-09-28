@@ -227,25 +227,31 @@ def start_turn(
     writable_task_paths = [task_home]
     argv = [
         executable,
+        "chat",
         "--model", model,
         "--reasoning", reasoning_effort,
         "--toolsets", toolsets,
-        "--safe-mode",
         "--ignore-rules",
         "--in", str(workspace),
     ]
     if session_id:
         argv += ["--resume", session_id]
     argv += ["--query-file", "-", "--oneshot", "-Q"]
-    usage_file = task_home / ".hermes-gpt-usage.json"
-    argv += ["--usage-file", str(usage_file)]
 
     readonly_candidates = [source_root, Path(__file__).resolve().parent]
     if bool(task.get("browser_enabled")):
         browser_state = json.loads(browser.browser_state_file(task_home).read_text(encoding="utf-8"))
-        browser_executable = Path(str(browser_state["executable"])).expanduser().resolve(strict=True)
+        browser_executable_path = Path(str(browser_state["executable"])).expanduser()
+        browser_executable = browser_executable_path.resolve(strict=True)
         # Keep the bridge target fixed even though Hermes can write its own home.
-        readonly_candidates.append(browser.browser_state_file(task_home))
+        # Mount the private task directory, not only its descriptor file. A
+        # file bind creates synthetic 0755 parents inside bubblewrap, which
+        # correctly fail the bridge's private-directory check.
+        readonly_candidates.append(browser.browser_state_file(task_home).parent)
+        # agent-browser may be a symlink. The bridge validates and launches the
+        # configured path, so expose its directory as well as the resolved
+        # binary's directory below.
+        readonly_candidates.append(browser_executable_path.parent)
         writable_task_paths.append(Path(str(browser_state["socket_dir"])))
         configured_node = Path(hermes_root).expanduser() / "node" if hermes_root else None
         readonly_candidates.append(configured_node if configured_node and configured_node.is_dir() else browser_executable.parent)
@@ -291,7 +297,6 @@ def start_turn(
             "reasoning_effort": reasoning_effort,
             "toolsets": toolsets,
             "browser_enabled": bool(task.get("browser_enabled")),
-            "usage_file": str(usage_file),
             "session_id": session_id,
             "task_turn": int(task.get("turn_count", 0)) + 1,
         },

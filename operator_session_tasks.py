@@ -288,7 +288,7 @@ def hermes_task_continue(
         task["reasoning_effort"] = selected_effort
         task["toolsets"] = TOOLSETS if bool(task.get("browser_enabled")) else FILE_ONLY_TOOLSETS
         latest_job = sessions._load(str(task.get("latest_job_id") or ""), hermes_root) or {}
-        if sessions._recover_task_session_id(latest_job):
+        if sessions._recover_task_session_id(latest_job, hermes_root):
             sessions._save(latest_job, hermes_root)
         if latest_job.get("status") in {"starting", "running"}:
             return {"success": False, "code": "TASK_BUSY", "safe_message": "Wait for the current Hermes task turn to finish."}

@@ -91,6 +91,13 @@ def _safe_browser_env(socket_dir: Path, hermes_root: Path | None) -> dict[str, s
 
 def _state_path(task_home: Path) -> Path:
     home = Path(task_home).expanduser().resolve()
+    state_dir = home.parent / ".managed-browser" / home.name
+    return state_dir / f"{home.name}.json"
+
+
+def _legacy_state_path(task_home: Path) -> Path:
+    """Return the pre-task-directory descriptor path for migration."""
+    home = Path(task_home).expanduser().resolve()
     return home.parent / ".managed-browser" / f"{home.name}.json"
 
 
@@ -126,6 +133,7 @@ def _ensure_private_directory(path: Path) -> None:
 
 
 def _write_state(path: Path, state: dict[str, Any]) -> None:
+    _ensure_private_directory(path.parent.parent)
     _ensure_private_directory(path.parent)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     with temporary.open("w", encoding="utf-8") as handle:
@@ -142,7 +150,7 @@ def _write_state(path: Path, state: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
-def _read_state(path: Path) -> dict[str, Any] | None:
+def _read_state(path: Path, *, expected_path: Path | None = None) -> dict[str, Any] | None:
     raw_path = Path(path).expanduser()
     if raw_path.is_symlink() or not _is_private_directory(raw_path.parent):
         return None
@@ -165,7 +173,7 @@ def _read_state(path: Path) -> dict[str, Any] | None:
         task_home = Path(str(raw.get("task_home") or "")).expanduser().resolve(strict=True)
         state_path = Path(path).expanduser().resolve(strict=True)
         socket_dir = Path(str(raw.get("socket_dir") or "")).expanduser().resolve()
-        expected_state = _state_path(task_home).resolve(strict=True)
+        expected_state = (expected_path or _state_path(task_home)).resolve(strict=True)
         expected_socket_dir = _socket_path(task_id).resolve()
         hermes_root = Path(str(raw.get("hermes_root") or "")).expanduser() if raw.get("hermes_root") else None
         executable = Path(str(raw.get("executable") or "")).expanduser().resolve(strict=True)
@@ -182,6 +190,28 @@ def _read_state(path: Path) -> dict[str, Any] | None:
     ):
         return None
     return raw
+
+
+def _migrate_legacy_state(task_home: Path) -> None:
+    """Move a valid older descriptor into a private directory for this task."""
+    current_path = _state_path(task_home)
+    legacy_path = _legacy_state_path(task_home)
+    if current_path.exists() or not legacy_path.is_file():
+        return
+    _ensure_private_directory(legacy_path.parent)
+    if not _read_state(legacy_path, expected_path=legacy_path):
+        return
+    _ensure_private_directory(current_path.parent)
+    try:
+        legacy_path.replace(current_path)
+    except FileNotFoundError:
+        # Another process may have migrated the descriptor first.
+        return
+
+
+def _read_task_state(task_home: Path) -> dict[str, Any] | None:
+    _migrate_legacy_state(task_home)
+    return _read_state(_state_path(task_home))
 
 
 def _run(
@@ -239,7 +269,7 @@ def create_browser_session(
     home = Path(task_home).expanduser().resolve(strict=True)
     executable = _browser_executable(hermes_root)
     state_path = _state_path(home)
-    previous = _read_state(state_path)
+    previous = _read_task_state(home)
     if previous:
         _run(previous, "close")
     socket_dir = _socket_path(task_id)
@@ -281,7 +311,7 @@ def create_browser_session(
 
 
 def browser_session_state(task_home: Path) -> dict[str, Any]:
-    state = _read_state(_state_path(Path(task_home)))
+    state = _read_task_state(Path(task_home))
     if not state:
         return _error("BROWSER_SESSION_NOT_FOUND", "This task has no managed browser session.")
     state["task_home"] = str(Path(task_home).expanduser().resolve(strict=True))
@@ -310,7 +340,7 @@ def browser_command(
     args: list[str] | None = None,
 ) -> dict[str, Any]:
     """Execute one allowed agent-browser command in a task-owned session."""
-    state = _read_state(_state_path(Path(task_home)))
+    state = _read_task_state(Path(task_home))
     if not state:
         return _error("BROWSER_SESSION_NOT_FOUND", "This task has no managed browser session.")
     if state.get("status") == "closed":
@@ -378,7 +408,9 @@ def browser_command(
 
 def browser_state_file(task_home: Path) -> Path:
     """Return the validated state file path for the child MCP server config."""
-    path = _state_path(Path(task_home))
+    home = Path(task_home).expanduser().resolve(strict=True)
+    _migrate_legacy_state(home)
+    path = _state_path(home)
     state = _read_state(path)
     if not state:
         raise FileNotFoundError("Managed browser state is unavailable")
@@ -390,14 +422,26 @@ def delete_browser_state(task_home: Path) -> None:
     home = Path(task_home).expanduser().resolve()
     if not _TASK_ID_RE.fullmatch(home.name):
         return
-    _state_path(home).unlink(missing_ok=True)
+    state_path = _state_path(home)
+    state_path.unlink(missing_ok=True)
+    try:
+        state_path.parent.rmdir()
+    except OSError:
+        pass
+    _legacy_state_path(home).unlink(missing_ok=True)
 
 
 def browser_state_file_command(state_file: Path, command: str, args: list[str] | None = None) -> dict[str, Any]:
     """MCP-server entry point; state-file access is bound by the task's generated config."""
     path = Path(state_file).expanduser().resolve(strict=True)
     state = _read_state(path)
-    if not state or path.parent.name != ".managed-browser" or path.suffix != ".json":
+    task_id = path.parent.name
+    if (
+        not state
+        or path.parent.parent.name != ".managed-browser"
+        or not _TASK_ID_RE.fullmatch(task_id)
+        or path.name != f"{task_id}.json"
+    ):
         return _error("BROWSER_SESSION_NOT_FOUND", "This Hermes session has no managed browser session.")
     home = Path(str(state.get("task_home") or "")).expanduser().resolve(strict=True)
     if path != _state_path(home).resolve(strict=True) or state.get("task_id") != home.name:

@@ -45,8 +45,8 @@ Browser navigation can reach local and private-network addresses. Only enable th
 
 - Each task receives a private Hermes home under `profiles/<task-id>` with restrictive file permissions. Its browser descriptor is stored outside that writable home and mounted read-only into the confined session; the browser socket is a separate private directory. Hermes resumes from its private session database; it does not change the selected profile's sessions.
 - Linux `bwrap` and macOS `sandbox-exec` expose the selected workspace, the read-only Hermes and plugin runtimes, the browser CLI runtime, and the task's private state. Workspace writes are enabled only for the selected task when explicitly requested.
-- Hermes runs with `--safe-mode`, `--ignore-rules`, `--toolsets file,hermes-gpt-browser`, the selected model, and the selected reasoning effort. The browser bridge exposes no raw CDP or password-vault operations.
+- Hermes runs the supported `chat` subcommand with `--ignore-rules`, `--toolsets file,hermes-gpt-browser`, the selected model, and the selected reasoning effort. Its private task home contains only the browser MCP configuration created for that task. The browser bridge exposes no raw CDP or password-vault operations.
 - Prompts travel over stdin, not process arguments or job metadata. Job records store a prompt length and digest, not prompt text. Standard output contains the answer; stderr stays in a separate local diagnostic file.
-- Hermes' structured usage report records the Hermes session ID. Task and job files are authoritative after a server restart; process ownership is not inferred from a saved PID.
+- Hermes writes its session ID to stderr in quiet one-shot chat mode; the job watcher records it for later turns and can recover it after a server restart. Older jobs that used a structured usage report remain readable. Process ownership is not inferred from a saved PID.
 
 The MCP tools are the initial interface. A task panel or Hermes slash-command UI can be added later without changing the session and browser ownership model.

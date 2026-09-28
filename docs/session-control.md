@@ -29,7 +29,7 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 The start call resolves exact or unique-prefix IDs through Hermes' existing read-only `SessionDB` API before launching anything. It invokes the CLI with a fixed argument array equivalent to:
 
 ```text
-hermes --resume <resolved-session-id> [--model <provider/model>] [--reasoning <effort>] --query-file - --oneshot -Q
+hermes chat --resume <resolved-session-id> [--model <provider/model>] [--reasoning <effort>] --query-file - --oneshot -Q
 ```
 
 No shell is used. The prompt travels over stdin rather than command arguments. Hermes restores the resumed session's recorded working directory using its normal CLI behavior.
