@@ -29,6 +29,8 @@ class _FakeProcess:
     def wait(self, timeout=None):
         self.kwargs["stdout"].write("mock Hermes response token=secret-value-123456789")
         self.kwargs["stdout"].flush()
+        self.kwargs["stderr"].write("mock local diagnostic")
+        self.kwargs["stderr"].flush()
         self.returncode = 0
         return 0
 
@@ -87,6 +89,7 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     assert result["return_code"] == 0
     assert "secret-value" not in result["response"]
     assert "[REDACTED]" in result["response"]
+    assert "mock local diagnostic" not in result["response"]
 
 
 def test_job_lookup_and_input_bounds(monkeypatch, tmp_path):
@@ -163,7 +166,9 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     executable.parent.mkdir(parents=True)
     executable.write_text(
         "#!/usr/bin/env python3\n"
+        "import sys\n"
         "import time\n"
+        "print('diagnostic-only', file=sys.stderr, flush=True)\n"
         "print('session-started', flush=True)\n"
         "time.sleep(60)\n",
         encoding="utf-8",
@@ -213,6 +218,9 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     result = session.hermes_session_job_result(job_id, hermes_root=tmp_path)
     assert status["job"]["status"] == "cancelled"
     assert result["status"] == "cancelled"
+    stderr_path = output_path.with_suffix(".stderr.txt")
+    assert "diagnostic-only" in stderr_path.read_text(encoding="utf-8")
+    assert "diagnostic-only" not in result["response"]
     events, _ = live_events.read_since(
         0,
         topic=session.SESSION_JOB_TOPIC,

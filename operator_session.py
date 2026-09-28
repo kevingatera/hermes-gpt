@@ -268,13 +268,17 @@ def hermes_session_continue(
         "prompt_sha256": hashlib.sha256(safe_prompt.encode("utf-8")).hexdigest(),
     }
     _, output_path = _paths(job_id, hermes_root)
+    stderr_path = output_path.with_suffix(".stderr.txt")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output = open(output_path, "w", encoding="utf-8")  # noqa: SIM115 - the watcher closes it after child exit
+    stderr = open(stderr_path, "w", encoding="utf-8")  # noqa: SIM115 - the watcher closes it after child exit
     with _lock:
         active_job = _active_sessions.get(active_key)
         if active_job:
             output.close()
+            stderr.close()
             output_path.unlink(missing_ok=True)
+            stderr_path.unlink(missing_ok=True)
             return _error(
                 "SESSION_BUSY",
                 "This Hermes session already has a running session-control job.",
@@ -294,7 +298,7 @@ def hermes_session_continue(
         proc = subprocess.Popen(
             argv,
             stdout=output,
-            stderr=subprocess.STDOUT,
+            stderr=stderr,
             text=True,
             shell=False,
             env=child_env,
@@ -303,7 +307,9 @@ def hermes_session_continue(
         )
     except (OSError, ValueError) as exc:
         output.close()
+        stderr.close()
         output_path.unlink(missing_ok=True)
+        stderr_path.unlink(missing_ok=True)
         with _lock:
             if _active_sessions.get(active_key) == job_id:
                 _active_sessions.pop(active_key, None)
@@ -324,7 +330,7 @@ def hermes_session_continue(
     )
     threading.Thread(
         target=_watch,
-        args=(job_id, proc, output, safe_timeout, hermes_root),
+        args=(job_id, proc, output, stderr, safe_timeout, hermes_root),
         daemon=True,
     ).start()
     return _redact({
@@ -368,7 +374,14 @@ def _finish_job(
     return meta
 
 
-def _watch(job_id: str, proc: subprocess.Popen[str], output: Any, timeout: int, hermes_root: Path | None) -> None:
+def _watch(
+    job_id: str,
+    proc: subprocess.Popen[str],
+    output: Any,
+    stderr: Any,
+    timeout: int,
+    hermes_root: Path | None,
+) -> None:
     started = time.monotonic()
     deadline = started + timeout
     progress_interval = max(0.1, PROGRESS_EVENT_INTERVAL_SECONDS)
@@ -401,6 +414,7 @@ def _watch(job_id: str, proc: subprocess.Popen[str], output: Any, timeout: int, 
                     next_progress = now + progress_interval
     finally:
         output.close()
+        stderr.close()
     _finish_job(job_id, proc, status, hermes_root)
 
 

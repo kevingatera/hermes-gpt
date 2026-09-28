@@ -44,7 +44,7 @@ No shell is used. Hermes restores the resumed session's recorded working directo
 - Events: `running`, `progress`, and terminal status events are published on the durable `session-job` topic. Progress events are emitted every 15 seconds and contain elapsed time only, never prompts or captured output; the job record remains authoritative after reconnect.
 - Job metadata: stored under the Hermes data root in `session-jobs/`.
 - Prompt privacy: raw prompts are not stored in metadata; only length and SHA-256 digest are retained.
-- Output: captured locally for later result retrieval and redacted before MCP exposure.
+- Output: stdout is captured locally for bounded result retrieval and redacted before MCP exposure. Stderr is kept in a separate local diagnostic file so process warnings do not contaminate the returned answer.
 - Restart behavior: a persisted running job not owned by the current server process is marked `orphaned`; persisted PIDs are never trusted or signaled.
 
 Session control can consume the configured provider's quota or incur provider charges. Do not enable it on an unauthenticated public endpoint, and review returned content before sharing it.
