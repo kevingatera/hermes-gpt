@@ -69,6 +69,14 @@ connection: attaching grants access to its open tabs and login state. The task
 uses that same browser only when `hermes_task_start` receives
 `browser_profile="chatgpt"`; otherwise it creates an isolated browser.
 
+Hermes Agent's `/browser connect` can set `BROWSER_CDP_URL` only in that agent
+process. Hermes GPT reads `browser.cdp_url` from the selected profile and does
+not inspect another process's environment. Hermes Agent's
+`browser.use_real_profile` mode also works from a copy of the normal browser
+profile, not its live tabs. For the same live browser in Hermes and ChatGPT,
+configure both to use the same loopback CDP endpoint and the same dedicated
+Chromium profile.
+
 Browser attachment and page mutations require `dry_run=false` and
 `confirm=true`. Read-only status, snapshots, and tab listings do not. Browser
 tools can reach local and private-network pages, so keep the MCP connection

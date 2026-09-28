@@ -49,6 +49,9 @@ def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -
     assert "deepseek/deepseek-v4.1-flash" in text
     assert "reasoning_effort" in text
     assert "plugin_asdk_app" in text
+    assert "not inspect another process's environment" in text
+    assert "browser.use_real_profile" in text
+    assert "same loopback CDP endpoint" in text
     assert "A2A delegation tools" in text
 
 
