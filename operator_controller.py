@@ -85,7 +85,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import operator_contract as contract_mod
 import operator_delegations as deleg
@@ -95,7 +95,12 @@ import operator_mission_plan as plan
 import operator_mission_runtime as mission
 import operator_placement as placement
 import operator_policy as op
-import operator_runners as runners
+from operator_controller_observation import (
+    HostObservationAdapter,
+    MAX_NODES as MAX_NODES,
+    _latest_delegation as _latest_delegation,
+    build_observation,
+)
 
 # Keep these names available from operator_controller for compatibility.
 from operator_controller_store import (
@@ -313,7 +318,6 @@ AGGREGATE_WINDOW_SECONDS = 24 * 3600.0
 STALE_RECONCILING_SECONDS = 3600.0
 
 MAX_WOULD_BE_COMMANDS = 8
-MAX_NODES = 512
 MAX_PLAN_NODE_LIMIT = 200
 
 
@@ -378,22 +382,6 @@ def _idempotency_key(
 # ---------------------------------------------------------------------------
 
 
-class HostObservationAdapter(Protocol):
-    """Seam (D2) — a deployed controller reads host-kanban signals through this.
-
-    Shadow standalone ships ``NullHostAdapter``: host-only signals are missing,
-    so the classifier fail-closes to ``unknown``/``blocked`` + ``need_attention``
-    (§7.5) rather than guessing. A real deployment injects a host adapter that
-    reads the host Kanban store (worker exit classification, dispatcher breaker,
-    last-failure error) via ``import_hermes`` — never re-implementing it.
-    """
-
-    def worker_exit(self, mission_id: str, node_id: str) -> dict[str, Any] | None: ...
-    def breaker(self, mission_id: str) -> dict[str, Any]: ...
-    def last_failure_error(self, mission_id: str, node_id: str) -> str: ...
-    def capability(self, mission_id: str, node_id: str) -> dict[str, Any] | None: ...
-
-
 class NullHostAdapter:
     """Default for shadow mode: no host signals, so observation is fail-closed."""
 
@@ -408,233 +396,6 @@ class NullHostAdapter:
 
     def capability(self, mission_id: str, node_id: str) -> dict[str, Any] | None:
         return None
-
-
-# ---------------------------------------------------------------------------
-# Frontier selection + observation envelope building
-# ---------------------------------------------------------------------------
-
-INFlight_ORDER = ("failed", "dispatched", "running", "awaiting_review", "validated")
-READY_STATES = ("pending", "blockable")
-NODE_TERMINAL = frozenset({"completed", "failed"})
-
-
-def _read_nodes(db: sqlite3.Connection, mission_id: str) -> list[dict[str, Any]]:
-    rows = db.execute(
-        "SELECT node_id,state,deps,contract_sha256,failure_kind,retries,epoch "
-        "FROM plan_nodes WHERE mission_id=? ORDER BY node_id LIMIT ?",
-        (mission_id, MAX_NODES),
-    ).fetchall()
-    out: list[dict[str, Any]] = []
-    for r in rows:
-        try:
-            deps = json.loads(r["deps"] or "[]")
-        except json.JSONDecodeError:
-            deps = []
-        out.append(
-            {
-                "node_id": r["node_id"],
-                "state": r["state"],
-                "deps": deps if isinstance(deps, list) else [],
-                "contract_sha256": r["contract_sha256"],
-                "failure_kind": r["failure_kind"],
-                "retries": int(r["retries"] or 0),
-                "epoch": int(r["epoch"] or 0),
-            }
-        )
-    return out
-
-
-def _parent_done(nodes: list[dict[str, Any]], node: dict[str, Any]) -> bool:
-    parents = [p for p in node["deps"] if p]
-    if not parents:
-        return True
-    by_id = {n["node_id"]: n for n in nodes}
-    for p in parents:
-        parent = by_id.get(p)
-        if parent is None or parent["state"] != "completed":
-            return False
-    return True
-
-
-def _all_terminal(nodes: list[dict[str, Any]]) -> bool:
-    if not nodes:
-        return False
-    return all(n["state"] in NODE_TERMINAL for n in nodes)
-
-
-def _frontier(nodes: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """Deterministic smallest-action frontier (priority, stable by node_id)."""
-    for state in INFlight_ORDER:
-        for n in nodes:
-            if n["state"] == state:
-                return n
-    for n in nodes:
-        if n["state"] in READY_STATES and _parent_done(nodes, n):
-            return n
-    return None
-
-
-def _mission_plan_meta(db: sqlite3.Connection, mission_id: str) -> dict[str, Any]:
-    row = db.execute(
-        "SELECT status,version,plan_sha256 FROM mission_plans WHERE mission_id=?",
-        (mission_id,),
-    ).fetchone()
-    if not row:
-        return {"exists": False, "status": "", "version": 0, "plan_sha256": ""}
-    return {
-        "exists": True,
-        "status": row["status"],
-        "version": int(row["version"]),
-        "plan_sha256": row["plan_sha256"],
-    }
-
-
-def _replan_attempts_used(db: sqlite3.Connection, mission_id: str) -> int:
-    try:
-        row = db.execute(
-            "SELECT COUNT(*) AS c FROM controller_plan "
-            "WHERE mission_id=? AND row_key='escalate_semantic'",
-            (mission_id,),
-        ).fetchone()
-        return int(row["c"]) if row else 0
-    except sqlite3.Error:
-        return 0
-
-
-def _latest_delegation(
-    hermes_root: Path | None, mission_id: str, contract_sha256: str = ""
-) -> dict[str, Any] | None:
-    """Read authoritative delegation state, optionally bound to a contract.
-
-    When a frontier node supplies a contract hash, never substitute an
-    unrelated mission-level latest delegation: parallel nodes must be observed
-    against their own durable lineage.
-    """
-    dbp = deleg._db_path(hermes_root)
-    if not dbp.is_file():
-        return None
-    try:
-        with deleg._connect(dbp, write=False) as db:
-            if contract_sha256:
-                row = db.execute(
-                    "SELECT delegation_id,task_id,contract_sha256,state,backend_state,outcome,validation_verdict "
-                    "FROM delegations WHERE mission_id=? AND contract_sha256=? "
-                    "ORDER BY updated_at DESC LIMIT 1",
-                    (mission_id, contract_sha256),
-                ).fetchone()
-            else:
-                row = db.execute(
-                    "SELECT delegation_id,task_id,contract_sha256,state,backend_state,outcome,validation_verdict "
-                    "FROM delegations WHERE mission_id=? ORDER BY updated_at DESC LIMIT 1",
-                    (mission_id,),
-                ).fetchone()
-            if not row:
-                return None
-            return dict(row)
-    except (sqlite3.Error, FileNotFoundError):
-        return None
-
-
-def _runner_observation(
-    hermes_root: Path | None, task_id: str
-) -> dict[str, Any] | None:
-    """Best-effort runner observation (authoritative where available)."""
-    if not task_id:
-        return None
-    try:
-        runs = runners.observed_runs(task_id, hermes_root=hermes_root)
-    except (
-        OSError,
-        ValueError,
-        KeyError,
-        TypeError,
-        AttributeError,
-        RuntimeError,
-        sqlite3.Error,
-    ):
-        runs = []
-    if not runs:
-        return None
-    latest = runs[-1] if isinstance(runs, list) and runs else None
-    if not isinstance(latest, dict):
-        return None
-    return {
-        "status": _sanitize(latest.get("status", ""), 64),
-        "outcome": _sanitize(latest.get("outcome", ""), 64),
-        "error": _sanitize(latest.get("error", ""), fs.MAX_ERROR_TEXT),
-    }
-
-
-def build_observation(
-    db: sqlite3.Connection,
-    hermes_root: Path | None,
-    mission_id: str,
-    host: HostObservationAdapter,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Build the authoritative observation envelope + the frontier node.
-
-    Returns ``(env, frontier)`` where ``frontier`` is ``{}`` when there is no
-    actionable plan node (mission-level classification).
-    """
-    mrow = mission._get_row(db, mission_id)
-    spec = json.loads(mrow["spec_json"])
-    mission_status = mrow["status"]
-    final_approval = bool(spec.get("final_approval_required", True))
-
-    nodes = _read_nodes(db, mission_id)
-    frontier = _frontier(nodes) or {}
-    node_id = frontier.get("node_id", "")
-    node_state = frontier.get("state", "")
-    parent_done = _parent_done(nodes, frontier) if frontier else False
-    all_terminal = _all_terminal(nodes)
-    retries = int(frontier.get("retries", 0) or 0)
-    replan_used = _replan_attempts_used(db, mission_id)
-
-    deleg_state: dict[str, Any] | None = None
-    if node_id and frontier.get("contract_sha256"):
-        deleg_state = _latest_delegation(
-            hermes_root, mission_id, str(frontier["contract_sha256"])
-        )
-
-    delegation: dict[str, Any] | None = None
-    runner: dict[str, Any] | None = None
-    task_id = ""
-    if deleg_state:
-        delegation = {
-            "state": deleg_state.get("state", ""),
-            "backend_state": deleg_state.get("backend_state", ""),
-            "outcome": deleg_state.get("outcome", ""),
-            "validation_verdict": deleg_state.get("validation_verdict", ""),
-        }
-        task_id = deleg_state.get("task_id", "")
-        runner = _runner_observation(hermes_root, task_id)
-
-    worker_exit = host.worker_exit(mission_id, node_id)
-    breaker = host.breaker(mission_id)
-    last_error = host.last_failure_error(mission_id, node_id)
-    capability = host.capability(mission_id, node_id)
-
-    env: dict[str, Any] = {
-        "mission": {
-            "status": mission_status,
-            "final_approval_required": final_approval,
-        },
-        "plan": {
-            "node_state": node_state,
-            "parent_done": parent_done,
-            "all_children_terminal": all_terminal,
-            "retries": retries,
-            "replan_attempts_used": replan_used,
-        },
-        "delegation": delegation,
-        "runner": runner,
-        "worker_exit": worker_exit,
-        "last_failure_error": last_error,
-        "capability": capability,
-        "breaker": breaker,
-    }
-    return env, frontier
 
 
 # ---------------------------------------------------------------------------
