@@ -121,3 +121,15 @@ def isolate_operator_environment(monkeypatch):
     for name in _ISOLATED_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HERMES_HOME", str(_hermes_sandbox()))
+
+
+@pytest.fixture(autouse=True)
+def restore_oauth_hooks_between_tests():
+    """Keep build_server's process-global OAuth callbacks from leaking tests."""
+    import oauth_auth
+
+    persist_hook = oauth_auth._persist_hook
+    revocation_hook = oauth_auth._revocation_hook
+    yield
+    oauth_auth.set_persist_hook(persist_hook)
+    oauth_auth.set_revocation_hook(revocation_hook)
