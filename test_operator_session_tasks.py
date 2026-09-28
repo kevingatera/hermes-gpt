@@ -63,6 +63,8 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert result["model"] == "deepseek/deepseek-v4.1-flash"
     assert result["toolsets"] == "file"
     assert result["reasoning_effort"] == "high"
+    task_record = tasks._read_json(tasks._task_path(result["task_id"], root))
+    assert task_record["browser_source"] == "disabled"
     assert wrapped["workspace"] == workspace.resolve()
     assert wrapped["writable"] is False
     assert source_root in wrapped["readonly_paths"]
@@ -109,7 +111,7 @@ def test_task_start_dry_run_reports_selection_without_provider_credentials(
     assert result["changed"] is False
     assert result["model"] == "deepseek/deepseek-v4.1-flash"
     assert result["reasoning_effort"] == "high"
-    assert result["browser_source"] == "isolated"
+    assert result["browser_source"] == "disabled"
     assert not tasks._task_root(root).exists()
 
 
@@ -191,6 +193,8 @@ def test_task_list_is_paginated_and_projects_only_resumable_metadata(
         "model": "deepseek/deepseek-v4.1-flash",
         "reasoning_effort": "high",
         "browser_enabled": True,
+        "browser_source": "isolated",
+        "headed_browser": False,
         "turn_count": 2,
         "created_at": "2026-09-28T10:00:00+00:00",
         "updated_at": "2026-09-28T10:00:00+00:00",
@@ -206,6 +210,43 @@ def test_task_list_is_paginated_and_projects_only_resumable_metadata(
         "must-never-appear",
     ):
         assert private_value not in serialized
+
+
+def test_task_summary_reports_browser_source_without_profile_name():
+    records = [
+        {
+            "task_id": "a" * 32,
+            "browser_enabled": False,
+            "browser_source": "isolated",
+        },
+        {
+            "task_id": "b" * 32,
+            "browser_enabled": True,
+            "browser_source": "hermes_profile",
+            "browser_profile": "private-browser-profile",
+        },
+        {
+            "task_id": "c" * 32,
+            "browser_enabled": True,
+            "browser_source": "isolated",
+            "headed_browser": True,
+        },
+    ]
+    summaries = [tasks._public_task_summary(record) for record in records]
+
+    assert [summary["browser_source"] for summary in summaries] == [
+        "disabled",
+        "hermes_profile",
+        "isolated",
+    ]
+    assert [summary["headed_browser"] for summary in summaries] == [
+        False,
+        False,
+        True,
+    ]
+    serialized = json.dumps(summaries)
+    assert "browser_profile" not in serialized
+    assert "private-browser-profile" not in serialized
 
 
 def test_task_list_validates_pagination_and_scoped_task_gate(monkeypatch, tmp_path):

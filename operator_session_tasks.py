@@ -101,13 +101,28 @@ def _public_task_summary(task: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(turn_count, int) or isinstance(turn_count, bool):
         turn_count = 0
 
+    browser_enabled = task.get("browser_enabled") is True
+    if not browser_enabled:
+        browser_source = "disabled"
+    elif task.get("browser_source") == "hermes_profile":
+        browser_source = "hermes_profile"
+    else:
+        # Older records and unknown values use the isolated-browser default.
+        browser_source = "isolated"
+
     return {
         "task_id": task_id,
         "workspace_id": text_field("workspace_id", 64),
         "status": text_field("status", 32, "unknown"),
         "model": text_field("model", 128, MODEL_ID),
         "reasoning_effort": text_field("reasoning_effort", 32, "high"),
-        "browser_enabled": task.get("browser_enabled") is True,
+        "browser_enabled": browser_enabled,
+        "browser_source": browser_source,
+        "headed_browser": (
+            browser_enabled
+            and browser_source == "isolated"
+            and task.get("headed_browser") is True
+        ),
         "turn_count": max(0, turn_count),
         "created_at": text_field("created_at", 64),
         "updated_at": text_field("updated_at", 64),
@@ -267,6 +282,12 @@ def hermes_task_start(
         profile = runtime._profile_key_source(str(credential_profile or "default"), hermes_root)
         task_id = uuid4().hex
         toolsets = TOOLSETS if browser_enabled else FILE_ONLY_TOOLSETS
+        if not browser_enabled:
+            browser_source = "disabled"
+        elif browser_cdp_port is not None:
+            browser_source = "hermes_profile"
+        else:
+            browser_source = "isolated"
         if policy.effective_dry_run(dry_run):
             return {
                 "success": True,
@@ -278,7 +299,7 @@ def hermes_task_start(
                 "reasoning_effort": reasoning_effort,
                 "toolsets": toolsets,
                 "browser_enabled": browser_enabled,
-                "browser_source": "hermes_profile" if browser_cdp_port is not None else "isolated",
+                "browser_source": browser_source,
                 "headed_browser": headed_browser,
                 "allow_workspace_write": allow_workspace_write,
             }
@@ -318,7 +339,7 @@ def hermes_task_start(
             "reasoning_effort": reasoning_effort,
             "toolsets": toolsets,
             "browser_enabled": browser_enabled,
-            "browser_source": "hermes_profile" if browser_cdp_port is not None else "isolated",
+            "browser_source": browser_source,
             "headed_browser": headed_browser,
             "session_id": "",
             "latest_job_id": "",
