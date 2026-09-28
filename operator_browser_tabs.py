@@ -11,7 +11,7 @@ _MAX_TABS = 20
 _MAX_TAB_TITLE_CHARS = 240
 _MAX_TAB_URL_CHARS = 2_048
 _TAB_ID_RE = re.compile(r"^t[1-9][0-9]{0,5}$")
-_TAB_LABEL_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+_TAB_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 
 
 def validate_tab_reference(value: Any) -> str | None:

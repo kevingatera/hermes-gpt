@@ -44,6 +44,48 @@ def test_browser_actions_require_dry_run_or_explicit_confirmation(monkeypatch, t
     assert calls == [(task_home, "navigate", ["https://example.com"])]
 
 
+def test_task_tabs_are_read_only_and_selection_keeps_mutation_gates(monkeypatch, tmp_path):
+    task_id = "c" * 32
+    data_root = tmp_path / "hermes-home"
+    task_home = data_root / "profiles" / task_id
+    task_home.mkdir(parents=True)
+    monkeypatch.setenv("HERMES_HOME", str(data_root))
+    monkeypatch.setenv(tasks.ENABLE_SCOPED_TASKS_ENV, "1")
+    monkeypatch.setenv(tasks.op.OPERATOR_ENABLED_ENV, "1")
+    monkeypatch.setenv(tasks.op.OPERATOR_LEVEL_ENV, "workspace")
+    monkeypatch.setenv(tasks.op.OPERATOR_APPLY_MODE_ENV, "direct")
+    tasks._write_json(tasks._task_path(task_id, data_root), {
+        "task_id": task_id,
+        "task_home": str(task_home),
+        "browser_enabled": True,
+    })
+    calls = []
+    monkeypatch.setattr(
+        controls.browser,
+        "browser_command",
+        lambda home, command, args: calls.append((home, command, args))
+        or {"success": True, "data": {"tabs": []}},
+    )
+
+    listed = controls.hermes_task_browser_tabs(task_id)
+    dry_run = controls.hermes_task_browser_select_tab(task_id, "t2")
+    unconfirmed = controls.hermes_task_browser_select_tab(
+        task_id, "t2", confirm=False, dry_run=False
+    )
+    selected = controls.hermes_task_browser_select_tab(
+        task_id, "t2", confirm=True, dry_run=False
+    )
+
+    assert listed["success"] is True
+    assert dry_run["dry_run"] is True
+    assert unconfirmed["code"] == "CONFIRMATION_REQUIRED"
+    assert selected["success"] is True
+    assert calls == [
+        (task_home, "tab", ["list"]),
+        (task_home, "tab", ["select", "t2"]),
+    ]
+
+
 def test_attached_profile_browser_cannot_be_restarted(monkeypatch, tmp_path):
     task_id = "b" * 32
     data_root = tmp_path / "hermes-home"
@@ -142,6 +184,44 @@ def test_direct_browser_profile_actions_require_confirmation(monkeypatch, tmp_pa
     assert applied["success"] is True
     assert len(calls) == 1
     assert calls[0][1:] == ("navigate", ["https://example.com"])
+
+
+def test_direct_profile_tabs_are_read_only_and_selection_is_confirmed(
+    monkeypatch, tmp_path
+):
+    _configure_direct_profile_browser(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        profile_controls.browser,
+        "browser_session_state",
+        lambda _home: {"success": True, "browser": {"status": "running"}},
+    )
+    calls = []
+    monkeypatch.setattr(
+        profile_controls.browser,
+        "browser_command",
+        lambda home, command, args: calls.append((home, command, args))
+        or {"success": True, "data": {"tabs": []}},
+    )
+
+    listed = profile_controls.hermes_browser_profile_tabs("browser")
+    dry_run = profile_controls.hermes_browser_profile_select_tab("browser", "t2")
+    unconfirmed = profile_controls.hermes_browser_profile_select_tab(
+        "browser", "t2", confirm=False, dry_run=False
+    )
+    selected = profile_controls.hermes_browser_profile_select_tab(
+        "browser", "t2", confirm=True, dry_run=False
+    )
+
+    assert listed["success"] is True
+    assert listed["profile"] == "browser"
+    assert dry_run["dry_run"] is True
+    assert unconfirmed["code"] == "CONFIRMATION_REQUIRED"
+    assert selected["success"] is True
+    assert [(command, args) for _home, command, args in calls] == [
+        ("tab", ["list"]),
+        ("tab", ["select", "t2"]),
+    ]
+    assert calls[0][0] == calls[1][0]
 
 
 def test_profile_attach_does_not_return_internal_browser_task_id(

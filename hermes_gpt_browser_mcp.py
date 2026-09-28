@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from mcp.types import ToolAnnotations
+
 from mcp_compat import HermesMCP
 from operator_browser import browser_state_file_command
 
@@ -55,9 +57,18 @@ def build_server(state_file: Path) -> HermesMCP:
         return browser_state_file_command(state_file, "press", [key])
 
     server.add_tool(browser_navigate)
-    server.add_tool(browser_snapshot, meta={"annotations": {"readOnlyHint": True}})
-    server.add_tool(browser_tabs, meta={"annotations": {"readOnlyHint": True}})
-    server.add_tool(browser_select_tab)
+    server.add_tool(
+        browser_snapshot,
+        annotations=ToolAnnotations(readOnlyHint=True),
+    )
+    server.add_tool(
+        browser_tabs,
+        annotations=ToolAnnotations(readOnlyHint=True),
+    )
+    server.add_tool(
+        browser_select_tab,
+        annotations=ToolAnnotations(destructiveHint=True),
+    )
     server.add_tool(browser_click)
     server.add_tool(browser_type)
     server.add_tool(browser_scroll)
