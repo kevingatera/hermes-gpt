@@ -150,6 +150,35 @@ def test_default_tool_surface_is_read_or_local_metadata_only(monkeypatch):
         assert tool.meta == {"securitySchemes": [{"type": "noauth"}]}
 
 
+def test_operator_status_uses_extracted_runtime_status_builder(monkeypatch, tmp_path):
+    class FakePolicy:
+        enabled = True
+        level = "workspace"
+        apply_mode = "direct"
+        owner_active = False
+        owner_mode_ready = False
+
+    agent_root = tmp_path / "agent"
+    default_root = tmp_path / "hermes-home"
+    monkeypatch.setattr(server.op_policy, "OperatorPolicy", FakePolicy)
+    monkeypatch.setattr(server.op_policy, "audit_log_path", lambda: tmp_path / "audit.jsonl")
+    monkeypatch.setattr(server, "HERMES_ROOT", agent_root)
+    monkeypatch.setattr(server, "_default_hermes_root", lambda: default_root)
+    monkeypatch.setattr(server, "_active_profile_name", lambda: "project")
+
+    result = json.loads(server.hermes_operator_status())
+
+    assert result["success"] is True
+    assert result["hermes_agent_root"] == str(agent_root)
+    assert result["default_hermes_root"] == str(default_root)
+    assert result["active_profile"] == "project"
+    assert result["level"] == "workspace"
+    assert result["registered_operator_tools"] == list(
+        server.op_status.REGISTERED_OPERATOR_TOOLS
+    )
+    assert result["audit_log_path"] == str(tmp_path / "audit.jsonl")
+
+
 def test_env_gates_expose_high_risk_tools(monkeypatch):
     clear_gate_envs(monkeypatch)
     monkeypatch.setenv(server.ENABLE_WRITE_ENV, "1")

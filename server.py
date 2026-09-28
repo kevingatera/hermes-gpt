@@ -26,6 +26,7 @@ import operator_policy as op_policy
 import operator_recovery as op_recovery
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
+import operator_status as op_status
 import operator_swarm as op_swarm
 import server_http as http_server
 from hermes_session_history import (
@@ -764,132 +765,13 @@ def hermes_operator_policy() -> str:
 def hermes_operator_status() -> str:
     """Return operator runtime status. Read-only. Never secrets."""
     try:
-        policy = op_policy.OperatorPolicy()
-        project_path = str(Path(__file__).resolve().parent)
-        agent_root = str(HERMES_ROOT) if HERMES_ROOT else None
-        default_root = str(_default_hermes_root()) if _default_hermes_root() else None
-        active_profile = _active_profile_name()
-
-        # Discover registered operator tools by checking this module's
-        # attributes. We list the names we explicitly register below.
-        registered = [
-            "hermes_operator_policy",
-            "hermes_operator_status",
-            "hermes_operator_audit_tail",
-            "hermes_operator_doctor",
-            "hermes_operator_snapshot",
-            "hermes_release_doctor",
-            "hermes_operator_recover",
-            "hermes_cron_list",
-            "hermes_cron_status",
-            "hermes_skill_diff",
-            "hermes_config_get",
-            "hermes_env_status",
-            "hermes_gateway_status",
-            "hermes_git_status",
-            "hermes_git_diff",
-            "hermes_cron_run",
-            "hermes_cron_pause",
-            "hermes_cron_create",
-            "hermes_cron_copy",
-            "hermes_cron_move",
-            "hermes_skill_create",
-            "hermes_skill_edit",
-            "hermes_skill_patch",
-            "hermes_skill_write_file",
-            "hermes_skill_copy",
-            "hermes_skill_sync_to_default",
-            "hermes_skill_delete",
-            "hermes_config_set",
-            "hermes_config_patch",
-            "hermes_env_set_nonsecret",
-            "hermes_env_copy_nonsecret",
-            "hermes_gateway_restart",
-            "hermes_workspace_read",
-            "hermes_export_file",
-            "hermes_workspace_patch",
-            "hermes_workspace_write_file",
-            "hermes_workspace_run_test",
-            "hermes_owner_run_command",
-            "hermes_owner_patch",
-            "hermes_owner_write_file",
-            "hermes_fleet_list",
-            "hermes_fleet_status",
-            "hermes_fleet_dispatch",
-            "hermes_fleet_dispatch_work_order",
-            "hermes_fleet_task",
-            "hermes_fleet_result",
-            "hermes_fleet_authority_drift",
-            "hermes_mission_overview",
-            "hermes_mission_health",
-            "hermes_mission_profiles",
-            "hermes_mission_fleet",
-            "hermes_mission_codex",
-            "hermes_mission_cron",
-            "hermes_mission_delegations",
-            "hermes_mission_failures",
-            "hermes_mission_approvals",
-            "hermes_mission_vault",
-            "hermes_mission_usage",
-            "hermes_mission_audit",
-            "hermes_mission_create",
-            "hermes_mission_get",
-            "hermes_mission_list",
-            "hermes_mission_update",
-            "hermes_mission_attach",
-            "hermes_mission_reconcile",
-            "hermes_mission_transition",
-            "hermes_mission_approve",
-            "hermes_plan_create",
-            "hermes_plan_get",
-            "hermes_plan_list",
-            "hermes_plan_validate",
-            "hermes_plan_decompose",
-            "hermes_plan_review",
-            "hermes_plan_node_transition",
-            "hermes_plan_set_status",
-            "hermes_budget_set",
-            "hermes_budget_get",
-            "hermes_budget_check",
-            "hermes_budget_record",
-            "hermes_placement_score",
-            "hermes_placement_candidates",
-            "hermes_placement_get",
-            "hermes_placement_list",
-            "hermes_failure_classify",
-            "hermes_failure_taxonomy",
-            "hermes_recovery_matrix",
-            "hermes_controller_plan_list",
-            "hermes_live_events_cursor",
-            "hermes_live_events_since",
-            "hermes_contract_define",
-            "hermes_contract_dispatch",
-            "hermes_contract_validate",
-            "hermes_contract_status",
-            "hermes_runner_list",
-            "hermes_runner_status",
-            "hermes_runner_cancel",
-            "hermes_delegation_dispatch",
-            "hermes_delegation_get",
-            "hermes_delegation_list",
-            "hermes_delegation_reconcile",
-            "hermes_delegation_cancel",
-        ]
-        result = {
-            "success": True,
-            "hermes_gpt_project_path": project_path,
-            "hermes_agent_root": agent_root,
-            "default_hermes_root": default_root,
-            "active_profile": active_profile,
-            "enabled": policy.enabled,
-            "level": policy.level,
-            "apply_mode": policy.apply_mode,
-            "owner_active": policy.owner_active,
-            "owner_mode_ready": policy.owner_mode_ready,
-            "registered_operator_tools": registered,
-            "audit_log_path": str(op_policy.audit_log_path()),
-        }
-        return json.dumps(result, indent=2)
+        default_root = _default_hermes_root()
+        return op_status.build_operator_status(
+            project_path=str(Path(__file__).resolve().parent),
+            agent_root=str(HERMES_ROOT) if HERMES_ROOT else None,
+            default_root=str(default_root) if default_root else None,
+            active_profile=_active_profile_name(),
+        )
     except Exception as exc:
         return json.dumps(
             op_policy.error_from_exception(
