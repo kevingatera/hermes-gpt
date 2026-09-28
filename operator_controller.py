@@ -736,7 +736,7 @@ def _apply_l2_execution(
     tier: str,
     tier_reasons: list[str],
 ) -> tuple[str, list[str]]:
-    """Apply L2 execution state to the pending plan and pass envelope.
+    """Apply dispatch state to the pending plan and pass envelope.
 
     The execution intent is persisted before dispatch. This helper updates
     ``record`` and ``pass_env`` in place and returns any tier change.
