@@ -13,6 +13,7 @@ import operator_policy as op
 import operator_session as sessions
 import operator_session_job_store as session_store
 import operator_session_tasks as tasks
+from operator_browser_state import _ensure_private_directory
 
 
 @dataclass(frozen=True)
@@ -81,7 +82,7 @@ def _ensure_profile_browser_home(target: ProfileBrowserTarget) -> None:
     ):
         resolved_path = path.resolve()
         resolved_path.relative_to(root)
-        browser._ensure_private_directory(path)
+        _ensure_private_directory(path)
 
 
 def hermes_browser_profile_list() -> dict[str, Any]:

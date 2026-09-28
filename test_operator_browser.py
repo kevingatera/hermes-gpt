@@ -8,6 +8,15 @@ from uuid import uuid4
 import pytest
 
 import operator_browser as browser
+import operator_browser_state as browser_state
+
+
+def _use_test_browser_executable(monkeypatch, executable):
+    def resolver(_root):
+        return str(executable)
+
+    monkeypatch.setattr(browser, "_browser_executable", resolver)
+    monkeypatch.setattr(browser_state, "_browser_executable", resolver)
 
 
 def test_browser_state_is_outside_the_writable_task_home(monkeypatch, tmp_path):
@@ -17,7 +26,7 @@ def test_browser_state_is_outside_the_writable_task_home(monkeypatch, tmp_path):
     executable = tmp_path / "bin" / "agent-browser"
     executable.parent.mkdir()
     executable.write_text("browser cli", encoding="utf-8")
-    monkeypatch.setattr(browser, "_browser_executable", lambda _root: str(executable))
+    _use_test_browser_executable(monkeypatch, executable)
     monkeypatch.setattr(browser, "_run", lambda *_args, **_kwargs: {"success": True, "data": {}})
 
     started = browser.create_browser_session(task_id, task_home, None)
@@ -34,7 +43,7 @@ def test_browser_state_is_outside_the_writable_task_home(monkeypatch, tmp_path):
     assert browser.browser_command(task_home, "close")["success"] is True
     assert browser.browser_session_state(task_home)["browser"]["status"] == "closed"
     browser.delete_browser_state(task_home)
-    shutil.rmtree(browser._socket_path(task_id), ignore_errors=True)
+    shutil.rmtree(browser_state._socket_path(task_id), ignore_errors=True)
 
 
 def test_browser_state_migrates_from_shared_descriptor_directory(monkeypatch, tmp_path):
@@ -44,12 +53,12 @@ def test_browser_state_migrates_from_shared_descriptor_directory(monkeypatch, tm
     executable = tmp_path / "bin" / "agent-browser"
     executable.parent.mkdir()
     executable.write_text("browser cli", encoding="utf-8")
-    monkeypatch.setattr(browser, "_browser_executable", lambda _root: str(executable))
+    _use_test_browser_executable(monkeypatch, executable)
     monkeypatch.setattr(browser, "_run", lambda *_args, **_kwargs: {"success": True, "data": {}})
     browser.create_browser_session(task_id, task_home, None)
 
-    current_path = browser._state_path(task_home)
-    legacy_path = browser._legacy_state_path(task_home)
+    current_path = browser_state._state_path(task_home)
+    legacy_path = browser_state._legacy_state_path(task_home)
     legacy_path.parent.mkdir(parents=True, exist_ok=True)
     current_path.replace(legacy_path)
     current_path.parent.rmdir()
@@ -61,7 +70,7 @@ def test_browser_state_migrates_from_shared_descriptor_directory(monkeypatch, tm
     assert not legacy_path.exists()
     assert browser.browser_state_file_command(migrated_path, "snapshot")["success"] is True
     browser.delete_browser_state(task_home)
-    shutil.rmtree(browser._socket_path(task_id), ignore_errors=True)
+    shutil.rmtree(browser_state._socket_path(task_id), ignore_errors=True)
 
 
 def test_browser_rejects_malformed_urls_before_running_command(monkeypatch, tmp_path):
@@ -71,7 +80,7 @@ def test_browser_rejects_malformed_urls_before_running_command(monkeypatch, tmp_
     executable = tmp_path / "bin" / "agent-browser"
     executable.parent.mkdir()
     executable.write_text("browser cli", encoding="utf-8")
-    monkeypatch.setattr(browser, "_browser_executable", lambda _root: str(executable))
+    _use_test_browser_executable(monkeypatch, executable)
     monkeypatch.setattr(browser, "_run", lambda *_args, **_kwargs: {"success": True, "data": {}})
     browser.create_browser_session(task_id, task_home, None)
     monkeypatch.setattr(browser, "_run", lambda *_args, **_kwargs: pytest.fail("invalid URL reached the browser"))
@@ -81,7 +90,7 @@ def test_browser_rejects_malformed_urls_before_running_command(monkeypatch, tmp_
     assert result["success"] is False
     assert result["code"] == "INVALID_URL"
     browser.delete_browser_state(task_home)
-    shutil.rmtree(browser._socket_path(task_id), ignore_errors=True)
+    shutil.rmtree(browser_state._socket_path(task_id), ignore_errors=True)
 
 
 def test_browser_session_status_redacts_current_url_secrets(monkeypatch, tmp_path):
@@ -124,7 +133,7 @@ def test_browser_restart_reuses_its_socket_directory(monkeypatch, tmp_path):
     executable = tmp_path / "bin" / "agent-browser"
     executable.parent.mkdir()
     executable.write_text("browser cli", encoding="utf-8")
-    monkeypatch.setattr(browser, "_browser_executable", lambda _root: str(executable))
+    _use_test_browser_executable(monkeypatch, executable)
     commands = []
 
     def run(_state, command, *_args, **_kwargs):
@@ -133,7 +142,7 @@ def test_browser_restart_reuses_its_socket_directory(monkeypatch, tmp_path):
 
     monkeypatch.setattr(browser, "_run", run)
     assert browser.create_browser_session(task_id, task_home, None)["success"] is True
-    socket_dir = browser._socket_path(task_id)
+    socket_dir = browser_state._socket_path(task_id)
 
     restarted = browser.create_browser_session(task_id, task_home, None)
 
@@ -151,7 +160,7 @@ def test_profile_browser_uses_port_only_and_cannot_be_closed(monkeypatch, tmp_pa
     executable = tmp_path / "bin" / "agent-browser"
     executable.parent.mkdir()
     executable.write_text("browser cli", encoding="utf-8")
-    monkeypatch.setattr(browser, "_browser_executable", lambda _root: str(executable))
+    _use_test_browser_executable(monkeypatch, executable)
     calls = []
 
     def run(argv, **kwargs):
@@ -177,4 +186,4 @@ def test_profile_browser_uses_port_only_and_cannot_be_closed(monkeypatch, tmp_pa
     assert len(calls) == 1
 
     browser.delete_browser_state(task_home)
-    shutil.rmtree(browser._socket_path(task_id), ignore_errors=True)
+    shutil.rmtree(browser_state._socket_path(task_id), ignore_errors=True)

@@ -75,6 +75,7 @@ py-modules = [
   "operator_session_browser",
   "operator_profile_browser",
   "operator_browser",
+  "operator_browser_state",
   "operator_browser_profiles",
   "operator_browser_tabs",
   "hermes_gpt_browser_mcp",
