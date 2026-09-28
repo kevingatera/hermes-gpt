@@ -14,7 +14,9 @@ from types import SimpleNamespace
 import pytest
 from starlette.testclient import TestClient
 
+import hermes_session_history as session_history
 import oauth_auth
+import operator_status as op_status
 import server
 import versioning
 from conftest import wire
@@ -174,7 +176,7 @@ def test_operator_status_uses_extracted_runtime_status_builder(monkeypatch, tmp_
     assert result["active_profile"] == "project"
     assert result["level"] == "workspace"
     assert result["registered_operator_tools"] == list(
-        server.op_status.REGISTERED_OPERATOR_TOOLS
+        op_status.REGISTERED_OPERATOR_TOOLS
     )
     assert result["audit_log_path"] == str(tmp_path / "audit.jsonl")
 
@@ -322,7 +324,6 @@ def test_web_extract_proxies_to_web_tool_when_enabled(monkeypatch):
     clear_gate_envs(monkeypatch)
     monkeypatch.setenv(server.ENABLE_WEB_ENV, "1")
     captured = {}
-    import asyncio
 
     async def fake_web_extract(**kwargs):
         captured.update(kwargs)
@@ -342,7 +343,6 @@ def test_vision_analyze_proxies_to_vision_tool_when_enabled(monkeypatch):
     clear_gate_envs(monkeypatch)
     monkeypatch.setenv(server.ENABLE_VISION_ENV, "1")
     captured = {}
-    import asyncio
 
     async def fake_vision(**kwargs):
         captured.update(kwargs)
@@ -366,7 +366,6 @@ def test_vision_analyze_defaults_prompt_when_question_empty(monkeypatch):
     clear_gate_envs(monkeypatch)
     monkeypatch.setenv(server.ENABLE_VISION_ENV, "1")
     captured = {}
-    import asyncio
 
     async def fake_vision(**kwargs):
         captured.update(kwargs)
@@ -681,7 +680,7 @@ def test_phase1_adapter_disposes_on_exception_path():
         raise ValueError("C:\\Users\\example\\secret-token=sk-test-value")
     except ValueError as exc:
         adapter.dispose_safely()
-        assert "[REDACTED_PATH]" in server._redact_error(exc)
+        assert "[REDACTED_PATH]" in session_history.redact_error(exc)
     assert connection.close_calls == 1
 
 
@@ -735,45 +734,52 @@ def test_phase1_adapter_uses_only_verified_public_data_methods():
 @pytest.mark.parametrize("value", [-1, -10])
 def test_phase1_bounds_reject_negative_values(value):
     with pytest.raises(ValueError):
-        server._validate_limit(value, "limit", server.MAX_PAGE_SIZE)
+        session_history.validate_limit(value, "limit", session_history.MAX_PAGE_SIZE)
     with pytest.raises(ValueError):
-        server._validate_offset(value)
+        session_history.validate_offset(value)
 
 
 def test_phase1_bounds_enforce_maxima_and_ids():
-    assert server._validate_limit(server.MAX_PAGE_SIZE, "limit", server.MAX_PAGE_SIZE) == server.MAX_PAGE_SIZE
-    assert server._validate_offset(server.MAX_OFFSET) == server.MAX_OFFSET
+    assert (
+        session_history.validate_limit(
+            session_history.MAX_PAGE_SIZE,
+            "limit",
+            session_history.MAX_PAGE_SIZE,
+        )
+        == session_history.MAX_PAGE_SIZE
+    )
+    assert session_history.validate_offset(session_history.MAX_OFFSET) == session_history.MAX_OFFSET
     with pytest.raises(ValueError):
-        server._validate_limit(server.MAX_PAGE_SIZE + 1, "limit", server.MAX_PAGE_SIZE)
+        session_history.validate_limit(session_history.MAX_PAGE_SIZE + 1, "limit", session_history.MAX_PAGE_SIZE)
     with pytest.raises(ValueError):
-        server._validate_offset(server.MAX_OFFSET + 1)
+        session_history.validate_offset(session_history.MAX_OFFSET + 1)
     with pytest.raises(ValueError):
-        server._validate_session_id("")
+        session_history.validate_session_id("")
     with pytest.raises(ValueError):
-        server._validate_session_id("x" * (server.MAX_ID_LENGTH + 1))
-    assert server._validate_query("  query  ") == "query"
+        session_history.validate_session_id("x" * (session_history.MAX_ID_LENGTH + 1))
+    assert session_history.validate_query("  query  ") == "query"
     with pytest.raises(ValueError):
-        server._validate_query("")
+        session_history.validate_query("")
     with pytest.raises(ValueError):
-        server._validate_query("q" * (server.MAX_QUERY_LENGTH + 1))
+        session_history.validate_query("q" * (session_history.MAX_QUERY_LENGTH + 1))
 
 
 def test_phase1_elevated_content_gate_and_default_roles(monkeypatch):
-    monkeypatch.delenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, raising=False)
-    assert server._allowed_message_roles() == {"user", "assistant"}
-    with pytest.raises(RuntimeError, match=server.ENABLE_SESSION_INTERNAL_CONTENT_ENV):
-        server._allowed_message_roles(include_system_messages=True)
-    with pytest.raises(RuntimeError, match=server.ENABLE_SESSION_INTERNAL_CONTENT_ENV):
-        server._allowed_message_roles(include_tool_messages=True)
-    monkeypatch.setenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, "1")
-    assert server._allowed_message_roles(
+    monkeypatch.delenv(session_history.INTERNAL_CONTENT_ENV, raising=False)
+    assert session_history.allowed_message_roles() == {"user", "assistant"}
+    with pytest.raises(RuntimeError, match=session_history.INTERNAL_CONTENT_ENV):
+        session_history.allowed_message_roles(include_system_messages=True)
+    with pytest.raises(RuntimeError, match=session_history.INTERNAL_CONTENT_ENV):
+        session_history.allowed_message_roles(include_tool_messages=True)
+    monkeypatch.setenv(session_history.INTERNAL_CONTENT_ENV, "1")
+    assert session_history.allowed_message_roles(
         include_system_messages=True,
         include_tool_messages=True,
     ) == {"user", "assistant", "system", "tool", "function"}
 
 
 def test_phase1_projection_and_redaction_helpers():
-    metadata = server._safe_session_metadata({
+    metadata = session_history.safe_session_metadata({
         "id": "session-1",
         "source": "cli",
         "started_at": 1.0,
@@ -788,11 +794,11 @@ def test_phase1_projection_and_redaction_helpers():
     assert "cwd" not in metadata
     assert metadata["has_title"] is True
 
-    assert server._safe_message(
+    assert session_history.safe_message(
         {"id": 1, "session_id": "session-1", "role": "system", "content": "secret"},
         {"user", "assistant"},
     ) is None
-    message = server._safe_message(
+    message = session_history.safe_message(
         {"id": 2, "session_id": "session-1", "role": "user", "content": "token=sk-test-value"},
         {"user", "assistant"},
     )
@@ -801,9 +807,9 @@ def test_phase1_projection_and_redaction_helpers():
 
 
 def test_phase1_safe_message_cannot_bypass_internal_gate(monkeypatch):
-    monkeypatch.delenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, raising=False)
-    with pytest.raises(RuntimeError, match=server.ENABLE_SESSION_INTERNAL_CONTENT_ENV):
-        server._safe_message(
+    monkeypatch.delenv(session_history.INTERNAL_CONTENT_ENV, raising=False)
+    with pytest.raises(RuntimeError, match=session_history.INTERNAL_CONTENT_ENV):
+        session_history.safe_message(
             {"role": "system", "session_id": "session-1", "content": "hidden"},
             {"system"},
         )
@@ -846,7 +852,7 @@ def test_phase1_adapter_projects_raw_rows_before_returning(monkeypatch):
     assert "system_prompt" not in rows[0]
     assert "tool_calls" not in rows[0]
 
-    monkeypatch.setenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, "1")
+    monkeypatch.setenv(session_history.INTERNAL_CONTENT_ENV, "1")
     rows = adapter.get_messages(
         "session-1",
         limit=10,
@@ -912,7 +918,7 @@ def test_phase1_recursive_redaction_covers_nested_values_and_safe_ids():
             ],
         },
     }
-    redacted = server._redact_value(value)
+    redacted = session_history.redact_value(value)
     assert redacted["session_id"] == "session-1"
     assert redacted["nested"]["api_key"] == "[REDACTED]"
     assert redacted["nested"]["items"][0] == "[REDACTED_PATH]"
@@ -923,7 +929,7 @@ def test_phase1_recursive_redaction_covers_nested_values_and_safe_ids():
 
 def test_phase1_bool_validation_and_archived_forwarding():
     with pytest.raises(ValueError):
-        server._validate_bool(1, "include_archived")
+        session_history.validate_bool(1, "include_archived")
     connection = _Phase1FakeConnection()
     fake_db = _Phase1FakeSessionDB(connection)
     factory, _ = _phase1_adapter_factory(fake_db)
@@ -1303,19 +1309,19 @@ def test_phase2_session_read_filters_and_resolves_ids(monkeypatch):
     assert prefix_result["success"] is True
     assert prefix_result["session_id"] == "session-1"
 
-    monkeypatch.setenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, "1")
+    monkeypatch.setenv(session_history.INTERNAL_CONTENT_ENV, "1")
     elevated = json.loads(server.hermes_session_read("session-1", include_tool_messages=True))
     assert {row["role"] for row in elevated["messages"]} == {"user", "assistant", "tool"}
 
 
 def test_phase2_session_read_denies_internal_roles_without_gate(monkeypatch):
     monkeypatch.setenv(server.ENABLE_SESSION_SEARCH_ENV, "1")
-    monkeypatch.delenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, raising=False)
+    monkeypatch.delenv(session_history.INTERNAL_CONTENT_ENV, raising=False)
     monkeypatch.setattr(server, "require_imports", lambda: None)
     result = json.loads(server.hermes_session_read("session-1", include_tool_messages=True))
     assert result["success"] is False
     assert result["error"]["code"] == "SESSION_READ_FAILED"
-    assert server.ENABLE_SESSION_INTERNAL_CONTENT_ENV in result["error"]["message"]
+    assert session_history.INTERNAL_CONTENT_ENV in result["error"]["message"]
 
 
 def test_phase2_session_read_rejects_missing_and_ambiguous_ids(monkeypatch):
@@ -1341,9 +1347,9 @@ def test_phase2_response_size_is_enforced():
     "call",
     [
         lambda: server.hermes_session_list(limit=101),
-        lambda: server.hermes_session_list(offset=server.MAX_OFFSET + 1),
+        lambda: server.hermes_session_list(offset=session_history.MAX_OFFSET + 1),
         lambda: server.hermes_session_read("session-1", limit=101),
-        lambda: server.hermes_session_read("session-1", offset=server.MAX_OFFSET + 1),
+        lambda: server.hermes_session_read("session-1", offset=session_history.MAX_OFFSET + 1),
     ],
 )
 def test_phase2_tool_bounds_fail_closed(monkeypatch, call):
@@ -1409,7 +1415,12 @@ def test_phase3_session_export_json_and_markdown_without_files(monkeypatch, tmp_
 def test_phase3_export_limits_truncation_and_lineage_fail_closed(monkeypatch):
     monkeypatch.setenv(server.ENABLE_SESSION_SEARCH_ENV, "1")
     monkeypatch.setattr(server, "require_imports", lambda: None)
-    too_many = json.loads(server.hermes_session_export("session-1", limit=server.MAX_EXPORT_MESSAGES + 1))
+    too_many = json.loads(
+        server.hermes_session_export(
+            "session-1",
+            limit=session_history.MAX_EXPORT_MESSAGES + 1,
+        )
+    )
     assert too_many["success"] is False
 
     connection = sqlite3.connect(":memory:")
@@ -1433,12 +1444,12 @@ def test_phase3_export_limits_truncation_and_lineage_fail_closed(monkeypatch):
 
 def test_phase3_export_elevated_content_denial_and_approval(monkeypatch):
     monkeypatch.setenv(server.ENABLE_SESSION_SEARCH_ENV, "1")
-    monkeypatch.delenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, raising=False)
+    monkeypatch.delenv(session_history.INTERNAL_CONTENT_ENV, raising=False)
     monkeypatch.setattr(server, "require_imports", lambda: None)
     denied = json.loads(server.hermes_session_export("session-1", include_tool_messages=True))
     assert denied["success"] is False
 
-    monkeypatch.setenv(server.ENABLE_SESSION_INTERNAL_CONTENT_ENV, "1")
+    monkeypatch.setenv(session_history.INTERNAL_CONTENT_ENV, "1")
     connection = _Phase1FakeConnection()
     fake_db = _Phase1FakeSessionDB(
         connection,
@@ -1494,9 +1505,9 @@ def test_phase3_search_fts_unavailable_guidance(monkeypatch):
 
 
 def test_phase1_utf8_response_bytes():
-    assert server._utf8_response_bytes("abc") == 3
-    assert server._utf8_response_bytes("é") == 2
-    assert server._utf8_response_bytes("🙂") == 4
+    assert session_history.utf8_response_bytes("abc") == 3
+    assert session_history.utf8_response_bytes("é") == 2
+    assert session_history.utf8_response_bytes("🙂") == 4
 
 
 def test_phase1_existing_tool_surface_remains_unchanged(monkeypatch):

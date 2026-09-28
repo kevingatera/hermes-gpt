@@ -16,39 +16,13 @@ import operator_finance as op_finance
 import operator_policy as op_policy
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
-import operator_status as op_status
-import operator_swarm as op_swarm
 import server_codex_tools as codex_tools
 import server_hermes_runtime as hermes_runtime
 import server_hermes_tools as hermes_tools
 import server_http as http_server
 import server_skill_tools as skill_tools
-from hermes_session_history import (
-    INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
-    MAX_EXPORT_MESSAGES,
-    MAX_ID_LENGTH,
-    MAX_LIST_LIMIT,
-    MAX_MESSAGE_SCAN_ROWS,
-    MAX_OFFSET,
-    MAX_PAGE_SIZE,
-    MAX_QUERY_LENGTH,
-    ReadOnlySessionStore,
-    SessionSearchUnavailable as _SessionSearchUnavailable,
-    allowed_message_roles as _allowed_message_roles,
-    redact_error as _redact_error,
-    redact_text as _redact_text,
-    redact_value as _redact_value,
-    safe_message as _safe_message,
-    safe_search_message as _safe_search_message,
-    safe_session_metadata as _safe_session_metadata,
-    utf8_response_bytes as _utf8_response_bytes,
-    validate_bool as _validate_bool,
-    validate_limit as _validate_limit,
-    validate_offset as _validate_offset,
-    validate_profile as _validate_profile,
-    validate_query as _validate_query,
-    validate_session_id as _validate_session_id,
-)
+from hermes_session_history import ReadOnlySessionStore
+from hermes_session_history import validate_profile as _validate_profile
 from server_fleet_tools import FleetTools
 from server_hermes_profile_tools import HermesProfileTools
 from server_job_tools import DurableJobTools
@@ -136,21 +110,21 @@ def import_hermes() -> None:
             from tools import vision_tools as vt
 
             vision_tool = vt
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Optional integration failures must not disable core tools.
             eprint(f"hermes-gpt: vision tool unavailable: {exc}")
 
         try:
             from tools import web_tools as wt
 
             web_tool = wt
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Optional integration failures must not disable core tools.
             eprint(f"hermes-gpt: web tool unavailable: {exc}")
 
         try:
             from tools import skill_manager_tool as smt
 
             skill_manager_tool = smt
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Optional integration failures must not disable core tools.
             eprint(f"hermes-gpt: skill manager unavailable: {exc}")
 
         try:
@@ -159,9 +133,9 @@ def import_hermes() -> None:
 
             SessionDB = SDB
             get_hermes_home = ghh
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - Session history is optional at startup.
             eprint(f"hermes-gpt: session search unavailable: {exc}")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - Keep the server importable when Hermes is unavailable.
         IMPORT_ERROR = str(exc)
         eprint(f"hermes-gpt: Hermes imports failed: {exc}")
 
@@ -401,7 +375,7 @@ def _active_profile_name() -> str:
                 if idx + 1 < len(parts):
                     return parts[idx + 1]
         return "default"
-    except Exception:
+    except (OSError, RuntimeError, ValueError):
         return "default"
 
 
@@ -947,7 +921,7 @@ def main(argv: list[str] | None = None) -> None:
                     "gateway": "running" if data.get("gateway_running") else "not_running",
                     "gateway_pid_source": data.get("gateway_pid_source"),
                 }
-            except Exception:
+            except Exception:  # noqa: BLE001 - Diagnostics must return a stable unavailable state.
                 return {"ok": False, "gateway": "unknown"}
 
         codex_config.main(args[1:], list_tools=list_tools, status=status)
