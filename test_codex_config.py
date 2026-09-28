@@ -85,6 +85,31 @@ def test_install_toolset_difference_requires_refresh(tmp_path):
     assert refreshed["backup"]
 
 
+def test_sessions_install_enables_session_gates_and_refresh_preserves_user_env(tmp_path):
+    installed = codex_config.install(
+        project=True, cwd=tmp_path, prefer_cli=False, toolset="core"
+    )
+    assert installed["ok"] is True
+    config = tmp_path / ".codex" / "config.toml"
+    with config.open("a", encoding="utf-8") as handle:
+        handle.write('HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES = "chatgpt-local"\n')
+
+    refreshed = codex_config.install(
+        project=True,
+        cwd=tmp_path,
+        prefer_cli=False,
+        toolset="sessions",
+        refresh=True,
+    )
+    assert refreshed["ok"] is True
+    entry = codex_config.get_server_entry(config)
+    assert entry["env"][codex_config.CODEX_TOOLSET_ENV] == "sessions"
+    assert entry["env"][codex_config.ENABLE_SESSION_SEARCH_ENV] == "1"
+    assert entry["env"][codex_config.ENABLE_SESSION_CONTROL_ENV] == "1"
+    assert entry["env"][codex_config.ENABLE_SCOPED_TASKS_ENV] == "1"
+    assert entry["env"]["HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES"] == "chatgpt-local"
+
+
 def test_doctor_reports_resolved_codex_binary(monkeypatch, tmp_path):
     exe = _fake_codex(tmp_path / "bin" / "codex")
     monkeypatch.setenv(oc.CODEX_EXE_ENV, str(exe))

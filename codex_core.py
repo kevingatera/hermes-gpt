@@ -24,7 +24,7 @@ from urllib.parse import urlparse
 import operator_policy as op_policy
 
 CODEX_TOOLSET_ENV = "HERMES_GPT_CODEX_TOOLSET"
-CODEX_TOOLSETS = ("core", "operator")
+CODEX_TOOLSETS = ("core", "operator", "sessions")
 ENABLE_CODEX_RUNNER_ENV = "HERMES_GPT_ENABLE_CODEX_RUNNER"
 ALLOW_CODEX_WRITE_ENV = "HERMES_GPT_ALLOW_CODEX_WRITE"
 
@@ -32,12 +32,18 @@ ALLOW_CODEX_WRITE_ENV = "HERMES_GPT_ALLOW_CODEX_WRITE"
 def codex_toolset() -> str:
     value = os.environ.get(CODEX_TOOLSET_ENV, "core").strip().lower()
     if value not in CODEX_TOOLSETS:
-        raise ValueError(f"Invalid {CODEX_TOOLSET_ENV}={value!r}; expected core or operator.")
+        raise ValueError(
+            f"Invalid {CODEX_TOOLSET_ENV}={value!r}; "
+            "expected core, operator, or sessions."
+        )
     return value
 
 
 ENABLE_CODEX_ENV = "HERMES_GPT_ENABLE_CODEX"
 ENABLE_MCP_ENV = "HERMES_GPT_ENABLE_MCP"
+ENABLE_SESSION_SEARCH_ENV = "HERMES_GPT_ENABLE_SESSION_SEARCH"
+ENABLE_SESSION_CONTROL_ENV = "HERMES_GPT_ENABLE_SESSION_CONTROL"
+ENABLE_SCOPED_TASKS_ENV = "HERMES_GPT_ENABLE_SCOPED_TASKS"
 ENABLE_VISION_ENV = "HERMES_GPT_ENABLE_VISION"
 ENABLE_WEB_ENV = "HERMES_GPT_ENABLE_WEB"
 ENABLE_CRON_ENV = "HERMES_GPT_ENABLE_CRON"

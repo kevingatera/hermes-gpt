@@ -80,12 +80,65 @@ def test_operator_toolset_is_opt_in_and_namespaced(monkeypatch):
                 assert text == "# example\nPlain skill instructions."
 
 
+def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatch, tmp_path):
+    import server
+
+    monkeypatch.setenv(codex_core.CODEX_TOOLSET_ENV, "sessions")
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    monkeypatch.setenv(codex_core.ENABLE_SESSION_SEARCH_ENV, "1")
+    monkeypatch.setenv(codex_core.ENABLE_SESSION_CONTROL_ENV, "1")
+    monkeypatch.setenv(codex_core.ENABLE_SCOPED_TASKS_ENV, "1")
+
+    tools = asyncio.run(server.build_codex_mcp_server().list_tools())
+    by_name = {tool.name: tool for tool in tools}
+    expected = {
+        "hermes_session_list",
+        "hermes_session_continue",
+        "hermes_task_start",
+        "hermes_task_continue",
+        "hermes_task_browser_tabs",
+        "hermes_browser_profile_tabs",
+        "hermes_browser_profile_navigate",
+    }
+    assert expected <= set(by_name)
+
+    start_schema = by_name["hermes_task_start"].model_dump(by_alias=True)["inputSchema"]
+    assert {"model", "reasoning_effort", "browser_profile"} <= set(
+        start_schema["properties"]
+    )
+    continue_schema = by_name["hermes_session_continue"].model_dump(by_alias=True)["inputSchema"]
+    assert {"model", "reasoning_effort"} <= set(continue_schema["properties"])
+    assert by_name["hermes_session_list"].annotations.read_only_hint is True
+    assert by_name["hermes_task_start"].annotations.destructive_hint is True
+    assert by_name["hermes_session_list"].meta == codex_mcp.NOAUTH_META
+
+    monkeypatch.setenv(codex_core.ENABLE_SESSION_SEARCH_ENV, "0")
+    monkeypatch.setenv(codex_core.ENABLE_SESSION_CONTROL_ENV, "0")
+    monkeypatch.setenv(codex_core.ENABLE_SCOPED_TASKS_ENV, "0")
+    gated_names = {
+        tool.name for tool in asyncio.run(server.build_codex_mcp_server().list_tools())
+    }
+    assert not {
+        "hermes_session_list",
+        "hermes_session_continue",
+        "hermes_task_start",
+        "hermes_browser_profile_tabs",
+    } & gated_names
+
+    monkeypatch.setenv(codex_core.CODEX_TOOLSET_ENV, "core")
+    core_names = {
+        tool.name for tool in asyncio.run(server.build_codex_mcp_server().list_tools())
+    }
+    assert "hermes_task_start" not in core_names
+    assert "hermes_session_list" not in core_names
+
+
 def test_invalid_toolset_fails_safely(monkeypatch):
     monkeypatch.setenv(codex_core.CODEX_TOOLSET_ENV, "everything")
     try:
         codex_core.codex_toolset()
     except ValueError as exc:
-        assert "expected core or operator" in str(exc)
+        assert "expected core, operator, or sessions" in str(exc)
     else:
         raise AssertionError("invalid toolset was accepted")
 

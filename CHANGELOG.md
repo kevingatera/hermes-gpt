@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add an opt-in Codex `sessions` toolset for gated Hermes session history/control, model and reasoning-effort selection, scoped session start/resume, and authorized local browser controls through the existing Codex MCP installer.
 - Add opt-in scoped Hermes sessions with selectable model and reasoning effort, workspace confinement, durable resume, and a browser shared with ChatGPT through a narrow MCP toolset. Browsers are isolated by default; a separate profile allowlist can enable attachment to a local browser configured by a Hermes profile. The read-only `hermes_task_list` tool finds managed sessions to resume in later conversations. The Hermes run does not enable the built-in browser, raw CDP, terminal, or vault tools.
 - Add profile-scoped MCP browser tools so ChatGPT can list, attach to, observe, and act in an explicitly authorized local Hermes browser profile without starting a model turn. Page mutations keep the Operator workspace/direct and explicit-confirmation gates; shared browsers cannot be closed or restarted through these tools.
 - Add bounded browser tab listing and gated tab selection to managed-task and direct-profile browser controls.

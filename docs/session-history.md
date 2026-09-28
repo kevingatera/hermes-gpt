@@ -4,7 +4,9 @@ Hermes GPT exposes five optional, read-only MCP tools for finding and reviewing
 existing Hermes sessions, including canonical Bot Chats. These capabilities
 were originally available only through the full ChatGPT connector. The separately
 installed **Hermes GPT Session History** integration brings the same read-only
-operations to Codex as native tools. They query Hermes' installed session APIs;
+operations to Codex as native tools, and the Hermes GPT Codex MCP `sessions`
+toolset exposes them alongside session control and browser tools. They query
+Hermes' installed session APIs;
 they do not create sessions, resume conversations, rebuild search indexes, or
 write exports to disk.
 
@@ -12,9 +14,9 @@ write exports to disk.
 
 - **ChatGPT/full connector:** the tools are registered by the normal Hermes GPT
   server when the session-search gate is enabled.
-- **Codex:** the curated `core` and `operator` toolsets did not originally
-  include session history. Install and enable the Hermes GPT Session History
-  integration to make the session-history native tool names available in Codex.
+- **Codex:** the curated `core` and `operator` toolsets do not include session
+  history. Install the separate Session History integration for native tools,
+  or use `hermes-gpt codex install --toolset sessions` for the MCP tools.
 
 Tool availability alone does not bypass Hermes' server-side gates or privacy
 controls. ChatGPT uses a frozen snapshot of an approved MCP app's tools and

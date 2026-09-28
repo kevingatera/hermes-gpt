@@ -106,6 +106,7 @@ py-modules = [
   "operator_finance",
   "finance_worker",
   "codex_core",
+  "codex_session_tools",
   "codex_mcp",
   "mcp_compat",
   "codex_config",

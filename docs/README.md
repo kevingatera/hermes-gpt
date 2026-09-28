@@ -38,7 +38,7 @@ PyPI is an independent distribution channel. Check the PyPI badge in the root RE
 | [`live-events.md`](live-events.md) | current | v0.9 durable event cursor/long-poll and authenticated WebSocket wake-up stream |
 | [`flight-deck-missions.md`](flight-deck-missions.md) | current | v0.9 read-only Mission/delegation Flight Deck views with durable live refresh |
 | [`delegations.md`](delegations.md) | current | v0.9 normalized delegation lifecycle across Pi/OpenCode/Codex/Fabric with durable lineage and reconciliation |
-| [`codex.md`](codex.md) | current | Codex-as-MCP-client setup and delegated Codex CLI jobs |
+| [`codex.md`](codex.md) | current | Codex-as-MCP-client setup, optional Hermes session/browser tools, and delegated Codex CLI jobs |
 | [`windows-chatgpt-codex.md`](windows-chatgpt-codex.md) | current | Windows ChatGPT -> Hermes GPT -> Codex CLI deployment |
 | [`updating.md`](updating.md) | current | check-first Git and PyPI update behavior |
 | [`retention-policy.md`](retention-policy.md) | current | local diagnostic artifact retention and cleanup |

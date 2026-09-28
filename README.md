@@ -113,7 +113,7 @@ See the [v0.6.0 release notes](docs/release-notes-v0.6.0.md) and [retention poli
 | Authenticate a remote MCP connector | [OAuth and bearer authentication](docs/oauth.md) |
 | Connect Google Gemini (consumer Custom apps) | [Gemini Spark custom app](docs/gemini-spark.md) |
 | Verify the MCP protocol surface | [MCP compatibility manifest](docs/mcp-compatibility.md) |
-| Use Codex as an MCP client | [Codex guide](docs/codex.md) |
+| Use Codex as an MCP client, including optional Hermes session and browser controls | [Codex guide](docs/codex.md) |
 | Use ChatGPT or another trusted client to operate Hermes | [Operator Mode](docs/operator-mode.md) |
 | Manage Hermes sessions and local browsers | [Managed Hermes sessions](docs/managed-hermes-sessions.md) |
 | Group and approve a larger objective under one lifecycle | [Missions (v0.9)](docs/missions.md) |

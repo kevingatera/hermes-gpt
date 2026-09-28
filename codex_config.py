@@ -20,10 +20,12 @@ from codex_core import (
     CODEX_TOOLSETS,
     ENABLE_CODEX_ENV,
     ENABLE_MCP_ENV,
+    ENABLE_SCOPED_TASKS_ENV,
+    ENABLE_SESSION_CONTROL_ENV,
+    ENABLE_SESSION_SEARCH_ENV,
     redact_value,
 )
 from operator_codex import CODEX_EXE_ENV, resolve_codex_exe
-
 
 SERVER_NAME = "hermes-gpt"
 DEFAULT_STARTUP_TIMEOUT = 30
@@ -34,10 +36,43 @@ OPERATOR_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
     "hermes_operator_cron_list", "hermes_operator_skill_list",
     "hermes_operator_config_get", "hermes_operator_gateway_status",
 }
+SESSION_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
+    "hermes_bot_chat_get",
+    "hermes_session_list",
+    "hermes_session_continue",
+    "hermes_session_job_cancel",
+    "hermes_task_start",
+    "hermes_task_continue",
+    "hermes_task_browser_tabs",
+    "hermes_browser_profile_tabs",
+    "hermes_browser_profile_navigate",
+}
 
 
 def expected_tools(toolset: str) -> set[str]:
-    return set(OPERATOR_EXPECTED_TOOLS if toolset == "operator" else CORE_EXPECTED_TOOLS)
+    if toolset == "operator":
+        return set(OPERATOR_EXPECTED_TOOLS)
+    if toolset == "sessions":
+        return set(SESSION_EXPECTED_TOOLS)
+    return set(CORE_EXPECTED_TOOLS)
+
+
+def _toolset_environment(toolset: str) -> dict[str, str]:
+    """Return feature gates installed with each explicitly selected toolset."""
+    environment = {
+        ENABLE_CODEX_ENV: "1",
+        ENABLE_MCP_ENV: "1",
+        CODEX_TOOLSET_ENV: toolset,
+    }
+    if toolset == "sessions":
+        environment.update(
+            {
+                ENABLE_SESSION_SEARCH_ENV: "1",
+                ENABLE_SESSION_CONTROL_ENV: "1",
+                ENABLE_SCOPED_TASKS_ENV: "1",
+            }
+        )
+    return environment
 
 
 def config_path(*, project: bool = False, cwd: Path | None = None) -> Path:
@@ -90,18 +125,26 @@ def _toml_array(values: list[str]) -> str:
     return "[" + ", ".join(_toml_quote(value) for value in values) + "]"
 
 
-def _render_server_entry(argv: list[str], name: str = SERVER_NAME, toolset: str = "core") -> str:
+def _render_server_entry(
+    argv: list[str],
+    name: str = SERVER_NAME,
+    toolset: str = "core",
+    extra_env: dict[str, Any] | None = None,
+) -> str:
     quoted_name = _toml_quote(name)
     command, *args = argv
+    environment = dict(extra_env or {})
+    environment.update(_toolset_environment(toolset))
+    env_lines = "".join(
+        f"{key} = {_toml_quote(str(value))}\n" for key, value in environment.items()
+    )
     return (
         f"[mcp_servers.{quoted_name}]\n"
         f"command = {_toml_quote(command)}\n"
         f"args = {_toml_array(args)}\n"
         f"startup_timeout_sec = {DEFAULT_STARTUP_TIMEOUT}\n\n"
         f"[mcp_servers.{quoted_name}.env]\n"
-        f"{ENABLE_CODEX_ENV} = \"1\"\n"
-        f"{ENABLE_MCP_ENV} = \"1\"\n"
-        f"{CODEX_TOOLSET_ENV} = {_toml_quote(toolset)}\n"
+        f"{env_lines}"
     )
 
 
@@ -155,11 +198,16 @@ def _backup(path: Path) -> Path | None:
 
 def _write_direct(path: Path, argv: list[str], name: str = SERVER_NAME, toolset: str = "core") -> dict[str, Any]:
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    current_entry = get_server_entry(path, name)
+    # Keep custom profile, workspace, and credential settings during a toolset refresh.
+    extra_env = (current_entry or {}).get("env", {})
+    if not isinstance(extra_env, dict):
+        extra_env = {}
     without_old, removed = _drop_server_entry(existing, name)
     updated = without_old.rstrip()
     if updated:
         updated += "\n\n"
-    updated += _render_server_entry(argv, name, toolset)
+    updated += _render_server_entry(argv, name, toolset, extra_env=extra_env)
     if updated == existing:
         return {"changed": False, "backup": None}
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -176,7 +224,10 @@ def _write_direct(path: Path, argv: list[str], name: str = SERVER_NAME, toolset:
 
 
 def _run_codex_add(codex: str, name: str, argv: list[str], toolset: str) -> subprocess.CompletedProcess[str]:
-    command = [codex, "mcp", "add", name, "--env", f"{ENABLE_CODEX_ENV}=1", "--env", f"{ENABLE_MCP_ENV}=1", "--env", f"{CODEX_TOOLSET_ENV}={toolset}", "--", *argv]
+    command = [codex, "mcp", "add", name]
+    for key, value in _toolset_environment(toolset).items():
+        command.extend(["--env", f"{key}={value}"])
+    command.extend(["--", *argv])
     return subprocess.run(command, text=True, capture_output=True, shell=False, timeout=30)
 
 
@@ -184,7 +235,7 @@ def install(*, project: bool = False, cwd: Path | None = None, name: str = SERVE
             prefer_cli: bool = True, toolset: str = "core", refresh: bool = False) -> dict[str, Any]:
     toolset = toolset.strip().lower()
     if toolset not in CODEX_TOOLSETS:
-        return {"ok": False, "changed": False, "code": "INVALID_TOOLSET", "message": "toolset must be core or operator."}
+        return {"ok": False, "changed": False, "code": "INVALID_TOOLSET", "message": "toolset must be core, operator, or sessions."}
     path = config_path(project=project, cwd=cwd)
     argv = launcher_argv(server_path)
     try:
@@ -196,7 +247,17 @@ def install(*, project: bool = False, cwd: Path | None = None, name: str = SERVE
         if _is_hermes_entry(existing):
             configured = str(existing.get("env", {}).get(CODEX_TOOLSET_ENV, "core")).lower()
             expected_argv = launcher_argv(server_path)
-            same = configured == toolset and existing.get("command") == expected_argv[0] and existing.get("args") == expected_argv[1:]
+            configured_env = existing.get("env", {})
+            has_expected_env = isinstance(configured_env, dict) and all(
+                configured_env.get(key) == value
+                for key, value in _toolset_environment(toolset).items()
+            )
+            same = (
+                configured == toolset
+                and has_expected_env
+                and existing.get("command") == expected_argv[0]
+                and existing.get("args") == expected_argv[1:]
+            )
             if same:
                 return redact_value({"ok": True, "changed": False, "method": "existing", "toolset": configured, "config_path": str(path), "message": f"{name} is already configured with the requested settings.", "entry": existing})
             if not refresh:
@@ -286,7 +347,7 @@ def _mcp_smoke(argv: list[str], toolset: str = "core") -> dict[str, Any]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env={**os.environ, CODEX_TOOLSET_ENV: toolset},
+        env={**os.environ, **_toolset_environment(toolset)},
     )
 
     def send(payload: dict[str, Any]) -> None:

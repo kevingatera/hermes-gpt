@@ -2207,8 +2207,8 @@ def build_codex_mcp_server(
     The existing ``build_server`` remains the backwards-compatible legacy
     surface.  Codex gets only the high-leverage tools defined in codex_mcp.
     """
-    from codex_core import CodexToolCore
-    from codex_mcp import build_codex_server
+    from codex_core import CodexToolCore, codex_toolset
+    from codex_mcp import NOAUTH_META, build_codex_server
 
     def imports_ready() -> bool:
         return IMPORT_ERROR is None and HERMES_ROOT is not None
@@ -2258,7 +2258,22 @@ def build_codex_mcp_server(
         "hermes_operator_gateway_status": hermes_gateway_status,
         "hermes_operator_gateway_restart": hermes_gateway_restart,
     }
-    return build_codex_server(core, host=host, port=port, http=http, operator_tools=operator_tools)
+    codex_server = build_codex_server(
+        core, host=host, port=port, http=http, operator_tools=operator_tools
+    )
+    if codex_toolset() == "sessions":
+        from codex_session_tools import register_codex_session_tools
+
+        register_codex_session_tools(
+            codex_server,
+            history_tools=_session_history_tools,
+            session_control_tools=_session_control_tools,
+            tool_meta=lambda: dict(NOAUTH_META),
+            session_history_enabled=env_enabled(ENABLE_SESSION_SEARCH_ENV),
+            session_control_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV),
+            scoped_tasks_enabled=env_enabled(ENABLE_SCOPED_TASKS_ENV),
+        )
+    return codex_server
 
 
 mcp = build_server()

@@ -86,7 +86,28 @@ The `operator` toolset adds curated namespaced aliases for Operator diagnostics,
 
 ### Optional session-history integration
 
-Session history is intentionally separate from the curated `core` and `operator` toolsets. The separately installed **Hermes GPT Session History** integration exposes native read-only `hermes_session_list`, `hermes_session_search`, `hermes_session_read`, and `hermes_session_export` tools to Codex while the backing Hermes GPT server still requires `HERMES_GPT_ENABLE_SESSION_SEARCH=1`. These tools do not create files. Internal `system`, `tool`, and `function` content additionally requires `HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT=1`; keep those roles and lineage disabled during routine inspection. See [session history](session-history.md).
+Session history stays separate from the curated `core` and `operator` toolsets. The optional `sessions` toolset below exposes bounded read-only history tools while the backing Hermes GPT server still requires `HERMES_GPT_ENABLE_SESSION_SEARCH=1`. Internal `system`, `tool`, and `function` content additionally requires `HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT=1`; keep those roles and lineage disabled during routine inspection. See [session history](session-history.md).
+
+### Optional session and browser controls
+
+Install the separate session toolset when Codex should inspect or continue Hermes sessions, start scoped sessions with a selected model and reasoning effort, or control an authorized local Hermes browser:
+
+```powershell
+hermes-gpt codex install --toolset sessions
+```
+
+For an existing Hermes GPT entry, add `--refresh` to back it up and replace its toolset. The installer enables session history, session control, and scoped tasks in the Codex MCP entry. It does not choose authorized Hermes profiles, workspaces, filesystem paths, or provider credentials; configure those in the MCP entry's environment or the environment that launches Codex.
+
+The `sessions` toolset includes the curated core tools plus:
+
+- Read-only session history tools and `hermes_bot_chat_get`.
+- `hermes_session_continue` / `hermes_session_send` plus asynchronous job status, result, and cancellation. Existing sessions can select `model` and `reasoning_effort` for each turn.
+- `hermes_task_start` and `hermes_task_continue` for new and resumable scoped sessions. Both expose model and effort; starts also require a configured workspace and provider credential profile.
+- `hermes_browser_profile_*` tools for an allowlisted local Hermes browser, and `hermes_task_browser_*` tools for a managed session's browser.
+
+Use a dedicated Hermes profile and keep its name in both `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` and `HERMES_GPT_OPERATOR_ALLOWED_PROFILES`. For a managed browser attachment, also set `HERMES_GPT_TASK_BROWSER_ALLOWED_PROFILES`; managed starts additionally need `HERMES_GPT_TASK_WORKSPACES`, path policy, provider credentials, and the runner confinement required by [managed Hermes sessions](managed-hermes-sessions.md). Scoped task starts and browser mutations remain dry-run-first and require the existing Operator gates and explicit confirmation. Keep this toolset on a trusted local Codex MCP connection; browser access can reach local and private-network pages.
+
+Use MCP tools for direct session and browser operations. Use the existing [A2A fleet tools](delegations.md) on the main Hermes GPT MCP server when handing a work contract to another Hermes peer.
 
 ### Tool-name namespace warning
 
