@@ -39,6 +39,7 @@ hermes-gpt-fabric-peer = "operator_fabric_g4c:peer_main"
 include-package-data = true
 py-modules = [
   "server",
+  "server_http",
   "oauth_auth",
   "operator_policy",
   "operator_redaction",

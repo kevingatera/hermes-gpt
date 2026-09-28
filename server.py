@@ -4,21 +4,13 @@ import argparse
 import asyncio
 import importlib.metadata
 import inspect
-import ipaddress
 import json
 import os
-import re
 import sqlite3
 import sys
 import urllib.parse
 from pathlib import Path
-from typing import Any, List
-
-from starlette.applications import Starlette
-from starlette.middleware.cors import CORSMiddleware
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from starlette.routing import BaseRoute, Mount, Route
+from typing import Any
 
 import oauth_auth
 import operator_capability_manifest as op_capability_manifest
@@ -42,6 +34,7 @@ import operator_session as op_session
 import operator_session_tasks as op_session_tasks
 import operator_swarm as op_swarm
 import operator_workspace as op_workspace
+import server_http as http_server
 from hermes_session_history import (
     INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
     MAX_EXPORT_MESSAGES,
@@ -77,10 +70,10 @@ from server_session_tools import SessionHistoryTools, SessionToolContext
 from versioning import VERSION
 
 LOCAL_DEV_PROFILE = "local-dev"
-REMOTE_PROFILE = "remote"
+REMOTE_PROFILE = http_server.REMOTE_PROFILE
 UNSAFE_REMOTE_ACK = "--i-understand-this-is-unsafe"
 UNSAFE_REMOTE_ENV = "HERMES_GPT_UNSAFE_REMOTE_NOAUTH"
-TRUSTED_PROXY_IPS_ENV = "HERMES_GPT_TRUSTED_PROXY_IPS"
+TRUSTED_PROXY_IPS_ENV = http_server.TRUSTED_PROXY_IPS_ENV
 ALLOWED_HOSTS_ENV = "HERMES_GPT_ALLOWED_HOSTS"
 ENABLE_WRITE_ENV = "HERMES_GPT_ENABLE_WRITE"
 ENABLE_MEMORY_WRITE_ENV = "HERMES_GPT_ENABLE_MEMORY_WRITE"
@@ -119,7 +112,7 @@ def env_enabled(name: str) -> bool:
 
 
 def is_loopback_host(host: str) -> bool:
-    return host in {"127.0.0.1", "localhost", "::1"}
+    return http_server.is_loopback_host(host)
 
 
 def is_hermes_root(path: Path) -> bool:
@@ -650,7 +643,7 @@ def hermes_web_search(query: str, limit: int = 5) -> str:
 
 
 def hermes_web_extract(
-    urls: List[str],
+    urls: list[str],
     char_limit: int | None = None,
 ) -> str:
     """Extract content from web pages using Hermes Agent web_extract. Env-gated."""
@@ -1591,278 +1584,28 @@ def hermes_swarm_approve(workflow_id: str, confirm: bool = False, dry_run: bool 
 
 
 def oauth_state_from_env() -> oauth_auth.OAuthState | None:
-    config = oauth_auth.config_from_env()
-    if config is None:
-        return None
-    state = oauth_auth.OAuthState(config)
-    # v0.7 S5: restore durable tokens from the encrypted envelope so a
-    # restart does not invalidate issued credentials (ADR-001). Best-effort:
-    # a missing/corrupt envelope fails closed to empty stores.
-    try:
-        state.restore_tokens(_default_hermes_root())
-    except Exception:
-        pass
-    return state
+    return http_server.oauth_state_from_env(_default_hermes_root)
 
 
-def auth_enabled() -> bool:
-    return oauth_auth.static_bearer_from_env() is not None or oauth_auth.config_from_env() is not None
-
-
-def trusted_proxy_ips_from_env() -> str:
-    raw_value = os.environ.get(TRUSTED_PROXY_IPS_ENV, "").strip()
-    if not raw_value:
-        return ""
-    addresses: list[str] = []
-    for value in raw_value.split(","):
-        candidate = value.strip()
-        try:
-            address = ipaddress.ip_address(candidate)
-        except ValueError as exc:
-            raise ValueError(f"{TRUSTED_PROXY_IPS_ENV} must contain only comma-separated IP addresses.") from exc
-        if not address.is_loopback:
-            raise ValueError(f"{TRUSTED_PROXY_IPS_ENV} accepts loopback proxy addresses only.")
-        addresses.append(str(address))
-    return ",".join(dict.fromkeys(addresses))
-
-
-def authenticated_http_security_options(
-    *,
-    profile: str,
-    host: str,
-    cert: str | None,
-    key: str | None,
-    configured_auth: bool,
-) -> tuple[bool, str]:
-    if bool(cert) != bool(key):
-        raise SystemExit("TLS requires both --cert and --key.")
-    if profile != REMOTE_PROFILE or not configured_auth:
-        return False, ""
-    if cert and key:
-        return False, ""
-    try:
-        trusted_proxies = trusted_proxy_ips_from_env()
-    except ValueError as exc:
-        raise SystemExit(str(exc)) from exc
-    if not trusted_proxies or not is_loopback_host(host):
-        raise SystemExit(
-            "Authenticated remote mode requires direct TLS (--cert and --key), or a loopback bind behind an "
-            f"explicit trusted HTTPS proxy configured with {TRUSTED_PROXY_IPS_ENV}."
-        )
-    return True, trusted_proxies
-
-
-async def health_root(_request: Request) -> JSONResponse:
-    return JSONResponse({"status": "ok", "server": "hermes-gpt", "mcp_path": "/mcp"})
-
-
-def _fleet_peer_name() -> str:
-    return os.environ.get("HERMES_GPT_FLEET_PEER_NAME", "").strip() or "hermes-peer"
-
-
-def _fleet_peer_url() -> str:
-    return (
-        os.environ.get("HERMES_GPT_FLEET_PEER_URL", "").strip()
-        or f"http://{os.environ.get('HERMES_GPT_HOST', '127.0.0.1')}:{os.environ.get('HERMES_GPT_PORT', '4750')}"
-    )
-
-
-async def _fleet_agent_card(_request: Request) -> JSONResponse:
-    """Agent Card for this Fleet peer. The fleet authority manifest pins
-    expected_card_identity to HERMES_GPT_FLEET_PEER_NAME; this route attests
-    that identity. No secrets, tokens, or credentials are returned."""
-    peer_name = _fleet_peer_name()
-    peer_url = _fleet_peer_url()
-    return JSONResponse(
-        {
-            "protocolVersion": "1.0",
-            "name": peer_name,
-            "description": "Hermes Fleet peer",
-            "version": os.environ.get("HERMES_GPT_FLEET_PEER_VERSION", "0.20.5"),
-            "url": peer_url,
-            "capabilities": {},
-            "defaultInputModes": ["application/json"],
-            "defaultOutputModes": ["application/json"],
-            "skills": [
-                {
-                    "id": "hermes-agent-v1",
-                    "name": "Hermes Agent",
-                    "description": "Local-first Hermes Agent",
-                    "tags": ["hermes", "fleet"],
-                }
-            ],
-            "supportedInterfaces": [
-                {
-                    "url": peer_url,
-                    "protocolBinding": "JSONRPC",
-                    "protocolVersion": "1.0",
-                }
-            ],
-        }
-    )
+auth_enabled = http_server.auth_enabled
+trusted_proxy_ips_from_env = http_server.trusted_proxy_ips_from_env
+authenticated_http_security_options = http_server.authenticated_http_security_options
+health_root = http_server.health_root
+_fleet_peer_name = http_server._fleet_peer_name
+_fleet_peer_url = http_server._fleet_peer_url
+_fleet_agent_card = http_server._fleet_agent_card
 
 
 def _register_fleet_local_card() -> None:
-    """Publish this peer's own Agent Card for in-process loopback verification.
-
-    Keeps the fleet drift/status tools from deadlocking when they fetch the
-    card of a co-located peer over 127.0.0.1. The identity here must match the
-    fleet authority manifest entry (expected_card_identity = HERMES_GPT_FLEET_PEER_NAME).
-    """
-    try:
-        import operator_fleet as _op
-
-        peer_name = _fleet_peer_name()
-        peer_url = _fleet_peer_url()
-        _op.register_local_agent_card(
-            peer_url,
-            {
-                "protocolVersion": "1.0",
-                "name": peer_name,
-                "description": "Hermes Fleet peer",
-                "version": os.environ.get("HERMES_GPT_FLEET_PEER_VERSION", "0.20.5"),
-                "url": peer_url,
-                "capabilities": {},
-                "defaultInputModes": ["application/json"],
-                "defaultOutputModes": ["application/json"],
-                "skills": [
-                    {
-                        "id": "hermes-agent-v1",
-                        "name": "Hermes Agent",
-                        "description": "Local-first Hermes Agent",
-                        "tags": ["hermes", "fleet"],
-                    }
-                ],
-                "supportedInterfaces": [
-                    {
-                        "url": peer_url,
-                        "protocolBinding": "JSONRPC",
-                        "protocolVersion": "1.0",
-                    }
-                ],
-            },
-        )
-    except Exception:  # noqa: BLE001
-        pass
+    http_server.register_fleet_local_card()
 
 
 def build_asgi_app(server: FastMCP, *, http: bool) -> Any:
-    oauth_state = getattr(server, "_hermes_oauth_state", None)
-    if oauth_state is not None and not http:
-        raise ValueError("Built-in OAuth is supported only with streamable HTTP (--http).")
-    raw_mcp_app = server.streamable_http_app() if http else server.sse_app()
-    mcp_app = oauth_auth.DefaultMcpAcceptMiddleware(raw_mcp_app)
-    static_bearer = oauth_auth.static_bearer_from_env() or ""
-
-    async def live_websocket_authorized(websocket: Any) -> bool:
-        """Reuse the normal Hermes HTTP auth authority for WebSocket handshakes."""
-        if oauth_state is None and not static_bearer:
-            return True
-        admitted = False
-
-        async def admitted_app(_scope: dict[str, Any], _receive: Any, _send: Any) -> None:
-            nonlocal admitted
-            admitted = True
-
-        auth_middleware = oauth_auth.BearerAuthMiddleware(
-            admitted_app,
-            oauth_state,
-            static_token=static_bearer,
-        )
-        scope = dict(websocket.scope)
-        scope.update(
-            {
-                "type": "http",
-                "http_version": scope.get("http_version", "1.1"),
-                "scheme": "http",
-                "method": "POST",
-                "path": "/mcp",
-                "raw_path": b"/mcp",
-                "query_string": b"",
-            }
-        )
-        request_sent = False
-
-        async def receive() -> dict[str, Any]:
-            nonlocal request_sent
-            if request_sent:
-                return {"type": "http.disconnect"}
-            request_sent = True
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        async def send(_message: dict[str, Any]) -> None:
-            return None
-
-        await auth_middleware(scope, receive, send)
-        return admitted
-
-    routes: list[BaseRoute] = [Route("/", health_root, methods=["GET", "POST", "OPTIONS"])]
-    # Fleet Agent Card (env-driven identity; generic across peers). Behind the
-    # same outer Bearer/OAuth middleware as MCP. No secret material returned.
-    routes.extend(
-        [
-            Route("/.well-known/agent-card.json", _fleet_agent_card, methods=["GET"]),
-            Route("/.well-known/agent.json", _fleet_agent_card, methods=["GET"]),
-        ]
-    )
-    if oauth_state is not None:
-        async def resource_metadata(request: Request) -> JSONResponse:
-            return oauth_auth.protected_resource_metadata(request, oauth_state)
-
-        async def authorization_server_metadata(request: Request) -> JSONResponse:
-            return oauth_auth.authorization_metadata(request, oauth_state)
-
-        async def authorize(request: Request) -> Response:
-            return oauth_auth.authorize(request, oauth_state)
-
-        async def token(request: Request) -> JSONResponse:
-            return await oauth_auth.token(request, oauth_state)
-
-        routes.extend(
-            [
-                Route("/.well-known/oauth-protected-resource", resource_metadata, methods=["GET"]),
-                Route("/.well-known/oauth-protected-resource/mcp", resource_metadata, methods=["GET"]),
-                Route("/.well-known/oauth-authorization-server", authorization_server_metadata, methods=["GET"]),
-                Route("/oauth/authorize", authorize, methods=["GET"]),
-                Route("/oauth/token", token, methods=["POST"]),
-            ]
-        )
-    # Mount browser UI routes before the MCP catch-all. The UI remains opt-in
-    # and a missing optional UI module must not change the MCP-only server.
-    ui_enabled = False
-    try:
-        import ui_security as _ui_security
-
-        ui_enabled = _ui_security.ui_enabled()
-    except Exception:  # noqa: BLE001
-        ui_enabled = os.environ.get("HERMES_GPT_UI_ENABLED") == "1"
-    if ui_enabled:
-        try:
-            import ui_api
-
-            routes.extend(ui_api.routes())
-        except Exception as exc:  # noqa: BLE001
-            eprint(f"UI mount skipped: {exc.__class__.__name__}: {exc}")
-    # v0.9 live-event delivery is read-only and remains behind the same outer
-    # Bearer/OAuth middleware as MCP and the browser UI.
-    routes.extend(
-        op_live_events.websocket_routes(
-            _default_hermes_root,
-            auth_check=live_websocket_authorized,
-        )
-    )
-    routes.append(Mount("/", app=mcp_app))
-    app = Starlette(routes=routes, lifespan=raw_mcp_app.router.lifespan_context)
-    issuer = oauth_state.config.issuer if oauth_state is not None else ""
-    parsed_issuer = urllib.parse.urlparse(issuer)
-    issuer_origin = f"{parsed_issuer.scheme}://{parsed_issuer.netloc}" if parsed_issuer.netloc else ""
-    origins = [origin for origin in ("https://chatgpt.com", issuer_origin) if origin]
-    return CORSMiddleware(
-        oauth_auth.BearerAuthMiddleware(app, oauth_state, static_token=static_bearer),
-        allow_origins=origins,
-        allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["*"],
-        max_age=86400,
+    return http_server.build_asgi_app(
+        server,
+        http=http,
+        get_hermes_root=_default_hermes_root,
+        eprint=eprint,
     )
 
 
@@ -1904,7 +1647,7 @@ def build_server(
             allowed_origins=list(dict.fromkeys(allowed_origins)),
         ),
     )
-    setattr(server, "_hermes_oauth_state", oauth_state)
+    server._hermes_oauth_state = oauth_state
     if oauth_state is not None:
         # v0.7 S5: persist every token issuance/refresh through token_store.
         # Persistence failures PROPAGATE: the strict exchange path turns them
