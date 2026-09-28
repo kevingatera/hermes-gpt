@@ -58,6 +58,7 @@ class SessionControlTools:
         for tool in (
             op_session_browser.hermes_task_browser_status,
             op_session_browser.hermes_task_browser_snapshot,
+            op_session_browser.hermes_task_browser_tabs,
         ):
             server.add_tool(
                 tool,
@@ -85,6 +86,7 @@ class SessionControlTools:
             op_session_browser.hermes_task_browser_scroll,
             op_session_browser.hermes_task_browser_back,
             op_session_browser.hermes_task_browser_press,
+            op_session_browser.hermes_task_browser_select_tab,
             op_session_browser.hermes_task_browser_close,
             op_session_browser.hermes_task_browser_restart,
         ):
@@ -108,6 +110,10 @@ class SessionControlTools:
             (
                 op_profile_browser.hermes_browser_profile_snapshot,
                 "Read the current page of an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_tabs,
+                "List tabs in an authorized Hermes browser profile",
             ),
         ):
             server.add_tool(
@@ -144,6 +150,10 @@ class SessionControlTools:
             (
                 op_profile_browser.hermes_browser_profile_press,
                 "Press a key in an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_select_tab,
+                "Select a tab in an authorized Hermes browser profile",
             ),
         ):
             server.add_tool(

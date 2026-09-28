@@ -26,6 +26,14 @@ def build_server(state_file: Path) -> HermesMCP:
         """Read the current page's accessible text and element references."""
         return browser_state_file_command(state_file, "snapshot")
 
+    def browser_tabs() -> dict[str, Any]:
+        """List open tabs using stable IDs without returning page contents."""
+        return browser_state_file_command(state_file, "tab", ["list"])
+
+    def browser_select_tab(tab: str) -> dict[str, Any]:
+        """Switch the current browser target to a tab ID or label."""
+        return browser_state_file_command(state_file, "tab", ["select", tab])
+
     def browser_click(ref: str) -> dict[str, Any]:
         """Click one element reference from the latest browser snapshot."""
         return browser_state_file_command(state_file, "click", [ref])
@@ -48,6 +56,8 @@ def build_server(state_file: Path) -> HermesMCP:
 
     server.add_tool(browser_navigate)
     server.add_tool(browser_snapshot, meta={"annotations": {"readOnlyHint": True}})
+    server.add_tool(browser_tabs, meta={"annotations": {"readOnlyHint": True}})
+    server.add_tool(browser_select_tab)
     server.add_tool(browser_click)
     server.add_tool(browser_type)
     server.add_tool(browser_scroll)

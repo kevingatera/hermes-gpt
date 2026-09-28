@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+import operator_browser_tabs as browser_tabs
 import operator_policy as op
 from operator_browser_profiles import validate_local_cdp_port
 
@@ -440,15 +441,35 @@ def browser_command(
     if state.get("status") == "closed":
         return _error("BROWSER_SESSION_CLOSED", "This task's browser session has been closed.")
     state["task_home"] = str(Path(task_home).expanduser().resolve(strict=True))
-    allowed = {"navigate", "snapshot", "click", "type", "fill", "scroll", "back", "press", "close"}
+    checked_args = list(args or [])
+    allowed = {
+        "navigate",
+        "snapshot",
+        "click",
+        "type",
+        "fill",
+        "scroll",
+        "back",
+        "press",
+        "close",
+        "tab",
+    }
     if command not in allowed:
         return _error("BROWSER_COMMAND_NOT_ALLOWED", "That browser command is not available through this integration.")
+    tab_operation: str | None = None
+    tab_reference: str | None = None
+    if command == "tab":
+        tab_operation, tab_reference = browser_tabs.validate_tab_command_args(checked_args)
+        if tab_operation == "invalid":
+            return _error(
+                "INVALID_BROWSER_TAB",
+                "Use tab list or select a stable tab id such as t2 or a simple tab label.",
+            )
     if command == "close" and state.get("browser_source") == "hermes_profile":
         return _error(
             "SHARED_BROWSER_CLOSE_UNAVAILABLE",
             "A browser attached from a Hermes profile cannot be closed by a managed task.",
         )
-    checked_args = list(args or [])
     if command == "navigate":
         if len(checked_args) != 1 or not isinstance(checked_args[0], str):
             return _error("INVALID_URL", "Provide one http, https, or about:blank URL.")
@@ -491,7 +512,15 @@ def browser_command(
     elif command in {"snapshot", "back", "close"} and checked_args:
         return _error("INVALID_BROWSER_ARGUMENT", f"{command} does not accept arguments.")
 
-    result = _run(state, command, checked_args, headed=bool(state.get("headed")))
+    command_args = checked_args
+    if command == "tab" and tab_operation == "select":
+        # The MCP wrapper marks selection explicitly; the CLI accepts the ref alone.
+        command_args = [tab_reference or ""]
+    result = _run(state, command, command_args, headed=bool(state.get("headed")))
+    if command == "tab":
+        if tab_operation == "list":
+            return browser_tabs.normalize_tab_list(result)
+        return browser_tabs.normalize_tab_selection(tab_reference or "", result)
     data = result.get("data") or {}
     if "snapshot" in data:
         data["snapshot"] = op.redact_output(str(data["snapshot"]))[:_MAX_OUTPUT_CHARS]

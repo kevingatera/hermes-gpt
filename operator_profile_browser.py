@@ -186,7 +186,9 @@ def hermes_browser_profile_attach(
     }
 
 
-def _profile_browser_read(profile: str, command: str) -> dict[str, Any]:
+def _profile_browser_read(
+    profile: str, command: str, args: list[str] | None = None
+) -> dict[str, Any]:
     target = _profile_browser_target(profile)
     if isinstance(target, dict):
         return target
@@ -215,8 +217,8 @@ def _profile_browser_read(profile: str, command: str) -> dict[str, Any]:
     if command == "status" or (current.get("browser") or {}).get("status") != "running":
         return {"success": True, "profile": target.profile, "browser": current["browser"]}
 
-    snapshot = browser.browser_command(target.browser_home, "snapshot")
-    return {**snapshot, "profile": target.profile}
+    result = browser.browser_command(target.browser_home, command, args)
+    return {**result, "profile": target.profile}
 
 
 def hermes_browser_profile_status(profile: str) -> dict[str, Any]:
@@ -227,6 +229,11 @@ def hermes_browser_profile_status(profile: str) -> dict[str, Any]:
 def hermes_browser_profile_snapshot(profile: str) -> dict[str, Any]:
     """Read the current page of an attached Hermes browser profile."""
     return _profile_browser_read(profile, "snapshot")
+
+
+def hermes_browser_profile_tabs(profile: str) -> dict[str, Any]:
+    """List a bounded summary of tabs in an attached Hermes browser profile."""
+    return _profile_browser_read(profile, "tab", ["list"])
 
 
 def _profile_browser_action(
@@ -322,6 +329,13 @@ def hermes_browser_profile_press(
     return _profile_browser_action(profile, "press", [key], confirm, dry_run)
 
 
+def hermes_browser_profile_select_tab(
+    profile: str, tab: str, confirm: bool = False, dry_run: bool = True
+) -> dict[str, Any]:
+    """Select a tab by its stable id or label after mutation gates pass."""
+    return _profile_browser_action(profile, "tab", ["select", tab], confirm, dry_run)
+
+
 __all__ = [
     "hermes_browser_profile_attach",
     "hermes_browser_profile_back",
@@ -330,7 +344,9 @@ __all__ = [
     "hermes_browser_profile_navigate",
     "hermes_browser_profile_press",
     "hermes_browser_profile_scroll",
+    "hermes_browser_profile_select_tab",
     "hermes_browser_profile_snapshot",
     "hermes_browser_profile_status",
+    "hermes_browser_profile_tabs",
     "hermes_browser_profile_type",
 ]

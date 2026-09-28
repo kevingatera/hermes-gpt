@@ -37,7 +37,9 @@ def _authorized_task(task_id: str, hermes_root: Path | None) -> tuple[dict[str, 
         return {"success": False, "code": "TASK_BROWSER_ACCESS_DENIED", "safe_message": str(exc)}
 
 
-def _browser_read(task_id: str, command: str, hermes_root: Path | None) -> dict[str, Any]:
+def _browser_read(
+    task_id: str, command: str, hermes_root: Path | None, args: list[str] | None = None
+) -> dict[str, Any]:
     checked = _authorized_task(task_id, hermes_root)
     if isinstance(checked, dict):
         return checked
@@ -48,7 +50,7 @@ def _browser_read(task_id: str, command: str, hermes_root: Path | None) -> dict[
             "code": "TASK_BROWSER_DISABLED",
             "safe_message": "This Hermes task was created without browser access.",
         }
-    return browser.browser_command(task_home, command)
+    return browser.browser_command(task_home, command, args)
 
 
 def _browser_action(
@@ -104,6 +106,11 @@ def hermes_task_browser_snapshot(task_id: str) -> dict[str, Any]:
     return _browser_read(task_id, "snapshot", None)
 
 
+def hermes_task_browser_tabs(task_id: str) -> dict[str, Any]:
+    """List a bounded summary of open tabs in this task's browser."""
+    return _browser_read(task_id, "tab", None, ["list"])
+
+
 def hermes_task_browser_navigate(
     task_id: str, url: str, confirm: bool = False, dry_run: bool = True,
 ) -> dict[str, Any]:
@@ -138,6 +145,13 @@ def hermes_task_browser_press(
     task_id: str, key: str, confirm: bool = False, dry_run: bool = True,
 ) -> dict[str, Any]:
     return _browser_action(task_id, "press", [key], confirm, dry_run, None)
+
+
+def hermes_task_browser_select_tab(
+    task_id: str, tab: str, confirm: bool = False, dry_run: bool = True,
+) -> dict[str, Any]:
+    """Select a tab by its stable id or label after mutation gates pass."""
+    return _browser_action(task_id, "tab", ["select", tab], confirm, dry_run, None)
 
 
 def hermes_task_browser_close(
@@ -197,7 +211,9 @@ __all__ = [
     "hermes_task_browser_press",
     "hermes_task_browser_restart",
     "hermes_task_browser_scroll",
+    "hermes_task_browser_select_tab",
     "hermes_task_browser_snapshot",
     "hermes_task_browser_status",
+    "hermes_task_browser_tabs",
     "hermes_task_browser_type",
 ]
