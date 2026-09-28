@@ -144,6 +144,8 @@ py-modules = [
   "server_session_browser_tools",
   "server_hermes_profile_tools",
   "server_mission_tools",
+  "server_mission_plan_tools",
+  "server_mission_decision_tools",
   "server_workspace_tools",
   "server_work_tools",
   "hermes_state",

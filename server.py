@@ -52,6 +52,8 @@ from hermes_session_history import (
 from server_fleet_tools import FleetTools
 from server_hermes_profile_tools import HermesProfileTools
 from server_job_tools import DurableJobTools
+from server_mission_decision_tools import MissionDecisionTools
+from server_mission_plan_tools import MissionPlanTools
 from server_mission_tools import MissionTools
 from server_operator_tools import OperatorTools
 from server_session_browser_tools import register_session_browser_tools
@@ -506,6 +508,8 @@ hermes_job_wait = _job_tools.hermes_job_wait
 
 
 _mission_tools = MissionTools(_hermes_root_for_operator)
+_mission_plan_tools = MissionPlanTools(_hermes_root_for_operator)
+_mission_decision_tools = MissionDecisionTools(_hermes_root_for_operator)
 
 hermes_mission_overview = _mission_tools.hermes_mission_overview
 hermes_mission_health = _mission_tools.hermes_mission_health
@@ -527,30 +531,30 @@ hermes_mission_attach = _mission_tools.hermes_mission_attach
 hermes_mission_reconcile = _mission_tools.hermes_mission_reconcile
 hermes_mission_transition = _mission_tools.hermes_mission_transition
 hermes_mission_approve = _mission_tools.hermes_mission_approve
-hermes_plan_create = _mission_tools.hermes_plan_create
-hermes_plan_get = _mission_tools.hermes_plan_get
-hermes_plan_list = _mission_tools.hermes_plan_list
-hermes_plan_validate = _mission_tools.hermes_plan_validate
-hermes_plan_decompose = _mission_tools.hermes_plan_decompose
-hermes_plan_review = _mission_tools.hermes_plan_review
-hermes_plan_node_transition = _mission_tools.hermes_plan_node_transition
-hermes_plan_set_status = _mission_tools.hermes_plan_set_status
-hermes_budget_set = _mission_tools.hermes_budget_set
-hermes_budget_get = _mission_tools.hermes_budget_get
-hermes_budget_check = _mission_tools.hermes_budget_check
-hermes_budget_record = _mission_tools.hermes_budget_record
-hermes_placement_score = _mission_tools.hermes_placement_score
-hermes_placement_candidates = _mission_tools.hermes_placement_candidates
-hermes_placement_get = _mission_tools.hermes_placement_get
-hermes_placement_list = _mission_tools.hermes_placement_list
-hermes_failure_classify = _mission_tools.hermes_failure_classify
-hermes_failure_taxonomy = _mission_tools.hermes_failure_taxonomy
-hermes_recovery_matrix = _mission_tools.hermes_recovery_matrix
-hermes_controller_plan_list = _mission_tools.hermes_controller_plan_list
-hermes_controller_reconcile = _mission_tools.hermes_controller_reconcile
-hermes_controller_status = _mission_tools.hermes_controller_status
-hermes_controller_lease_list = _mission_tools.hermes_controller_lease_list
-hermes_controller_trigger = _mission_tools.hermes_controller_trigger
+hermes_plan_create = _mission_plan_tools.hermes_plan_create
+hermes_plan_get = _mission_plan_tools.hermes_plan_get
+hermes_plan_list = _mission_plan_tools.hermes_plan_list
+hermes_plan_validate = _mission_plan_tools.hermes_plan_validate
+hermes_plan_decompose = _mission_plan_tools.hermes_plan_decompose
+hermes_plan_review = _mission_plan_tools.hermes_plan_review
+hermes_plan_node_transition = _mission_plan_tools.hermes_plan_node_transition
+hermes_plan_set_status = _mission_plan_tools.hermes_plan_set_status
+hermes_budget_set = _mission_plan_tools.hermes_budget_set
+hermes_budget_get = _mission_plan_tools.hermes_budget_get
+hermes_budget_check = _mission_plan_tools.hermes_budget_check
+hermes_budget_record = _mission_plan_tools.hermes_budget_record
+hermes_placement_score = _mission_decision_tools.hermes_placement_score
+hermes_placement_candidates = _mission_decision_tools.hermes_placement_candidates
+hermes_placement_get = _mission_decision_tools.hermes_placement_get
+hermes_placement_list = _mission_decision_tools.hermes_placement_list
+hermes_failure_classify = _mission_decision_tools.hermes_failure_classify
+hermes_failure_taxonomy = _mission_decision_tools.hermes_failure_taxonomy
+hermes_recovery_matrix = _mission_decision_tools.hermes_recovery_matrix
+hermes_controller_plan_list = _mission_decision_tools.hermes_controller_plan_list
+hermes_controller_reconcile = _mission_decision_tools.hermes_controller_reconcile
+hermes_controller_status = _mission_decision_tools.hermes_controller_status
+hermes_controller_lease_list = _mission_decision_tools.hermes_controller_lease_list
+hermes_controller_trigger = _mission_decision_tools.hermes_controller_trigger
 
 
 _work_tools = WorkTools(_hermes_root_for_operator)
@@ -702,9 +706,11 @@ def register_tools(server: FastMCP) -> None:
 
     _profile_tools.register_cron_tools(server, tool_meta=tool_meta)
 
-    # The mission adapter owns its registration list; each handler still applies
-    # its own read-only, dry-run, workspace, or Owner policy gates.
+    # Each mission adapter registers one tool group; handlers keep their own
+    # read-only, dry-run, workspace, and Owner policy gates.
     _mission_tools.register_mcp_tools(server, tool_meta=tool_meta)
+    _mission_plan_tools.register_mcp_tools(server, tool_meta=tool_meta)
+    _mission_decision_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
     _work_tools.register_contract_and_runner_tools(server, tool_meta=tool_meta)
     _job_tools.register_mcp_tools(server, tool_meta=tool_meta)
