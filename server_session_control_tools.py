@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
+from mcp.types import ToolAnnotations
+
 import operator_session as op_session
+import operator_session_browser as op_session_browser
 import operator_session_tasks as op_session_tasks
 from hermes_session_history import redact_error as _redact_error
 from server_session_tools import SessionToolContext
@@ -15,6 +19,81 @@ class SessionControlTools:
 
     def __init__(self, context: SessionToolContext):
         self.context = context
+
+    def register_mcp_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+        session_control_enabled: bool,
+        scoped_tasks_enabled: bool,
+    ) -> None:
+        """Register this module's session and browser tools with the MCP server."""
+        if session_control_enabled:
+            for tool in (
+                self.hermes_session_continue,
+                self.hermes_session_send,
+                self.hermes_session_job_status,
+                self.hermes_session_job_result,
+                self.hermes_session_job_cancel,
+            ):
+                server.add_tool(tool, meta=tool_meta())
+
+        if not scoped_tasks_enabled:
+            return
+
+        read_only_tools = (
+            (self.hermes_task_list, "List managed Hermes sessions for resuming"),
+            (self.hermes_task_workspaces, "List configured workspaces for scoped Hermes tasks"),
+            (self.hermes_task_status, "Read scoped Hermes session status"),
+            (self.hermes_task_result, "Read the latest scoped Hermes session result"),
+        )
+        for tool, title in read_only_tools:
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=title, readOnlyHint=True),
+            )
+        for tool in (
+            op_session_browser.hermes_task_browser_status,
+            op_session_browser.hermes_task_browser_snapshot,
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(
+                    title=tool.__name__.replace("_", " "), readOnlyHint=True
+                ),
+            )
+
+        mutating_tools = (
+            (self.hermes_task_start, "Start a scoped Hermes session"),
+            (self.hermes_task_continue, "Continue a scoped Hermes session"),
+            (self.hermes_task_cancel, "Cancel a running Hermes session turn"),
+        )
+        for tool, title in mutating_tools:
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=title, destructiveHint=True),
+            )
+        for tool in (
+            op_session_browser.hermes_task_browser_navigate,
+            op_session_browser.hermes_task_browser_click,
+            op_session_browser.hermes_task_browser_type,
+            op_session_browser.hermes_task_browser_scroll,
+            op_session_browser.hermes_task_browser_back,
+            op_session_browser.hermes_task_browser_press,
+            op_session_browser.hermes_task_browser_close,
+            op_session_browser.hermes_task_browser_restart,
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(
+                    title=tool.__name__.replace("_", " "), destructiveHint=True
+                ),
+            )
 
     def hermes_session_continue(
         self,

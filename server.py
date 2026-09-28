@@ -39,7 +39,6 @@ import operator_recovery as op_recovery
 import operator_review as op_review
 import operator_runners as op_runners
 import operator_session as op_session
-import operator_session_browser as op_session_browser
 import operator_session_tasks as op_session_tasks
 import operator_swarm as op_swarm
 import operator_workspace as op_workspace
@@ -1934,74 +1933,14 @@ def register_tools(server: FastMCP) -> None:
         server.add_tool(hermes_session_read, meta=tool_meta())
         server.add_tool(hermes_session_export, meta=tool_meta())
         server.add_tool(hermes_bot_chat_get, meta=tool_meta())
-    if env_enabled(ENABLE_SESSION_CONTROL_ENV):
-        server.add_tool(hermes_session_continue, meta=tool_meta())
-        server.add_tool(hermes_session_send, meta=tool_meta())
-        if env_enabled(ENABLE_SESSION_SEARCH_ENV):
-            server.add_tool(hermes_bot_chat_send, meta=tool_meta())
-        server.add_tool(hermes_session_job_status, meta=tool_meta())
-        server.add_tool(hermes_session_job_result, meta=tool_meta())
-        server.add_tool(hermes_session_job_cancel, meta=tool_meta())
-    if env_enabled(ENABLE_SCOPED_TASKS_ENV):
-        server.add_tool(
-            hermes_task_list,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="List managed Hermes sessions for resuming", readOnlyHint=True),
-        )
-        server.add_tool(
-            hermes_task_workspaces,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="List configured workspaces for scoped Hermes tasks", readOnlyHint=True),
-        )
-        server.add_tool(
-            hermes_task_start,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="Start a scoped Hermes session", destructiveHint=True),
-        )
-        server.add_tool(
-            hermes_task_continue,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="Continue a scoped Hermes session", destructiveHint=True),
-        )
-        server.add_tool(
-            hermes_task_cancel,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="Cancel a running Hermes session turn", destructiveHint=True),
-        )
-        server.add_tool(
-            hermes_task_status,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="Read scoped Hermes session status", readOnlyHint=True),
-        )
-        server.add_tool(
-            hermes_task_result,
-            meta=tool_meta(),
-            annotations=ToolAnnotations(title="Read the latest scoped Hermes session result", readOnlyHint=True),
-        )
-        for tool in (
-            op_session_browser.hermes_task_browser_status,
-            op_session_browser.hermes_task_browser_snapshot,
-        ):
-            server.add_tool(
-                tool,
-                meta=tool_meta(),
-                annotations=ToolAnnotations(title=tool.__name__.replace("_", " "), readOnlyHint=True),
-            )
-        for tool in (
-            op_session_browser.hermes_task_browser_navigate,
-            op_session_browser.hermes_task_browser_click,
-            op_session_browser.hermes_task_browser_type,
-            op_session_browser.hermes_task_browser_scroll,
-            op_session_browser.hermes_task_browser_back,
-            op_session_browser.hermes_task_browser_press,
-            op_session_browser.hermes_task_browser_close,
-            op_session_browser.hermes_task_browser_restart,
-        ):
-            server.add_tool(
-                tool,
-                meta=tool_meta(),
-                annotations=ToolAnnotations(title=tool.__name__.replace("_", " "), destructiveHint=True),
-            )
+    if env_enabled(ENABLE_SESSION_CONTROL_ENV) and env_enabled(ENABLE_SESSION_SEARCH_ENV):
+        server.add_tool(hermes_bot_chat_send, meta=tool_meta())
+    _session_control_tools.register_mcp_tools(
+        server,
+        tool_meta=tool_meta,
+        session_control_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV),
+        scoped_tasks_enabled=env_enabled(ENABLE_SCOPED_TASKS_ENV),
+    )
     if env_enabled(ENABLE_VISION_ENV):
         server.add_tool(hermes_vision_analyze, meta=tool_meta())
     if env_enabled(ENABLE_WEB_ENV):
