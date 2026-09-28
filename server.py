@@ -23,10 +23,8 @@ from starlette.routing import BaseRoute, Mount, Route
 import oauth_auth
 import operator_capability_manifest as op_capability_manifest
 import operator_codex as op_codex
-import operator_config as op_config
 import operator_contract as op_contract
 import operator_controller as op_controller
-import operator_cron as op_cron
 import operator_delegations as op_delegations
 import operator_diagnostics as op_diagnostics
 import operator_events as op_events
@@ -50,11 +48,11 @@ import operator_runners as op_runners
 import operator_session as op_session
 import operator_session_browser as op_session_browser
 import operator_session_tasks as op_session_tasks
-import operator_skills as op_skills
 import operator_swarm as op_swarm
 import operator_workspace as op_workspace
 from server_session_control_tools import SessionControlTools
 from server_session_tools import SessionHistoryTools, SessionToolContext
+from server_hermes_profile_tools import HermesProfileTools
 from hermes_session_history import (
     MAX_EXPORT_MESSAGES,
     MAX_ID_LENGTH,
@@ -1155,214 +1153,30 @@ def hermes_fleet_authority_drift() -> str:
     return op_fleet.hermes_fleet_authority_drift()
 
 
-# --- Cron wrappers (pass hermes_root through) ----------------------------
-
-
-def hermes_cron_list(profile: str = "default", include_disabled: bool = False) -> str:
-    return op_cron.hermes_cron_list(
-        profile=profile, include_disabled=include_disabled,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_cron_status(profile: str = "default") -> str:
-    return op_cron.hermes_cron_status(profile=profile, hermes_root=_default_hermes_root())
-
-
-def hermes_cron_run(
-    profile: str = "default",
-    job_id: str = "",
-    dry_run: bool = True,
-    timeout: int = 1800,
-) -> str:
-    return op_cron.hermes_cron_run(
-        profile=profile, job_id=job_id, dry_run=dry_run, timeout=timeout,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_cron_pause(profile: str = "default", job_id: str = "", reason: str = "", dry_run: bool = True) -> str:
-    return op_cron.hermes_cron_pause(
-        profile=profile, job_id=job_id, reason=reason, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_cron_copy(source_profile: str, target_profile: str, job_id: str, dry_run: bool = True) -> str:
-    return op_cron.hermes_cron_copy(
-        source_profile=source_profile, target_profile=target_profile,
-        job_id=job_id, dry_run=dry_run, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_cron_create(
-    profile: str = "default",
-    schedule: str = "",
-    prompt: str = "",
-    name: str | None = None,
-    skills: list[str] | None = None,
-    deliver: str | None = None,
-    repeat: int | None = None,
-    script: str | None = None,
-    workdir: str | None = None,
-    no_agent: bool | None = None,
-    context_from: list[str] | None = None,
-    enabled_toolsets: list[str] | None = None,
-    model_provider: str | None = None,
-    model_name: str | None = None,
-    dry_run: bool = True,
-) -> str:
-    return op_cron.hermes_cron_create(
-        profile=profile, schedule=schedule, prompt=prompt, name=name,
-        skills=skills, deliver=deliver, repeat=repeat,
-        script=script, workdir=workdir, no_agent=no_agent,
-        context_from=context_from, enabled_toolsets=enabled_toolsets,
-        model_provider=model_provider, model_name=model_name,
-        dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_cron_move(
-    source_profile: str,
-    target_profile: str,
-    job_id: str,
-    pause_source: bool = True,
-    test_run_target: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_cron.hermes_cron_move(
-        source_profile=source_profile, target_profile=target_profile,
-        job_id=job_id, pause_source=pause_source,
-        test_run_target=test_run_target, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-# --- Skill wrappers ------------------------------------------------------
-
-
-def hermes_skill_diff(
-    profile: str = "default",
-    name: str = "",
-    proposed_content: str | None = None,
-    old_string: str | None = None,
-    new_string: str | None = None,
-    file_path: str = "SKILL.md",
-) -> str:
-    return op_skills.hermes_skill_diff(
-        profile=profile, name=name, proposed_content=proposed_content,
-        old_string=old_string, new_string=new_string, file_path=file_path,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_create(profile: str = "default", name: str = "", content: str = "", dry_run: bool = True) -> str:
-    return op_skills.hermes_skill_create(
-        profile=profile, name=name, content=content, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_edit(profile: str = "default", name: str = "", content: str = "", dry_run: bool = True) -> str:
-    return op_skills.hermes_skill_edit(
-        profile=profile, name=name, content=content, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_patch(
-    profile: str = "default",
-    name: str = "",
-    old_string: str = "",
-    new_string: str = "",
-    file_path: str = "SKILL.md",
-    replace_all: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_skills.hermes_skill_patch(
-        profile=profile, name=name, old_string=old_string, new_string=new_string,
-        file_path=file_path, replace_all=replace_all, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_write_file(
-    profile: str = "default",
-    name: str = "",
-    file_path: str = "",
-    file_content: str = "",
-    dry_run: bool = True,
-) -> str:
-    return op_skills.hermes_skill_write_file(
-        profile=profile, name=name, file_path=file_path,
-        file_content=file_content, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_copy(source_profile: str, target_profile: str, name: str, dry_run: bool = True) -> str:
-    return op_skills.hermes_skill_copy(
-        source_profile=source_profile, target_profile=target_profile,
-        name=name, dry_run=dry_run, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_sync_to_default(source_profile: str, name: str, dry_run: bool = True) -> str:
-    return op_skills.hermes_skill_sync_to_default(
-        source_profile=source_profile, name=name, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_skill_delete(profile: str = "default", name: str = "", dry_run: bool = True) -> str:
-    return op_skills.hermes_skill_delete(
-        profile=profile, name=name, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-# --- Config / env wrappers -----------------------------------------------
-
-
-def hermes_config_get(profile: str = "default", key_path: str | None = None) -> str:
-    return op_config.hermes_config_get(
-        profile=profile, key_path=key_path, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_config_set(profile: str = "default", key_path: str = "", value: Any = None, dry_run: bool = True) -> str:
-    return op_config.hermes_config_set(
-        profile=profile, key_path=key_path, value=value, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_config_patch(profile: str = "default", old_string: str = "", new_string: str = "", dry_run: bool = True) -> str:
-    return op_config.hermes_config_patch(
-        profile=profile, old_string=old_string, new_string=new_string,
-        dry_run=dry_run, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_env_status(profile: str = "default", keys: list[str] | None = None) -> str:
-    return op_config.hermes_env_status(
-        profile=profile, keys=keys, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_env_set_nonsecret(profile: str = "default", key: str = "", value: str = "", dry_run: bool = True) -> str:
-    return op_config.hermes_env_set_nonsecret(
-        profile=profile, key=key, value=value, dry_run=dry_run,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_env_copy_nonsecret(source_profile: str, target_profile: str, key: str, dry_run: bool = True) -> str:
-    return op_config.hermes_env_copy_nonsecret(
-        source_profile=source_profile, target_profile=target_profile,
-        key=key, dry_run=dry_run, hermes_root=_default_hermes_root(),
-    )
+# Profile administration adapters are kept separate from server registration
+# and transport setup. Their bound methods retain the existing MCP tool names.
+_profile_tools = HermesProfileTools(get_hermes_root=_default_hermes_root)
+hermes_cron_list = _profile_tools.hermes_cron_list
+hermes_cron_status = _profile_tools.hermes_cron_status
+hermes_cron_run = _profile_tools.hermes_cron_run
+hermes_cron_pause = _profile_tools.hermes_cron_pause
+hermes_cron_copy = _profile_tools.hermes_cron_copy
+hermes_cron_create = _profile_tools.hermes_cron_create
+hermes_cron_move = _profile_tools.hermes_cron_move
+hermes_skill_diff = _profile_tools.hermes_skill_diff
+hermes_skill_create = _profile_tools.hermes_skill_create
+hermes_skill_edit = _profile_tools.hermes_skill_edit
+hermes_skill_patch = _profile_tools.hermes_skill_patch
+hermes_skill_write_file = _profile_tools.hermes_skill_write_file
+hermes_skill_copy = _profile_tools.hermes_skill_copy
+hermes_skill_sync_to_default = _profile_tools.hermes_skill_sync_to_default
+hermes_skill_delete = _profile_tools.hermes_skill_delete
+hermes_config_get = _profile_tools.hermes_config_get
+hermes_config_set = _profile_tools.hermes_config_set
+hermes_config_patch = _profile_tools.hermes_config_patch
+hermes_env_status = _profile_tools.hermes_env_status
+hermes_env_set_nonsecret = _profile_tools.hermes_env_set_nonsecret
+hermes_env_copy_nonsecret = _profile_tools.hermes_env_copy_nonsecret
 
 
 # --- Gateway / workspace / git / owner wrappers --------------------------
