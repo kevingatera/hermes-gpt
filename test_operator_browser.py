@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -108,3 +109,39 @@ def test_browser_restart_reuses_its_socket_directory(monkeypatch, tmp_path):
     assert socket_dir.is_dir()
     browser.delete_browser_state(task_home)
     shutil.rmtree(socket_dir, ignore_errors=True)
+
+
+def test_profile_browser_uses_port_only_and_cannot_be_closed(monkeypatch, tmp_path):
+    task_id = uuid4().hex
+    task_home = tmp_path / "profiles" / task_id
+    task_home.mkdir(parents=True)
+    executable = tmp_path / "bin" / "agent-browser"
+    executable.parent.mkdir()
+    executable.write_text("browser cli", encoding="utf-8")
+    monkeypatch.setattr(browser, "_browser_executable", lambda _root: str(executable))
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append((list(argv), kwargs["env"]))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"success": True, "data": {"snapshot": "current page"}}),
+            stderr="",
+        )
+
+    monkeypatch.setattr(browser.subprocess, "run", run)
+
+    attached = browser.create_profile_browser_session(task_id, task_home, tmp_path, 9222)
+    closed = browser.browser_command(task_home, "close")
+
+    assert attached["success"] is True
+    assert attached["browser"]["source"] == "hermes_profile"
+    argv, env = calls[0]
+    assert argv[1:3] == ["--cdp", "9222"]
+    assert "--cdp" not in env
+    assert "9222" not in json.dumps(attached)
+    assert closed["code"] == "SHARED_BROWSER_CLOSE_UNAVAILABLE"
+    assert len(calls) == 1
+
+    browser.delete_browser_state(task_home)
+    shutil.rmtree(browser._socket_path(task_id), ignore_errors=True)

@@ -959,6 +959,35 @@ def test_managed_task_list_runs_through_mcp_tool_call(monkeypatch, tmp_path):
     assert listed["tasks"][0]["model"] == "deepseek/deepseek-v4.1-flash"
 
 
+def test_managed_task_start_exposes_browser_profile_through_mcp(monkeypatch):
+    monkeypatch.setenv(server.ENABLE_SCOPED_TASKS_ENV, "1")
+    captured = {}
+
+    def start_task(**kwargs):
+        captured.update(kwargs)
+        return {"success": True, "task_id": "e" * 32}
+
+    monkeypatch.setattr(server.op_session_tasks, "hermes_task_start", start_task)
+    mcp = server.build_server()
+    tool = tools_by_name(mcp)["hermes_task_start"]
+    schema = tool.model_dump(by_alias=True)["inputSchema"]
+    result = asyncio.run(
+        mcp.call_tool(
+            "hermes_task_start",
+            {
+                "prompt": "Inspect the currently configured browser.",
+                "workspace_id": "demo",
+                "browser_profile": "memtest",
+            },
+        )
+    )
+
+    assert "browser_profile" in schema["properties"]
+    assert tool.annotations.destructive_hint is True
+    assert wire(result)["isError"] is False
+    assert captured["browser_profile"] == "memtest"
+
+
 def test_session_continue_resolves_id_before_runner_dispatch(monkeypatch, tmp_path):
     monkeypatch.setenv(server.ENABLE_SESSION_CONTROL_ENV, "1")
     monkeypatch.setenv(server.SESSION_ALLOWED_PROFILES_ENV, "default")

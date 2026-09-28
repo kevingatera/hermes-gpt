@@ -352,3 +352,62 @@ def test_openrouter_model_never_uses_an_openai_key(monkeypatch, tmp_path):
 
     with pytest.raises(PermissionError, match="No openrouter API key"):
         tasks.runtime._model_credentials("openrouter/deepseek/deepseek-v4.1-flash", "default", root)
+
+
+def test_task_start_attaches_an_explicitly_allowed_hermes_browser(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    browser_profile = root / "profiles" / "browser"
+    browser_profile.mkdir(parents=True)
+    (browser_profile / "config.yaml").write_text(
+        "browser:\n  cdp_url: ws://127.0.0.1:9222/devtools/browser/example-id\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(tasks.sessions.SESSION_ALLOWED_PROFILES_ENV, "default,browser")
+    monkeypatch.setenv(tasks.op.OPERATOR_ALLOWED_PROFILES_ENV, "default,browser")
+    monkeypatch.setenv(
+        tasks.browser_profiles.BROWSER_ALLOWED_PROFILES_ENV, "browser"
+    )
+    attached = {}
+
+    def create_profile_browser(task_id, task_home, hermes_root, cdp_port):
+        attached.update(
+            task_id=task_id,
+            task_home=task_home,
+            hermes_root=hermes_root,
+            cdp_port=cdp_port,
+        )
+        return {"success": True}
+
+    monkeypatch.setattr(
+        tasks.browser, "create_profile_browser_session", create_profile_browser
+    )
+    monkeypatch.setattr(
+        tasks.runtime,
+        "start_turn",
+        lambda **kwargs: {
+            "success": True,
+            "task_id": kwargs["task"]["task_id"],
+            "job_id": "e" * 32,
+            "status": "running",
+        },
+    )
+
+    result = tasks.hermes_task_start(
+        "Inspect the current browser page.",
+        "demo",
+        credential_profile="default",
+        browser_profile="browser",
+        confirm=True,
+        dry_run=False,
+        hermes_root=root,
+    )
+
+    assert result["success"] is True
+    assert attached["cdp_port"] == 9222
+    task = tasks._read_json(tasks._task_path(attached["task_id"], root))
+    assert task["browser_source"] == "hermes_profile"
+    assert "browser_profile" not in task
