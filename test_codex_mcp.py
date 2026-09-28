@@ -95,6 +95,8 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
         "hermes_session_list",
         "hermes_session_start",
         "hermes_session_continue",
+        "hermes_session_rename",
+        "hermes_session_pin",
         "hermes_task_start",
         "hermes_task_continue",
         "hermes_task_browser_tabs",
@@ -111,8 +113,14 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     assert {"model", "reasoning_effort"} <= set(continue_schema["properties"])
     start_schema = by_name["hermes_session_start"].model_dump(by_alias=True)["inputSchema"]
     assert {"model", "reasoning_effort", "profile"} <= set(start_schema["properties"])
+    rename_schema = by_name["hermes_session_rename"].model_dump(by_alias=True)["inputSchema"]
+    assert {"session_id", "title", "profile"} <= set(rename_schema["properties"])
+    pin_schema = by_name["hermes_session_pin"].model_dump(by_alias=True)["inputSchema"]
+    assert {"session_id", "pinned", "profile"} <= set(pin_schema["properties"])
     assert by_name["hermes_session_list"].annotations.read_only_hint is True
     assert by_name["hermes_session_start"].annotations.destructive_hint is True
+    assert by_name["hermes_session_rename"].annotations.destructive_hint is False
+    assert by_name["hermes_session_pin"].annotations.idempotent_hint is True
     assert by_name["hermes_session_job_status"].annotations.read_only_hint is True
     assert by_name["hermes_session_job_result"].annotations.read_only_hint is True
     assert by_name["hermes_task_start"].annotations.destructive_hint is True
@@ -128,6 +136,8 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
         "hermes_session_list",
         "hermes_session_start",
         "hermes_session_continue",
+        "hermes_session_rename",
+        "hermes_session_pin",
         "hermes_task_start",
         "hermes_browser_profile_tabs",
     } & gated_names

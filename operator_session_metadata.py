@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 from pathlib import Path
@@ -104,8 +103,7 @@ def _run_session_command(
         completed = subprocess.run(
             [*executable, "sessions", *args],
             stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
             shell=False,
             cwd=str(profile_home),

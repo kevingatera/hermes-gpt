@@ -108,6 +108,8 @@ def test_default_tool_surface_is_read_or_local_metadata_only(monkeypatch):
         "hermes_session_start",
         "hermes_session_continue",
         "hermes_session_send",
+        "hermes_session_rename",
+        "hermes_session_pin",
         "hermes_bot_chat_send",
         "hermes_session_job_status",
         "hermes_session_job_result",
@@ -166,6 +168,8 @@ def test_env_gates_expose_high_risk_tools(monkeypatch):
     assert "hermes_session_start" in names
     assert "hermes_session_continue" in names
     assert "hermes_session_send" in names
+    assert "hermes_session_rename" in names
+    assert "hermes_session_pin" in names
     assert "hermes_bot_chat_send" in names
     assert "hermes_session_job_status" in names
     assert "hermes_session_job_result" in names
