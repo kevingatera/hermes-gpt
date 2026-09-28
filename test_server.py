@@ -1,8 +1,8 @@
 import asyncio
 import json
 import os
-import sqlite3
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -18,7 +18,6 @@ import oauth_auth
 import server
 import versioning
 from conftest import wire
-
 
 GATE_ENVS = [
     server.ENABLE_WRITE_ENV,
@@ -921,10 +920,12 @@ def test_phase2_tools_are_gated_and_registered(monkeypatch):
 def test_managed_task_list_is_registered_only_when_scoped_tasks_are_enabled(monkeypatch):
     clear_gate_envs(monkeypatch)
     assert "hermes_task_list" not in tool_names(server.build_server())
+    assert "hermes_browser_profile_attach" not in tool_names(server.build_server())
 
     monkeypatch.setenv(server.ENABLE_SCOPED_TASKS_ENV, "1")
     tools = tools_by_name(server.build_server())
     assert "hermes_task_list" in tools
+    assert "hermes_browser_profile_attach" in tools
     assert tools["hermes_task_list"].annotations.read_only_hint is True
 
 

@@ -32,13 +32,21 @@ The default model is `deepseek/deepseek-v4.1-flash` with high reasoning effort.
 
 ## Start and resume a session
 
-Enable the scoped-session feature to register `hermes_task_workspaces`, `hermes_task_list`, `hermes_task_start`, `hermes_task_continue`, `hermes_task_status`, `hermes_task_result`, and `hermes_task_cancel`.
+Enable the scoped-session feature to register the `hermes_task_*` session controls and the `hermes_browser_profile_*` tools for authorized local browsers.
 
 Use `hermes_task_list` to find a managed session in a later conversation. Its bounded pages include the task ID, workspace alias, status, model, effort, browser source (`disabled`, `isolated`, or `hermes_profile`), whether the isolated browser is headed, turn count, and timestamps. The browser source identifies an attachment type without revealing the profile name. The list omits workspace paths, credential profile names, session IDs, prompts, and job output. Pass a listed task ID to `hermes_task_status` or `hermes_task_continue`.
 
 Start a session with a workspace alias, prompt, allowed credential profile, model, reasoning effort, and optional workspace-write or headed-browser access. Omit `browser_profile` to use the task-owned isolated browser. Set `browser_profile` to an allowlisted profile to use its configured local browser. `headed_browser` applies only to isolated browsers. Starts require `dry_run=false`, `confirm=true`, Operator workspace level, and direct apply mode. Workspace access is read-only by default. A dry run reports the selected model, effort, and toolsets without launching Hermes or attaching to the browser.
 
-Continue by task ID to resume its actual Hermes session. A follow-up can select a different model or reasoning effort for that turn. The session keeps the same workspace, private Hermes home, browser profile, and session history. Existing profile session tools such as `hermes_session_continue` also accept optional `model` and `reasoning_effort` overrides, but browser controls are available only for managed sessions started with `hermes_task_start`.
+Continue by task ID to resume its actual Hermes session. A follow-up can select a different model or reasoning effort for that turn. The session keeps the same workspace, private Hermes home, browser profile, and session history. Existing profile session tools such as `hermes_session_continue` also accept optional `model` and `reasoning_effort` overrides. Use the direct profile tools below when ChatGPT needs to operate a configured browser without a managed task.
+
+## Control a configured browser profile directly
+
+The `hermes_browser_profile_*` tools let ChatGPT inspect and use an authorized local Hermes browser profile without starting a model turn. `hermes_browser_profile_list` shows only profile aliases that pass the browser, session-control, and Operator profile allowlists and have a valid local Chromium endpoint. The list never returns the endpoint or host path.
+
+Call `hermes_browser_profile_attach` with `confirm=true` and `dry_run=false` to attach. The MCP server stores a private browser descriptor under the Hermes data root and reconnects to that profile's existing tabs and login state. This descriptor contains browser-session metadata, not cookies or a copied profile. Attach and page mutations default to dry-run. Applying them requires Operator workspace level, direct apply mode, and `confirm=true`. Status and snapshots are read-only. These tools do not close or restart the shared browser.
+
+Direct profile tools operate the configured local Chromium browser, even when no managed task is running. They do not attach to an agent's private in-memory browser session or a remote browser service. To share the browser with a Hermes run and ChatGPT at the same time, start a managed task with `browser_profile` as described above.
 
 ## Control the shared browser
 

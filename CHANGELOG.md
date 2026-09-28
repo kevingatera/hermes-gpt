@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add opt-in scoped Hermes sessions with selectable model and reasoning effort, workspace confinement, durable resume, and a browser shared with ChatGPT through a narrow MCP toolset. Browsers are isolated by default; a separate profile allowlist can enable attachment to a local browser configured by a Hermes profile. The read-only `hermes_task_list` tool finds managed sessions to resume in later conversations. The Hermes run does not enable the built-in browser, raw CDP, terminal, or vault tools.
+- Add profile-scoped MCP browser tools so ChatGPT can list, attach to, observe, and act in an explicitly authorized local Hermes browser profile without starting a model turn. Page mutations keep the Operator workspace/direct and explicit-confirmation gates; shared browsers cannot be closed or restarted through these tools.
 - Include each managed task's browser source (`disabled`, `isolated`, or `hermes_profile`) and headed-browser flag in `hermes_task_list` without exposing the profile name.
 - Redact browser URL credentials and common secret-bearing query or fragment parameters from browser status and command output.
 - Run managed turns through Hermes' supported `chat` interface, recover session IDs from quiet-mode stderr, and keep the task's browser MCP active inside the confined process. Browser descriptors use private per-task mount directories, and both an installed CLI symlink and its target are exposed read-only.

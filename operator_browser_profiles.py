@@ -61,6 +61,11 @@ def _allowed_profiles() -> set[str]:
         raise ValueError(f"{BROWSER_ALLOWED_PROFILES_ENV} contains an invalid profile name.") from exc
 
 
+def allowed_profile_names() -> tuple[str, ...]:
+    """Return the explicitly configured browser-profile aliases in stable order."""
+    return tuple(sorted(_allowed_profiles()))
+
+
 def profile_cdp_port(profile: str, hermes_root: Path | None) -> int:
     """Return the selected profile's local CDP port without exposing its config."""
     safe_profile = op.validate_profile_name(profile)
@@ -87,4 +92,9 @@ def profile_cdp_port(profile: str, hermes_root: Path | None) -> int:
     return validate_local_cdp_port(endpoint)
 
 
-__all__ = ["BROWSER_ALLOWED_PROFILES_ENV", "profile_cdp_port", "validate_local_cdp_port"]
+__all__ = [
+    "BROWSER_ALLOWED_PROFILES_ENV",
+    "allowed_profile_names",
+    "profile_cdp_port",
+    "validate_local_cdp_port",
+]

@@ -5,6 +5,7 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
+import operator_profile_browser as op_profile_browser
 import operator_session as op_session
 import operator_session_browser as op_session_browser
 import operator_session_tasks as op_session_tasks
@@ -15,7 +16,7 @@ DEFAULT_SESSION_TIMEOUT = 900
 
 
 class SessionControlTools:
-    """Implement profile continuation and scoped-task MCP tools."""
+    """Implement session, managed-task, and browser-profile MCP registration."""
 
     def __init__(self, context: SessionToolContext):
         self.context = context
@@ -93,6 +94,62 @@ class SessionControlTools:
                 annotations=ToolAnnotations(
                     title=tool.__name__.replace("_", " "), destructiveHint=True
                 ),
+            )
+
+        for tool, title in (
+            (
+                op_profile_browser.hermes_browser_profile_list,
+                "List authorized local Hermes browser profiles",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_status,
+                "Read an authorized Hermes browser profile status",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_snapshot,
+                "Read the current page of an authorized Hermes browser profile",
+            ),
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=title, readOnlyHint=True),
+            )
+
+        for tool, title in (
+            (
+                op_profile_browser.hermes_browser_profile_attach,
+                "Attach ChatGPT controls to an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_navigate,
+                "Navigate an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_click,
+                "Click in an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_type,
+                "Type into an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_scroll,
+                "Scroll an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_back,
+                "Go back in an authorized Hermes browser profile",
+            ),
+            (
+                op_profile_browser.hermes_browser_profile_press,
+                "Press a key in an authorized Hermes browser profile",
+            ),
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(title=title, destructiveHint=True),
             )
 
     def hermes_session_continue(

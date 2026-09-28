@@ -115,7 +115,7 @@ See the [v0.6.0 release notes](docs/release-notes-v0.6.0.md) and [retention poli
 | Verify the MCP protocol surface | [MCP compatibility manifest](docs/mcp-compatibility.md) |
 | Use Codex as an MCP client | [Codex guide](docs/codex.md) |
 | Use ChatGPT or another trusted client to operate Hermes | [Operator Mode](docs/operator-mode.md) |
-| Start scoped Hermes sessions with a shared browser | [Managed Hermes sessions](docs/managed-hermes-sessions.md) |
+| Manage Hermes sessions and local browsers | [Managed Hermes sessions](docs/managed-hermes-sessions.md) |
 | Group and approve a larger objective under one lifecycle | [Missions (v0.9)](docs/missions.md) |
 | Understand unified delegation lineage across runners | [Delegations (v0.9)](docs/delegations.md) |
 | Consume durable live events / wake-up stream | [Live events (v0.9)](docs/live-events.md) |
@@ -181,7 +181,7 @@ With `HERMES_GPT_ENABLE_SESSION_CONTROL=1`, Hermes GPT exposes `hermes_session_c
 
 Session control also requires an explicit `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` list and a matching `HERMES_GPT_OPERATOR_ALLOWED_PROFILES` entry. It denies `default` unless that profile is explicitly listed; use a dedicated, restricted Hermes profile for remote clients. These profile lists do not replace OS-level filesystem or browser isolation.
 
-The separately gated managed-session tools include `hermes_task_list` for finding sessions to resume in a later conversation, plus start, continue, status, result, cancel, and shared-browser controls. Browser access can use a task-owned isolated browser or an explicitly allowlisted local browser configured by a Hermes profile. See [managed Hermes sessions](docs/managed-hermes-sessions.md) for workspace and confirmation gates.
+The separately gated managed-session tools include `hermes_task_list` for finding sessions to resume in a later conversation, plus start, continue, status, result, cancel, and shared-browser controls. Browser access can use a task-owned isolated browser or an explicitly allowlisted local browser configured by a Hermes profile. The `hermes_browser_profile_*` tools can also attach directly to an authorized local profile without starting a model turn. See [managed Hermes sessions](docs/managed-hermes-sessions.md) for workspace and confirmation gates.
 
 See [session history](docs/session-history.md) and [session control](docs/session-control.md). Treat transcript data as private local data.
 

@@ -62,6 +62,7 @@ py-modules = [
   "operator_session_task_store",
   "operator_session_task_runtime",
   "operator_session_browser",
+  "operator_profile_browser",
   "operator_browser",
   "operator_browser_profiles",
   "hermes_gpt_browser_mcp",
