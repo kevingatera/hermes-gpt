@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import operator_controller as op_controller
 import operator_failure_semantics as op_failure_semantics
@@ -19,6 +20,67 @@ class MissionTools:
 
     def __init__(self, get_hermes_root: Callable[[], Path | None]):
         self.get_hermes_root = get_hermes_root
+
+    def register_mcp_tools(
+        self,
+        server: Any,
+        *,
+        tool_meta: Callable[[], dict[str, Any]],
+    ) -> None:
+        """Register mission tools beside the adapters that implement them."""
+        tools = (
+            # Mission Control handlers apply the per-client surface allowlist.
+            self.hermes_mission_overview,
+            self.hermes_mission_health,
+            self.hermes_mission_profiles,
+            self.hermes_mission_fleet,
+            self.hermes_mission_codex,
+            self.hermes_mission_cron,
+            self.hermes_mission_delegations,
+            self.hermes_mission_failures,
+            self.hermes_mission_approvals,
+            self.hermes_mission_vault,
+            self.hermes_mission_usage,
+            self.hermes_mission_audit,
+            # Mission lifecycle authority stays in operator_mission_runtime.
+            self.hermes_mission_create,
+            self.hermes_mission_get,
+            self.hermes_mission_list,
+            self.hermes_mission_update,
+            self.hermes_mission_attach,
+            self.hermes_mission_reconcile,
+            self.hermes_mission_transition,
+            self.hermes_mission_approve,
+            # Plans and budgets store review state; they do not dispatch work.
+            self.hermes_plan_create,
+            self.hermes_plan_get,
+            self.hermes_plan_list,
+            self.hermes_plan_validate,
+            self.hermes_plan_decompose,
+            self.hermes_plan_review,
+            self.hermes_plan_node_transition,
+            self.hermes_plan_set_status,
+            self.hermes_budget_set,
+            self.hermes_budget_get,
+            self.hermes_budget_check,
+            self.hermes_budget_record,
+            # Placement and failure tools produce decisions; the controller
+            # observes state and does not execute those proposed decisions.
+            self.hermes_placement_score,
+            self.hermes_placement_candidates,
+            self.hermes_placement_get,
+            self.hermes_placement_list,
+            self.hermes_failure_classify,
+            self.hermes_failure_taxonomy,
+            self.hermes_recovery_matrix,
+            self.hermes_controller_plan_list,
+            self.hermes_controller_reconcile,
+            self.hermes_controller_status,
+            self.hermes_controller_lease_list,
+            self.hermes_controller_trigger,
+        )
+        for tool in tools:
+            server.add_tool(tool, meta=tool_meta())
 
     # --- Mission Control (v0.6 M0, read-only) --------------------------------
 
