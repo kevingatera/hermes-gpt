@@ -25,6 +25,9 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`. The new session ID appears in the job status after Hermes reports it.
 5. Call `hermes_session_job_cancel(job_id)` to stop a running job owned by this server process.
 6. Call `hermes_session_job_result(job_id)` for the bounded, redacted output.
+7. Use `hermes_session_rename(session_id, title, profile)` to update its title, or `hermes_session_pin(session_id, pinned, profile)` to pin or unpin it. These commands use Hermes' session CLI, accept exact or unique-prefix IDs, and apply the same two profile allowlists. Rename titles are limited to 100 printable characters.
+
+Metadata tools are exposed only while session control is enabled. They do not start a model call.
 
 The continue call resolves exact or unique-prefix IDs through Hermes' existing read-only `SessionDB` API before launching anything. New sessions omit `--resume`. Both paths invoke the CLI with a fixed argument array equivalent to:
 

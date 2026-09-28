@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add profile-scoped `hermes_session_rename` and `hermes_session_pin` controls using Hermes' fixed session CLI commands.
 - Add `hermes_session_start` to the gated session-control MCP surface, using an allowlisted Hermes profile and optional model and reasoning-effort overrides; the returned job status exposes Hermes' new session ID.
 - Add an opt-in Codex `sessions` toolset for gated Hermes session history/control, model and reasoning-effort selection, scoped session start/resume, and authorized local browser controls through the existing Codex MCP installer.
 - Add opt-in scoped Hermes sessions with selectable model and reasoning effort, workspace confinement, durable resume, and a browser shared with ChatGPT through a narrow MCP toolset. Browsers are isolated by default; a separate profile allowlist can enable attachment to a local browser configured by a Hermes profile. The read-only `hermes_task_list` tool finds managed sessions to resume in later conversations. The Hermes run does not enable the built-in browser, raw CDP, terminal, or vault tools.

@@ -6,6 +6,7 @@ from typing import Any
 from mcp.types import ToolAnnotations
 
 import operator_session as op_session
+import operator_session_metadata as session_metadata
 from hermes_session_history import redact_error as _redact_error
 from server_session_tools import SessionToolContext
 
@@ -47,6 +48,19 @@ class SessionControlTools:
                 tool,
                 meta=tool_meta(),
                 annotations=ToolAnnotations(title=title, destructiveHint=True),
+            )
+        for tool, title in (
+            (self.hermes_session_rename, "Rename a Hermes session"),
+            (self.hermes_session_pin, "Pin or unpin a Hermes session"),
+        ):
+            server.add_tool(
+                tool,
+                meta=tool_meta(),
+                annotations=ToolAnnotations(
+                    title=title,
+                    destructiveHint=False,
+                    idempotentHint=True,
+                ),
             )
 
     def hermes_session_start(
@@ -159,4 +173,34 @@ class SessionControlTools:
         """Return the bounded, redacted response from a Hermes session-control job."""
         return self.context.session_control.hermes_session_job_result(
             job_id, max_chars, self.context.get_hermes_root()
+        )
+
+    def hermes_session_rename(
+        self,
+        session_id: str,
+        title: str,
+        profile: str = "default",
+    ) -> dict[str, Any]:
+        """Rename an existing session through Hermes' supported session command."""
+        return session_metadata.hermes_session_rename(
+            session_id,
+            title,
+            profile=profile,
+            hermes_root=self.context.get_hermes_root(),
+            agent_root=self.context.get_agent_root(),
+        )
+
+    def hermes_session_pin(
+        self,
+        session_id: str,
+        pinned: bool = True,
+        profile: str = "default",
+    ) -> dict[str, Any]:
+        """Pin or unpin an existing session through Hermes' supported command."""
+        return session_metadata.hermes_session_pin(
+            session_id,
+            pinned,
+            profile=profile,
+            hermes_root=self.context.get_hermes_root(),
+            agent_root=self.context.get_agent_root(),
         )

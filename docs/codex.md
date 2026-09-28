@@ -102,6 +102,7 @@ The `sessions` toolset includes the curated core tools plus:
 
 - Read-only session history tools and `hermes_bot_chat_get`.
 - `hermes_session_start` for a new session in an authorized profile, and `hermes_session_continue` / `hermes_session_send` for existing sessions, plus asynchronous job status, result, and cancellation. Both paths can select `model` and `reasoning_effort` for each turn.
+- `hermes_session_rename` and `hermes_session_pin` for profile-scoped title and pin updates on existing sessions through Hermes' supported session commands.
 - `hermes_task_start` and `hermes_task_continue` for new and resumable scoped sessions. Both expose model and effort; starts also require a configured workspace and provider credential profile.
 - `hermes_browser_profile_*` tools for an allowlisted local Hermes browser, and `hermes_task_browser_*` tools for a managed session's browser.
 
