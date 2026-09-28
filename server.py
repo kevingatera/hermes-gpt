@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import importlib.metadata
 import inspect
 import json
 import os
@@ -28,7 +27,9 @@ import operator_session as op_session
 import operator_session_tasks as op_session_tasks
 import operator_status as op_status
 import operator_swarm as op_swarm
+import server_hermes_runtime as hermes_runtime
 import server_http as http_server
+import server_skill_tools as skill_tools
 from hermes_session_history import (
     INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
     MAX_EXPORT_MESSAGES,
@@ -112,92 +113,11 @@ def is_loopback_host(host: str) -> bool:
     return http_server.is_loopback_host(host)
 
 
-def is_hermes_root(path: Path) -> bool:
-    """Return True when ``path`` looks like a Hermes agent SOURCE root.
-
-    Requires a regular ``tools`` package (``tools/__init__.py``) or a top-level
-    ``hermes_state.py``. A bare ``tools/`` directory is not enough: stray
-    namespace ``tools/`` dirs at the Hermes DATA root (e.g. an unrelated tool
-    install under ``~/.hermes/tools``) must not make the data root masquerade
-    as a source root — that poisoned ``sys.path`` and broke ``import tools``
-    (audit t_9d200636 Class C).
-    """
-    if not path.exists():
-        return False
-    tools_dir = path / "tools"
-    if tools_dir.is_dir() and (tools_dir / "__init__.py").is_file():
-        return True
-    return (path / "hermes_state.py").is_file()
-
-
-def candidate_roots() -> list[Path]:
-    candidates: list[Path] = []
-    env_home = os.environ.get("HERMES_HOME")
-    if env_home:
-        env_path = Path(env_home).expanduser()
-        candidates.extend([env_path, env_path / "hermes-agent"])
-
-    home = Path.home()
-    candidates.extend(
-        [
-            home / "AppData" / "Local" / "hermes" / "hermes-agent",
-            home / ".hermes" / "hermes-agent",
-        ]
-    )
-
-    for package in ("hermes-agent", "hermes_agent"):
-        try:
-            dist = importlib.metadata.distribution(package)
-            base = Path(dist.locate_file("")).resolve()
-        except Exception:
-            continue
-        for parent in [base, *base.parents]:
-            if parent.name == "hermes-agent":
-                candidates.append(parent)
-                break
-
-    unique: list[Path] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        try:
-            resolved = candidate.expanduser().resolve()
-        except Exception:
-            continue
-        key = str(resolved).lower()
-        if key not in seen:
-            unique.append(resolved)
-            seen.add(key)
-    return unique
-
-
-def find_hermes_root() -> Path:
-    for candidate in candidate_roots():
-        if is_hermes_root(candidate):
-            return candidate
-    raise RuntimeError("Could not find a Hermes Agent source root with a tools directory.")
-
-
-def add_path_once(path: Path, *, prepend: bool = True) -> None:
-    value = str(path)
-    existing = {str(Path(p).resolve()).lower() for p in sys.path if p}
-    if str(path.resolve()).lower() not in existing:
-        if prepend:
-            sys.path.insert(0, value)
-        else:
-            sys.path.append(value)
-
-
-def add_hermes_to_syspath(root: Path) -> None:
-    add_path_once(root)
-    if os.name == "nt":
-        site_packages = root / "venv" / "Lib" / "site-packages"
-    else:
-        candidates = sorted((root / "venv" / "lib").glob("python*/site-packages")) if (root / "venv" / "lib").exists() else []
-        site_packages = candidates[0] if candidates else root / "venv" / "lib" / "site-packages"
-    if site_packages.exists():
-        # Keep Hermes' bundled dependencies available for Hermes internals, but do
-        # not let them shadow the MCP SDK used to run this sidecar.
-        add_path_once(site_packages, prepend=False)
+is_hermes_root = hermes_runtime.is_hermes_root
+candidate_roots = hermes_runtime.candidate_roots
+find_hermes_root = hermes_runtime.find_hermes_root
+add_path_once = hermes_runtime.add_path_once
+add_hermes_to_syspath = hermes_runtime.add_hermes_to_syspath
 
 
 def import_hermes() -> None:
@@ -308,78 +228,6 @@ class ReadOnlySessionAdapter(ReadOnlySessionStore):
         )
 
 
-def skill_roots() -> list[Path]:
-    roots: list[Path] = []
-    hermes_home = None
-    if callable(get_hermes_home):
-        try:
-            hermes_home = Path(get_hermes_home())
-        except Exception:
-            hermes_home = None
-    if hermes_home is None:
-        env_home = os.environ.get("HERMES_HOME")
-        hermes_home = Path(env_home).expanduser() if env_home else Path.home() / ".hermes"
-
-    roots.append(hermes_home / "skills")
-    profiles = hermes_home / "profiles"
-    if profiles.exists():
-        roots.extend(path / "skills" for path in profiles.iterdir() if path.is_dir())
-    if HERMES_ROOT:
-        roots.append(HERMES_ROOT / "skills")
-
-    unique: list[Path] = []
-    seen: set[str] = set()
-    for root in roots:
-        try:
-            resolved = root.expanduser().resolve()
-        except Exception:
-            continue
-        key = str(resolved).lower()
-        if resolved.exists() and key not in seen:
-            unique.append(resolved)
-            seen.add(key)
-    return unique
-
-
-def parse_skill_doc(path: Path) -> dict[str, str]:
-    text = path.read_text(encoding="utf-8", errors="replace")
-    name = path.parent.name
-    description = ""
-    body = text
-    if text.startswith("---"):
-        parts = text.split("---", 2)
-        if len(parts) >= 3:
-            body = parts[2]
-            for line in parts[1].splitlines():
-                if ":" not in line:
-                    continue
-                key, value = line.split(":", 1)
-                key = key.strip().lower()
-                value = value.strip().strip("'\"")
-                if key == "name" and value:
-                    name = value
-                elif key == "description" and value:
-                    description = value
-    if not description:
-        for line in body.splitlines():
-            clean = line.strip().lstrip("#").strip()
-            if clean:
-                description = clean[:180]
-                break
-    return {"name": name, "description": description, "path": str(path)}
-
-
-def discover_skills() -> list[dict[str, str]]:
-    skills: list[dict[str, str]] = []
-    for root in skill_roots():
-        for skill_md in root.rglob("SKILL.md"):
-            try:
-                skills.append(parse_skill_doc(skill_md))
-            except Exception as exc:
-                eprint(f"hermes-gpt: could not read skill {skill_md}: {exc}")
-    return sorted(skills, key=lambda item: (item["name"].lower(), item["path"].lower()))
-
-
 def clean_error(tool_name: str, exc: Exception) -> RuntimeError:
     eprint(f"hermes-gpt: {tool_name} failed: {exc}")
     return RuntimeError(f"{tool_name} failed: {exc}")
@@ -391,6 +239,19 @@ from mcp.types import ToolAnnotations
 from mcp_compat import HermesMCP as FastMCP
 
 import_hermes()
+
+_skill_tools = skill_tools.HermesSkillTools(
+    require_imports=require_imports,
+    get_hermes_home=lambda: get_hermes_home() if callable(get_hermes_home) else None,
+    get_source_root=lambda: HERMES_ROOT,
+    clean_error=clean_error,
+    eprint=eprint,
+)
+parse_skill_doc = skill_tools.parse_skill_doc
+skill_roots = _skill_tools.skill_roots
+discover_skills = _skill_tools.discover_skills
+hermes_skill_list = _skill_tools.hermes_skill_list
+hermes_skill_view = _skill_tools.hermes_skill_view
 
 
 def tool_meta(extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -497,52 +358,6 @@ def hermes_memory(
         return memory_tool.memory_tool(action=action, target=target, content=content, old_text=old_text)
     except Exception as exc:
         raise clean_error("hermes_memory", exc) from exc
-
-
-def hermes_skill_list() -> str:
-    try:
-        require_imports()
-        skills = discover_skills()
-        if not skills:
-            return "No Hermes skills found."
-        # Deduplicate by name, keeping the first (user-level skills take priority)
-        seen_names: set[str] = set()
-        unique_skills: list[dict[str, str]] = []
-        for skill in skills:
-            if skill["name"].lower() not in seen_names:
-                seen_names.add(skill["name"].lower())
-                unique_skills.append(skill)
-        lines = []
-        for skill in unique_skills:
-            desc = f" - {skill['description']}" if skill["description"] else ""
-            lines.append(f"- {skill['name']}{desc}\n  {skill['path']}")
-        return "\n".join(lines)
-    except Exception as exc:
-        raise clean_error("hermes_skill_list", exc) from exc
-
-
-def hermes_skill_view(name: str) -> str:
-    try:
-        require_imports()
-        query = name.strip().lower()
-        matches = [
-            skill for skill in discover_skills()
-            if skill["name"].lower() == query or Path(skill["path"]).parent.name.lower() == query
-        ]
-        if not matches:
-            return f"No skill matched {name!r}."
-        if len(matches) > 1:
-            return "Multiple skills matched:\n" + "\n".join(f"- {m['name']}: {m['path']}" for m in matches)
-        skill_path = Path(matches[0]["path"])
-        # Size guard: if file > 80KB, return bounded chunk with guidance
-        MAX_VIEW_BYTES = 80_000
-        file_size = skill_path.stat().st_size
-        if file_size > MAX_VIEW_BYTES:
-            text = skill_path.read_text(encoding="utf-8", errors="replace")
-            return text[:MAX_VIEW_BYTES] + f"\n\n--- TRUNCATED (showing {MAX_VIEW_BYTES} of {file_size} bytes). Use hermes_read_file for specific sections. ---"
-        return skill_path.read_text(encoding="utf-8", errors="replace")
-    except Exception as exc:
-        raise clean_error("hermes_skill_view", exc) from exc
 
 
 _session_tool_context = SessionToolContext(

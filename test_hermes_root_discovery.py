@@ -18,12 +18,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import server
+import server_hermes_runtime
 
 
 def _make_fake_root(tmp_path: Path) -> Path:
     fake = tmp_path / "data-root"
     (fake / "tools").mkdir(parents=True)
-    (fake / "tools" / "unrelated-script.py").write_text("# stray tool, not a Hermes install\n", encoding="utf-8")
+    (fake / "tools" / "unrelated-script.py").write_text(
+        "# stray tool, not a Hermes install\n", encoding="utf-8"
+    )
     return fake
 
 
@@ -57,12 +60,18 @@ def test_find_hermes_root_skips_data_root_with_stray_tools_dir(tmp_path, monkeyp
     (real_root / "tools" / "__init__.py").write_text("", encoding="utf-8")
 
     monkeypatch.setenv("HERMES_HOME", str(data_root))
-    monkeypatch.setattr(server.Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(
+        server_hermes_runtime.Path, "home", classmethod(lambda cls: tmp_path)
+    )
     # Neutralize pip-metadata candidates so only the two paths above compete.
-    monkeypatch.setattr(server.importlib.metadata, "distribution", _raise_distribution_not_found)
+    monkeypatch.setattr(
+        server_hermes_runtime.importlib.metadata,
+        "distribution",
+        _raise_distribution_not_found,
+    )
 
     assert server.find_hermes_root() == real_root.resolve()
 
 
 def _raise_distribution_not_found(name: str):
-    raise server.importlib.metadata.PackageNotFoundError(name)
+    raise server_hermes_runtime.importlib.metadata.PackageNotFoundError(name)
