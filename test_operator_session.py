@@ -8,6 +8,7 @@ import pytest
 
 import operator_live_events as live_events
 import operator_session as session
+import operator_session_job_runtime as job_runtime_process
 import operator_session_job_store as job_store
 import operator_session_jobs as job_runtime
 
@@ -55,7 +56,7 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "project-manager")
     monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "project-manager")
     (tmp_path / "profiles" / "project-manager").mkdir(parents=True)
-    monkeypatch.setattr(job_runtime.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(job_runtime_process.threading, "Thread", _ImmediateThread)
     calls = []
 
     def fake_popen(argv, **kwargs):
@@ -63,7 +64,7 @@ def test_mocked_continue_status_and_result(monkeypatch, tmp_path):
         calls.append(proc)
         return proc
 
-    monkeypatch.setattr(job_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(job_runtime_process.subprocess, "Popen", fake_popen)
     prompt = "private follow-up prompt"
     started = session.hermes_session_continue(
         "20260810_143227_6b0982",
@@ -111,8 +112,8 @@ def test_continue_accepts_model_and_reasoning_overrides(monkeypatch, tmp_path):
         calls.append(proc)
         return proc
 
-    monkeypatch.setattr(job_runtime.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(job_runtime.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(job_runtime_process.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(job_runtime_process.threading, "Thread", _ImmediateThread)
     result = session.hermes_session_continue(
         "session-2",
         "do one turn",
@@ -136,7 +137,7 @@ def test_start_uses_authorized_profile_and_recovers_new_session_id(
     monkeypatch.setenv(session.op.OPERATOR_ALLOWED_PROFILES_ENV, "chatgpt")
     profile_home = tmp_path / "profiles" / "chatgpt"
     profile_home.mkdir(parents=True)
-    monkeypatch.setattr(job_runtime.threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(job_runtime_process.threading, "Thread", _ImmediateThread)
     calls = []
 
     class _NewSessionProcess(_FakeProcess):
@@ -155,7 +156,7 @@ def test_start_uses_authorized_profile_and_recovers_new_session_id(
         calls.append(proc)
         return proc
 
-    monkeypatch.setattr(job_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(job_runtime_process.subprocess, "Popen", fake_popen)
     prompt = "Reply exactly SESSION_STARTED."
     started = session.hermes_session_start(
         prompt,
@@ -273,7 +274,9 @@ def test_scoped_job_recovers_legacy_usage_report_after_stderr_miss(tmp_path):
 def test_same_session_cannot_run_concurrently(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
-    monkeypatch.setitem(job_runtime._active_sessions, "default:session-1", "b" * 32)
+    monkeypatch.setitem(
+        job_runtime_process._active_sessions, "default:session-1", "b" * 32
+    )
     result = session.hermes_session_continue("session-1", "next", hermes_root=tmp_path)
     assert result["code"] == "SESSION_BUSY"
 
@@ -328,7 +331,7 @@ def test_session_profile_must_also_pass_operator_allowlist(monkeypatch, tmp_path
 def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
-    monkeypatch.setattr(job_runtime, "PROGRESS_EVENT_INTERVAL_SECONDS", 0.1)
+    monkeypatch.setattr(job_runtime_process, "PROGRESS_EVENT_INTERVAL_SECONDS", 0.1)
     agent_root = tmp_path / "agent"
     executable = agent_root / "venv" / "bin" / "hermes"
     executable.parent.mkdir(parents=True)
