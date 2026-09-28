@@ -74,6 +74,7 @@ py-modules = [
   "operator_placement",
   "operator_failure_semantics",
   "operator_controller",
+  "operator_controller_attention",
   "operator_controller_decisions",
   "operator_controller_health",
   "operator_controller_l2",
