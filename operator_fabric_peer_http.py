@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import operator_fabric as fabric
+import operator_fabric_protocol as protocol
 
 
 class PeerHandler(BaseHTTPRequestHandler):
@@ -30,7 +31,7 @@ class PeerHandler(BaseHTTPRequestHandler):
         return self.server.fabric_advertised_url
 
     def _send(self, status: int, payload: dict[str, Any]) -> None:
-        encoded = fabric.canonical_json(payload).encode("utf-8")
+        encoded = protocol.canonical_json(payload).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
@@ -75,20 +76,20 @@ class PeerHandler(BaseHTTPRequestHandler):
                     ],
                 },
             )
-        except fabric.FabricError as exc:
+        except protocol.FabricError as exc:
             self._send(503, {"error": exc.code})
 
     def do_POST(self) -> None:
         outer: Any = None
         try:
             length = int(self.headers.get("Content-Length", "0"))
-            if length <= 0 or length > fabric._MAX_BODY:
-                raise fabric.FabricError(
+            if length <= 0 or length > protocol._MAX_BODY:
+                raise protocol.FabricError(
                     "FABRIC_PAYLOAD_TOO_LARGE",
                     "A2A request has an invalid body size",
                 )
-            outer = fabric._closed(
-                fabric.strict_json_loads(self.rfile.read(length)),
+            outer = protocol._closed(
+                protocol.strict_json_loads(self.rfile.read(length)),
                 required={"jsonrpc", "id", "method", "params"},
                 name="A2A JSON-RPC request",
             )
@@ -96,16 +97,16 @@ class PeerHandler(BaseHTTPRequestHandler):
                 "SendMessage",
                 "message/send",
             }:
-                raise fabric.FabricError(
+                raise protocol.FabricError(
                     "FABRIC_PROTOCOL_ERROR",
                     "only A2A SendMessage is accepted by the Fabric peer",
                 )
-            params = fabric._closed(
+            params = protocol._closed(
                 outer["params"],
                 required={"message"},
                 name="A2A params",
             )
-            message = fabric._closed(
+            message = protocol._closed(
                 params["message"],
                 required={"role", "parts", "messageId", "contextId"},
                 name="A2A message",
@@ -115,7 +116,7 @@ class PeerHandler(BaseHTTPRequestHandler):
                 or not isinstance(message["parts"], list)
                 or len(message["parts"]) != 1
             ):
-                raise fabric.FabricError(
+                raise protocol.FabricError(
                     "FABRIC_PROTOCOL_ERROR",
                     "Fabric A2A message must contain exactly one structured DataPart",
                 )
@@ -126,17 +127,17 @@ class PeerHandler(BaseHTTPRequestHandler):
                 or "data" not in raw_part
                 or raw_part.get("mediaType") != "application/json"
             ):
-                raise fabric.FabricError(
+                raise protocol.FabricError(
                     "FABRIC_PROTOCOL_ERROR",
                     "Fabric does not accept text or generic agent messages",
                 )
-            part = fabric._closed(
+            part = protocol._closed(
                 raw_part,
                 required={"data", "mediaType"},
                 name="A2A DataPart",
             )
             if not isinstance(part["data"], dict):
-                raise fabric.FabricError(
+                raise protocol.FabricError(
                     "FABRIC_PROTOCOL_ERROR",
                     "Fabric DataPart must contain a structured JSON object",
                 )
@@ -163,7 +164,7 @@ class PeerHandler(BaseHTTPRequestHandler):
                 },
             }
             self._send(200, {"jsonrpc": "2.0", "id": outer["id"], "result": result})
-        except fabric.FabricError as exc:
+        except protocol.FabricError as exc:
             self._send(
                 200,
                 {
@@ -210,7 +211,7 @@ def peer_main(argv: list[str] | None = None) -> None:
         raise SystemExit("Non-loopback verified Fabric requires direct TLS (--cert and --key).")
     scheme = "https" if args.cert else "http"
     advertised = args.advertised_url or f"{scheme}://{args.host}:{args.port}"
-    fabric._require_secure_transport(advertised)
+    protocol._require_secure_transport(advertised)
     server = ThreadingHTTPServer((args.host, args.port), PeerHandler)
     server.fabric_service = fabric.FabricPeerService()
     server.fabric_advertised_url = advertised
