@@ -265,7 +265,6 @@ def hermes_task_start(
         if workspace is None:
             raise ValueError("workspace_id is not configured for scoped Hermes tasks")
         profile = runtime._profile_key_source(str(credential_profile or "default"), hermes_root)
-        runtime._model_credentials(model, profile, hermes_root)
         task_id = uuid4().hex
         toolsets = TOOLSETS if browser_enabled else FILE_ONLY_TOOLSETS
         if policy.effective_dry_run(dry_run):
@@ -285,6 +284,7 @@ def hermes_task_start(
             }
         if not confirm:
             return {"success": False, "code": "CONFIRMATION_REQUIRED", "safe_message": "Starting a Hermes task requires explicit confirmation."}
+        runtime._model_credentials(model, profile, hermes_root)
         task_home = (sessions._data_root(hermes_root) / "profiles" / task_id).resolve()
         task_home.mkdir(parents=True, mode=0o700)
         try:

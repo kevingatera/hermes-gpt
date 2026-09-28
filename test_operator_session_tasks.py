@@ -81,6 +81,64 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert "test-deepseek-key" not in json.dumps(launched["metadata"])
 
 
+def test_task_start_dry_run_reports_selection_without_provider_credentials(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    monkeypatch.delenv("DEEPSEEK_API_KEY")
+    monkeypatch.setattr(
+        tasks.runtime,
+        "_model_credentials",
+        lambda *_args: pytest.fail("a dry run must not read provider credentials"),
+    )
+
+    result = tasks.hermes_task_start(
+        "Inspect the readme and summarize the project.",
+        "demo",
+        credential_profile="default",
+        browser_enabled=False,
+        model="deepseek/deepseek-v4.1-flash",
+        reasoning_effort="high",
+        hermes_root=root,
+    )
+
+    assert result["success"] is True
+    assert result["dry_run"] is True
+    assert result["changed"] is False
+    assert result["model"] == "deepseek/deepseek-v4.1-flash"
+    assert result["reasoning_effort"] == "high"
+    assert result["browser_source"] == "isolated"
+    assert not tasks._task_root(root).exists()
+
+
+def test_task_start_requires_provider_credentials_before_creating_state(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    monkeypatch.delenv("DEEPSEEK_API_KEY")
+
+    result = tasks.hermes_task_start(
+        "Inspect the readme and summarize the project.",
+        "demo",
+        credential_profile="default",
+        confirm=True,
+        dry_run=False,
+        browser_enabled=False,
+        model="deepseek/deepseek-v4.1-flash",
+        reasoning_effort="high",
+        hermes_root=root,
+    )
+
+    assert result["success"] is False
+    assert result["code"] == "TASK_START_ERROR"
+    assert "No deepseek API key" in result["safe_message"]
+    assert not tasks._task_root(root).exists()
+
+
 def test_task_list_is_paginated_and_projects_only_resumable_metadata(
     monkeypatch, tmp_path
 ):
