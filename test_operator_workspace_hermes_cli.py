@@ -1,4 +1,4 @@
-import operator_workspace as ow
+import operator_gateway as ow
 
 
 def test_hermes_cli_uses_local_bin_fallback_when_path_missing(monkeypatch, tmp_path):

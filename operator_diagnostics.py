@@ -21,13 +21,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import operator_policy as op
 import operator_config as op_config
-import operator_cron as op_cron
-import operator_skills as op_skills
-import operator_workspace as op_workspace
+import operator_gateway as op_gateway
+import operator_policy as op
 from versioning import VERSION
 
 # ---------------------------------------------------------------------------
@@ -257,15 +255,13 @@ def _check_gateway_status(profile_home: Path) -> dict[str, Any]:
     pid_path = _gateway_pid_path(profile_home)
     heartbeat_path = _ticker_heartbeat_path(profile_home)
 
-    # Fix 2026-09-08 (see MEMORY.md / HANDOFF.md, hermes-gpt v0.8.0 @ fc1f68c):
-    # gateway.pid can hold JSON (newer gateway versions) instead of a plain
-    # int. Reuse the already-battle-tested fallback from operator_workspace
-    # (pid file -> gateway_state.json) instead of failing outright on
-    # ValueError, which previously caused false-negative GATEWAY_PID_MISSING.
-    pid: int | None = op_workspace._read_gateway_pid_from_pid_file(pid_path)
+    # Hermes versions store either a numeric PID or structured gateway state.
+    # Reuse the gateway parser so diagnostics follow the same fallback as the
+    # gateway status tool.
+    pid: int | None = op_gateway._read_gateway_pid_from_pid_file(pid_path)
     if pid is None:
-        _state = op_workspace._read_gateway_state(_gateway_state_path(profile_home))
-        pid = op_workspace._read_gateway_pid_from_state(_state)
+        _state = op_gateway._read_gateway_state(_gateway_state_path(profile_home))
+        pid = op_gateway._read_gateway_pid_from_state(_state)
 
     running = _is_process_alive(pid) if pid is not None else False
 
@@ -1150,7 +1146,7 @@ def hermes_operator_recover(
             mutations_attempted += 1
             if apply and can_mutate:
                 try:
-                    rc, out, err = op_workspace._hermes_gateway_restart_raw(profile, runner=runner)
+                    rc, out, err = op_gateway._hermes_gateway_restart_raw(profile, runner=runner)
                     if rc == 0:
                         mutations_performed += 1
                         steps.append(

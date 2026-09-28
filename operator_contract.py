@@ -47,16 +47,17 @@ import hashlib
 import json
 import os
 import re
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-import operator_policy as op
+import operator_command_utils as op_command
 import operator_fleet as op_fleet
 import operator_mission as mission
-import operator_workspace as op_workspace
+import operator_policy as op
 import operator_runners as op_runners
+import operator_workspace as op_workspace
+import operator_workspace_files as op_workspace_files
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -300,10 +301,10 @@ def _test_list(value: Any) -> list[dict[str, Any]]:
         name = _clean_text(item.get("name"), field="test name", maximum=200)
         command = _clean_text(item.get("command"), field="test command", maximum=1000)
         try:
-            argv = op_workspace._split_command_argv(command)
+            argv = op_command._split_command_argv(command)
         except ValueError as exc:
             raise ValueError(f"test command is not parseable: {exc}") from exc
-        allowed, reason = op_workspace._is_allowed_test_command(argv)
+        allowed, reason = op_workspace_files._is_allowed_test_command(argv)
         if not allowed:
             raise ValueError(f"test {name!r} is not in the allowlist: {reason}")
         workdir = _clean_text(item.get("workdir", ""), field="test workdir", maximum=1000, required=False)

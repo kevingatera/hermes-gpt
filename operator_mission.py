@@ -45,9 +45,9 @@ from typing import Any
 import operator_cron as op_cron
 import operator_diagnostics as op_diag
 import operator_fleet as op_fleet
+import operator_gateway as op_gateway
 import operator_mission_common as mission_common
 import operator_policy as op
-import operator_workspace as op_workspace
 from operator_mission_common import (
     _LOG_TAIL_BYTES,
     _MAX_APPROVALS,
@@ -454,13 +454,12 @@ def _profile_summary(profile: str, root: Path | None, warnings: list[str]) -> di
     try:
         pid_path = home / "gateway.pid"
         # Fix 2026-09-08 (see MEMORY.md / HANDOFF.md, hermes-gpt v0.8.0 @ fc1f68c):
-        # gateway.pid can hold JSON (newer gateway versions) instead of a plain
-        # int; fall back to gateway_state.json like operator_workspace does,
-        # instead of silently treating the gateway as not running.
-        pid: int | None = op_workspace._read_gateway_pid_from_pid_file(pid_path)
+        # Hermes versions may store a numeric PID or structured gateway state.
+        # Use the shared parser so mission status matches gateway diagnostics.
+        pid: int | None = op_gateway._read_gateway_pid_from_pid_file(pid_path)
         if pid is None:
-            _state = op_workspace._read_gateway_state(home / "gateway_state.json")
-            pid = op_workspace._read_gateway_pid_from_state(_state)
+            _state = op_gateway._read_gateway_state(home / "gateway_state.json")
+            pid = op_gateway._read_gateway_pid_from_state(_state)
         gateway_running = op_diag._is_process_alive(pid) if pid is not None else False
     except OSError:
         gateway_running = False

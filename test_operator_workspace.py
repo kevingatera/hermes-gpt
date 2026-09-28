@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
 import pytest
 
+import operator_command_utils as command_utils
+import operator_owner as owner_tools
 import operator_policy as op
 import operator_workspace as ows
 
@@ -439,7 +440,7 @@ def test_owner_run_command_does_not_defer_other_systemctl_commands(
 
 
 def test_owner_run_command_windows_quoted_argument(monkeypatch, clean_env, audit_override):
-    monkeypatch.setattr(ows.os, "name", "nt", raising=False)
+    monkeypatch.setattr(owner_tools.os, "name", "nt", raising=False)
     _enable_owner(monkeypatch)
     captured = {}
 
@@ -458,8 +459,8 @@ def test_owner_run_command_windows_quoted_argument(monkeypatch, clean_env, audit
 
 
 def test_split_command_argv_preserves_unquoted_windows_backslashes(monkeypatch):
-    monkeypatch.setattr(ows.os, "name", "nt", raising=False)
-    argv = ows._split_command_argv(r"python C:\Users\asimo\probe.py")
+    monkeypatch.setattr(command_utils.os, "name", "nt", raising=False)
+    argv = command_utils._split_command_argv(r"python C:\Users\asimo\probe.py")
     assert argv == ["python", r"C:\Users\asimo\probe.py"]
 
 
@@ -548,6 +549,7 @@ def test_owner_run_command_in_apply_mode_dry_run_returns_dry_run_plan(workspace_
 def test_tool_registration_includes_new_operator_tools(monkeypatch):
     """The server should expose all the new operator tools by name."""
     import asyncio
+
     import server
 
     for name in [
@@ -610,6 +612,7 @@ def test_tool_registration_includes_new_operator_tools(monkeypatch):
 def test_existing_read_tools_still_present(monkeypatch):
     """The original read tools must still be registered."""
     import asyncio
+
     import server
 
     for name in [
