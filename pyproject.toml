@@ -53,6 +53,7 @@ py-modules = [
   "operator_fabric_protocol",
   "operator_fabric_config",
   "operator_fabric",
+  "operator_fabric_store",
   "operator_fabric_peer_http",
   "operator_fabric_control",
   "operator_fabric_router",

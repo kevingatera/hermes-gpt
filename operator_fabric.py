@@ -12,21 +12,20 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import os
 import sqlite3
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import operator_fabric_config as fabric_config
+import operator_fabric_store as fabric_store
 import operator_fleet as op_fleet
 import operator_policy as op
 import operator_runners as op_runners
@@ -76,6 +75,14 @@ CAPABILITY_SCHEMA = "hermes.fabric-capability/v1"
 COORDINATOR_DB_ENV = "HERMES_GPT_FABRIC_COORDINATOR_DB"
 PEER_DB_ENV = "HERMES_GPT_FABRIC_PEER_DB"
 
+# Keep the journal helpers available from this public module for existing callers.
+_db_path = fabric_store._db_path
+_prepare_db_parent = fabric_store._prepare_db_parent
+_connect = fabric_store._connect
+_connect_readonly = fabric_store._connect_readonly
+_init_coordinator_db = fabric_store._init_coordinator_db
+_init_peer_db = fabric_store._init_peer_db
+
 _TERMINAL_PEER = frozenset({"SUCCEEDED", "FAILED", "CANCELLED", "LOST_AMBIGUOUS", "BLOCKED"})
 _TERMINAL_COORD = frozenset({"COMPLETED", "FAILED", "CANCELLED", "BLOCKED"})
 _PEER_WRITE_CLAIM_STATES = frozenset(
@@ -115,128 +122,6 @@ def _bounded_coordinator_peer_values(data: dict[str, Any]) -> dict[str, Any]:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _db_path(env_name: str, default_name: str, hermes_root: Path | None = None) -> Path:
-    configured = os.environ.get(env_name, "").strip()
-    path = Path(configured).expanduser() if configured else _root(hermes_root) / "fabric" / default_name
-    if not path.is_absolute() or op.is_denied_path(path) or path.is_symlink():
-        raise FabricError("FABRIC_JOURNAL_PATH_INVALID", "Fabric journal path is not allowed")
-    return path
-
-
-def _prepare_db_parent(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    try:
-        path.parent.chmod(0o700)
-    except OSError:
-        return
-
-
-@contextmanager
-def _connect(path: Path) -> Iterator[sqlite3.Connection]:
-    """Open a write-capable Fabric journal connection with deterministic close.
-
-    ``sqlite3.Connection`` commits/rolls back when used directly as a context
-    manager, but it does not close at ``__exit__``. Fabric operations must not
-    leave connection teardown (and any WAL checkpoint/cleanup it triggers) to
-    later garbage collection, because that can make a subsequent read-only
-    validation appear to mutate the journal. Keep transaction semantics while
-    closing synchronously at the operation boundary.
-    """
-    db = sqlite3.connect(path, timeout=5.0)
-    try:
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA journal_mode=WAL")
-        db.execute("PRAGMA foreign_keys=ON")
-        with db:
-            yield db
-    finally:
-        db.close()
-
-
-@contextmanager
-def _connect_readonly(path: Path) -> Iterator[sqlite3.Connection]:
-    """Open a query-only Fabric journal connection and close it deterministically."""
-    uri = f"file:{urllib.parse.quote(str(path))}?mode=ro"
-    db = sqlite3.connect(uri, uri=True, timeout=5.0)
-    try:
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA query_only=ON")
-        yield db
-    finally:
-        db.close()
-
-
-def _init_coordinator_db(path: Path) -> None:
-    _prepare_db_parent(path)
-    with _connect(path) as db:
-        db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS dispatches (
-              dispatch_id TEXT PRIMARY KEY,
-              task_id TEXT NOT NULL,
-              contract_sha256 TEXT NOT NULL,
-              node_name TEXT NOT NULL,
-              evidence_policy_json TEXT NOT NULL,
-              created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS dispatches_task_idx ON dispatches(task_id);
-            CREATE TABLE IF NOT EXISTS attempts (
-              attempt_id TEXT PRIMARY KEY,
-              dispatch_id TEXT NOT NULL REFERENCES dispatches(dispatch_id),
-              envelope_sha256 TEXT NOT NULL,
-              node_name TEXT NOT NULL,
-              peer_name TEXT NOT NULL,
-              remote_backend TEXT NOT NULL,
-              coordinator_principal TEXT NOT NULL,
-              capability_sha256 TEXT NOT NULL,
-              peer_policy_sha256 TEXT,
-              state TEXT NOT NULL,
-              remote_task_id TEXT,
-              evidence_json TEXT,
-              error_code TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS attempts_dispatch_idx ON attempts(dispatch_id);
-            """
-        )
-
-
-def _init_peer_db(path: Path) -> None:
-    _prepare_db_parent(path)
-    with _connect(path) as db:
-        db.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS attempts (
-              attempt_id TEXT PRIMARY KEY,
-              dispatch_id TEXT NOT NULL,
-              envelope_sha256 TEXT NOT NULL,
-              contract_sha256 TEXT NOT NULL,
-              task_id TEXT NOT NULL,
-              coordinator_principal TEXT NOT NULL,
-              node_name TEXT NOT NULL,
-              remote_backend TEXT NOT NULL,
-              logical_workspace TEXT NOT NULL,
-              conflict_domain TEXT NOT NULL,
-              authorization_class TEXT NOT NULL,
-              policy_sha256 TEXT NOT NULL,
-              local_task_id TEXT NOT NULL,
-              state TEXT NOT NULL,
-              dispatch_result_json TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS write_claims (
-              conflict_domain TEXT PRIMARY KEY,
-              attempt_id TEXT NOT NULL,
-              state TEXT NOT NULL,
-              acquired_at TEXT NOT NULL,
-              released_at TEXT
-            );
-            """
-        )
 
 
 def _http_json(
