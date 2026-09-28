@@ -40,10 +40,13 @@ from pathlib import Path
 
 import pytest
 
+import operator_contract as contract_mod
 import operator_policy as op
 import operator_swarm as swarm
+import operator_swarm_advance_tools as swarm_advance
+import operator_swarm_model as swarm_model
+import operator_swarm_store as swarm_store
 import operator_swarm_workflows as swarm_workflows
-import operator_contract as contract_mod
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -577,11 +580,11 @@ def test_each_stage_emits_valid_m1_contract(hermes_root, monkeypatch):
     assert out["valid"] is True and not out["contract_issues"]
 
     # Every non-approval stage's contract canonicalizes (D-SW1).
-    _, workflow, _ = swarm._parse_workflow(json.dumps(wf))
+    _, workflow, _ = swarm_model.parse_workflow(json.dumps(wf))
     for stage in workflow["stages"]:
         if stage.get("kind") == "approval":
             continue
-        contract = swarm._stage_contract(workflow, stage)
+        contract = swarm_model.stage_contract(workflow, stage)
         _, ccontract, csha = contract_mod._parse_contract(json.dumps(contract))
         assert ccontract["schema"] == "hermes.work-contract/v1"
         assert ccontract["assigned_agent"] == stage["owner"]
@@ -602,9 +605,9 @@ def test_auto_stage_contract_delegates_agent_choice_without_losing_owner_profile
         },
     }
     wf = _canonical_flow(ws, executions={"implementation": execution})
-    _, workflow, _ = swarm._parse_workflow(json.dumps(wf))
+    _, workflow, _ = swarm_model.parse_workflow(json.dumps(wf))
     stage = next(item for item in workflow["stages"] if item["id"] == "implementation")
-    contract = swarm._stage_contract(workflow, stage)
+    contract = swarm_model.stage_contract(workflow, stage)
 
     assert contract["assigned_agent"] == "auto"
     assert contract["assigned_profile"] == stage["owner"]
@@ -619,9 +622,9 @@ def test_worktree_plan_native_ng5_shape(hermes_root):
     """D-SW2/NG5: implementation stages plan upstream worktrees, not git."""
     ws = hermes_root.parent / "ws"
     wf = _canonical_flow(ws, project={"slug": "hermes-gpt", "repo": str(ws)})
-    _, workflow, _ = swarm._parse_workflow(json.dumps(wf))
+    _, workflow, _ = swarm_model.parse_workflow(json.dumps(wf))
     for stage in workflow["stages"]:
-        plan = swarm._worktree_plan(workflow, stage, f"{workflow['workflow_id']}-{stage['id']}")
+        plan = swarm_model.worktree_plan(workflow, stage, f"{workflow['workflow_id']}-{stage['id']}")
         if stage["id"] in ("implementation", "tests", "docs"):
             assert plan is not None
             assert plan["kind"] == "project-linked"
@@ -634,11 +637,11 @@ def test_worktree_plan_native_ng5_shape(hermes_root):
 def test_worktree_plans_never_collide(hermes_root):
     ws = hermes_root.parent / "ws"
     wf = _canonical_flow(ws, project={"slug": "hermes-gpt", "repo": str(ws)})
-    _, workflow, _ = swarm._parse_workflow(json.dumps(wf))
+    _, workflow, _ = swarm_model.parse_workflow(json.dumps(wf))
     branches = set()
     paths = set()
     for stage in workflow["stages"]:
-        plan = swarm._worktree_plan(workflow, stage, f"{workflow['workflow_id']}-{stage['id']}")
+        plan = swarm_model.worktree_plan(workflow, stage, f"{workflow['workflow_id']}-{stage['id']}")
         if plan:
             assert plan["branch"] not in branches
             assert plan["path"] not in paths
@@ -865,7 +868,7 @@ def test_codex_verdict_schema_has_no_raw_transcript(pytestconfig, hermes_root, m
     """P2-1: verdict envelope is bounded and carries no raw transcript."""
     ws = hermes_root.parent / "ws"
     # The default reviewer plans only (dry-run): argv redacted, no transcript.
-    plan = swarm._default_codex_reviewer(workdir=str(ws), target="uncommitted", timeout=900)
+    plan = swarm_advance.default_codex_reviewer(workdir=str(ws), target="uncommitted", timeout=900)
     raw = json.dumps(plan)
     assert "transcript" not in raw.lower()
     assert "prompt" not in raw.lower() or "prompt" in raw  # no raw prompt text
@@ -1077,7 +1080,7 @@ def test_create_dry_run_returns_plan_no_mutation(hermes_root, monkeypatch):
 
 
 def _load_none(root: Path, workflow_id: str) -> bool:
-    return swarm._load_workflow(root, workflow_id) is None
+    return swarm_store.load_workflow(root, workflow_id) is None
 
 
 def test_create_requires_confirm(hermes_root, monkeypatch):

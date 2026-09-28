@@ -457,7 +457,7 @@ def test_execution_options_reject_secret_like_keys(tmp_path: Path):
 
 
 def test_canonical_swarm_accepts_per_stage_execution(tmp_path: Path):
-    import operator_swarm as swarm
+    import operator_swarm_model as swarm_model
     import operator_swarm_workflows as workflows
 
     wf = workflows.canonical_workflow(
@@ -475,7 +475,7 @@ def test_canonical_swarm_accepts_per_stage_execution(tmp_path: Path):
     assert review["execution"]["backend"] == "omx"
     assert review["review_requirements"]["reviewer"] == "reviewer"
 
-    contract = swarm._stage_contract(wf, impl, task_id="runner-stage-001")
+    contract = swarm_model.stage_contract(wf, impl, task_id="runner-stage-001")
     _, parsed, _ = contract_mod._parse_contract(json.dumps(contract))
     assert parsed["execution"]["backend"] == "pi_rpc"
 

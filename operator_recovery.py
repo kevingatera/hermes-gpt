@@ -18,7 +18,8 @@ import operator_fabric as op_fabric
 import operator_fabric_g4c as op_fabric_g4c
 import operator_fabric_router as op_fabric_router
 import operator_policy as op
-import operator_swarm as op_swarm
+import operator_swarm_model as swarm_model
+import operator_swarm_store as swarm_store
 
 # Runtime registration is idempotent. G4-C intentionally layers over the
 # existing G4-A/G4-B backends rather than creating a second authority path.
@@ -35,13 +36,13 @@ MAX_RECONCILE_REPORT = 64
 def _reconcile_swarm_stages(hermes_root: Path, apply: bool) -> dict[str, Any]:
     interrupted: list[dict[str, Any]] = []
     changed_records = 0
-    for record in op_swarm._list_records(hermes_root):
+    for record in swarm_store.list_records(hermes_root):
         workflow_id = record.get("workflow_id", "")
-        if record.get("status") != op_swarm.WORKFLOW_STATUS_RUNNING:
+        if record.get("status") != swarm_model.WORKFLOW_STATUS_RUNNING:
             continue
         record_mutated = False
         for stage in record.get("stages", []):
-            if stage.get("status") != op_swarm.STAGE_STATUS_RUNNING:
+            if stage.get("status") != swarm_model.STAGE_STATUS_RUNNING:
                 continue
             interrupted.append(
                 {
@@ -53,14 +54,14 @@ def _reconcile_swarm_stages(hermes_root: Path, apply: bool) -> dict[str, Any]:
                 }
             )
             if apply:
-                stage["status"] = op_swarm.STAGE_STATUS_BLOCKED
+                stage["status"] = swarm_model.STAGE_STATUS_BLOCKED
                 stage["blocked_reason"] = INTERRUPTED_REASON
                 record["updated_at"] = datetime.now(timezone.utc).isoformat()
-                if record.get("status") == op_swarm.WORKFLOW_STATUS_RUNNING:
-                    record["status"] = op_swarm.WORKFLOW_STATUS_BLOCKED
+                if record.get("status") == swarm_model.WORKFLOW_STATUS_RUNNING:
+                    record["status"] = swarm_model.WORKFLOW_STATUS_BLOCKED
                 record_mutated = True
         if apply and record_mutated:
-            op_swarm._save_workflow(hermes_root, record)
+            swarm_store.save_workflow(hermes_root, record)
             changed_records += 1
     return {
         "interrupted_stages": interrupted[:MAX_RECONCILE_REPORT],
@@ -151,7 +152,7 @@ def hermes_operator_reconcile(
         )
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
-    root = hermes_root or op_swarm._default_hermes_root() or Path.home() / ".hermes"
+    root = hermes_root or swarm_store.default_hermes_root() or Path.home() / ".hermes"
     try:
         swarm_summary = _reconcile_swarm_stages(root, apply=apply)
         token_summary = _reload_token_store(root)

@@ -10,6 +10,8 @@ import pytest
 import operator_policy as op
 import operator_recovery as rec
 import operator_swarm as op_swarm
+import operator_swarm_model as swarm_model
+import operator_swarm_store as swarm_store
 
 
 @pytest.fixture
@@ -44,8 +46,8 @@ def audit_override(tmp_path):
 def _workflow_record(workflow_id: str = "sw-abc", stage_status: str = "running") -> dict:
     now = "2026-08-15T00:00:00+00:00"
     return {
-        "schema": op_swarm.WORKFLOW_SCHEMA,
-        "schema_version": op_swarm.SCHEMA_VERSION,
+        "schema": swarm_model.WORKFLOW_SCHEMA,
+        "schema_version": swarm_model.SCHEMA_VERSION,
         "workflow_id": workflow_id,
         "title": "Test",
         "workspace": ".",
@@ -53,7 +55,7 @@ def _workflow_record(workflow_id: str = "sw-abc", stage_status: str = "running")
         "max_parallel": 1,
         "board_cap": 1,
         "max_stages": 4,
-        "status": op_swarm.WORKFLOW_STATUS_RUNNING,
+        "status": swarm_model.WORKFLOW_STATUS_RUNNING,
         "definition": {"stages": []},
         "stages": [
             {
@@ -81,7 +83,7 @@ def _workflow_record(workflow_id: str = "sw-abc", stage_status: str = "running")
 
 
 def _write_workflow(hermes_root: Path, record: dict) -> None:
-    op_swarm._save_workflow(hermes_root, record)
+    swarm_store.save_workflow(hermes_root, record)
 
 
 def test_reconcile_dry_run_marks_nothing_and_reports_interrupted(hermes_root, clean_env, audit_override):
@@ -95,8 +97,8 @@ def test_reconcile_dry_run_marks_nothing_and_reports_interrupted(hermes_root, cl
     assert parsed["swarm"]["interrupted_count"] == 1
     assert parsed["swarm"]["applied"] is False
     # Dry run must not mutate the store.
-    record = op_swarm._load_workflow(hermes_root, "sw-1")
-    assert record["stages"][0]["status"] == op_swarm.STAGE_STATUS_RUNNING
+    record = swarm_store.load_workflow(hermes_root, "sw-1")
+    assert record["stages"][0]["status"] == swarm_model.STAGE_STATUS_RUNNING
 
 
 def test_reconcile_apply_marks_interrupted_stages_blocked(hermes_root, clean_env, audit_override, monkeypatch):
@@ -111,10 +113,10 @@ def test_reconcile_apply_marks_interrupted_stages_blocked(hermes_root, clean_env
     assert parsed["success"] is True
     assert parsed["applied"] is True
     assert parsed["swarm"]["interrupted_count"] == 1
-    record = op_swarm._load_workflow(hermes_root, "sw-1")
-    assert record["stages"][0]["status"] == op_swarm.STAGE_STATUS_BLOCKED
+    record = swarm_store.load_workflow(hermes_root, "sw-1")
+    assert record["stages"][0]["status"] == swarm_model.STAGE_STATUS_BLOCKED
     assert record["stages"][0]["blocked_reason"] == rec.INTERRUPTED_REASON
-    assert record["status"] == op_swarm.WORKFLOW_STATUS_BLOCKED
+    assert record["status"] == swarm_model.WORKFLOW_STATUS_BLOCKED
 
 
 def test_reconcile_apply_requires_policy(hermes_root, clean_env, audit_override):
@@ -126,13 +128,13 @@ def test_reconcile_apply_requires_policy(hermes_root, clean_env, audit_override)
     assert parsed["success"] is False
     assert parsed["code"] == "PERMISSION_DENIED"
     # No mutation without the gate.
-    record = op_swarm._load_workflow(hermes_root, "sw-1")
-    assert record["stages"][0]["status"] == op_swarm.STAGE_STATUS_RUNNING
+    record = swarm_store.load_workflow(hermes_root, "sw-1")
+    assert record["stages"][0]["status"] == swarm_model.STAGE_STATUS_RUNNING
 
 
 def test_reconcile_ignores_done_and_blocked_stages(hermes_root, clean_env, audit_override, monkeypatch):
-    _write_workflow(hermes_root, _workflow_record("sw-done", stage_status=op_swarm.STAGE_STATUS_DONE))
-    _write_workflow(hermes_root, _workflow_record("sw-blocked", stage_status=op_swarm.STAGE_STATUS_BLOCKED))
+    _write_workflow(hermes_root, _workflow_record("sw-done", stage_status=swarm_model.STAGE_STATUS_DONE))
+    _write_workflow(hermes_root, _workflow_record("sw-blocked", stage_status=swarm_model.STAGE_STATUS_BLOCKED))
     monkeypatch.setenv(op.OPERATOR_ENABLED_ENV, "1")
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "workspace")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
@@ -154,8 +156,8 @@ def test_reconcile_never_auto_advances(hermes_root, clean_env, audit_override, m
 
     rec.hermes_operator_reconcile(apply=True, hermes_root=hermes_root)
 
-    record = op_swarm._load_workflow(hermes_root, "sw-1")
-    assert record["stages"][0]["status"] == op_swarm.STAGE_STATUS_BLOCKED
+    record = swarm_store.load_workflow(hermes_root, "sw-1")
+    assert record["stages"][0]["status"] == swarm_model.STAGE_STATUS_BLOCKED
     assert record["stages"][0]["verdict"] == ""  # no verdict assigned, no advance
     assert record["stages"][0]["handoffs"] == []
 
@@ -194,9 +196,9 @@ def test_stage_advance_is_idempotent_for_done_stage(hermes_root, clean_env, audi
     workflow_id = created["workflow_id"]
 
     # Force the stage to done so re-advance is a no-op.
-    rec_workflow = op_swarm._load_workflow(hermes_root, workflow_id)
+    rec_workflow = swarm_store.load_workflow(hermes_root, workflow_id)
     assert rec_workflow is not None
-    rec_workflow["stages"][0]["status"] = op_swarm.STAGE_STATUS_DONE
+    rec_workflow["stages"][0]["status"] = swarm_model.STAGE_STATUS_DONE
     rec_workflow["stages"][0]["verdict"] = "SATISFIED"
     _write_workflow(hermes_root, rec_workflow)
 
@@ -212,4 +214,4 @@ def test_stage_advance_is_idempotent_for_done_stage(hermes_root, clean_env, audi
     assert parsed["success"] is True
     assert parsed.get("idempotent") is True
     assert parsed["changed"] is False
-    assert parsed["stage_status"] == op_swarm.STAGE_STATUS_DONE
+    assert parsed["stage_status"] == swarm_model.STAGE_STATUS_DONE
