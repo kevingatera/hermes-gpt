@@ -17,7 +17,6 @@ import operator_capability_manifest as op_capability_manifest
 import operator_codex as op_codex
 import operator_diagnostics as op_diagnostics
 import operator_events as op_events
-import operator_export as op_export
 import operator_finance as op_finance
 import operator_job_supervisor as op_jobs
 import operator_live_events as op_live_events
@@ -28,7 +27,6 @@ import operator_recovery as op_recovery
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
 import operator_swarm as op_swarm
-import operator_workspace as op_workspace
 import server_http as http_server
 from hermes_session_history import (
     INTERNAL_CONTENT_ENV as ENABLE_SESSION_INTERNAL_CONTENT_ENV,
@@ -64,6 +62,7 @@ from server_session_control_tools import SessionControlTools
 from server_session_task_tools import ManagedSessionTaskTools
 from server_session_tools import SessionHistoryTools, SessionToolContext
 from server_work_tools import WorkTools
+from server_workspace_tools import WorkspaceTools
 from versioning import VERSION
 
 LOCAL_DEV_PROFILE = "local-dev"
@@ -386,7 +385,7 @@ def clean_error(tool_name: str, exc: Exception) -> RuntimeError:
 
 
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import CallToolResult, ToolAnnotations
+from mcp.types import ToolAnnotations
 
 from mcp_compat import HermesMCP as FastMCP
 
@@ -1114,83 +1113,22 @@ hermes_env_set_nonsecret = _profile_tools.hermes_env_set_nonsecret
 hermes_env_copy_nonsecret = _profile_tools.hermes_env_copy_nonsecret
 
 
-# --- Gateway / workspace / git / owner wrappers --------------------------
+# Workspace, export, gateway, and Owner handlers keep their MCP registration
+# beside the adapters while preserving the public tool names.
+_workspace_tools = WorkspaceTools(_default_hermes_root)
 
-
-def hermes_gateway_status(profile: str = "default") -> str:
-    return op_workspace.hermes_gateway_status(
-        profile=profile, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_gateway_restart(profile: str = "default", dry_run: bool = True) -> str:
-    return op_workspace.hermes_gateway_restart(
-        profile=profile, dry_run=dry_run, hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_workspace_read(path: str, offset: int = 1, limit: int = 500) -> str:
-    return op_workspace.hermes_workspace_read(path=path, offset=offset, limit=limit)
-
-
-def hermes_export_file(path: str) -> CallToolResult:
-    return op_export.hermes_export_file(path=path)
-
-
-def hermes_workspace_patch(
-    path: str,
-    old_string: str,
-    new_string: str,
-    replace_all: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_workspace.hermes_workspace_patch(
-        path=path, old_string=old_string, new_string=new_string,
-        replace_all=replace_all, dry_run=dry_run,
-    )
-
-
-def hermes_workspace_write_file(path: str, content: str, dry_run: bool = True) -> str:
-    return op_workspace.hermes_workspace_write_file(
-        path=path, content=content, dry_run=dry_run,
-    )
-
-
-def hermes_workspace_run_test(command: str, workdir: str | None = None, timeout: int = 120, dry_run: bool = True) -> str:
-    return op_workspace.hermes_workspace_run_test(
-        command=command, workdir=workdir, timeout=timeout, dry_run=dry_run,
-    )
-
-
-def hermes_git_status(workdir: str) -> str:
-    return op_workspace.hermes_git_status(workdir=workdir)
-
-
-def hermes_git_diff(workdir: str, pathspec: str | None = None, stat: bool = False) -> str:
-    return op_workspace.hermes_git_diff(workdir=workdir, pathspec=pathspec, stat=stat)
-
-
-def hermes_owner_run_command(command: str, timeout: int = 120, workdir: str | None = None, dry_run: bool = True) -> str:
-    return op_workspace.hermes_owner_run_command(
-        command=command, timeout=timeout, workdir=workdir, dry_run=dry_run,
-    )
-
-
-def hermes_owner_patch(
-    path: str,
-    old_string: str,
-    new_string: str,
-    replace_all: bool = False,
-    dry_run: bool = True,
-) -> str:
-    return op_workspace.hermes_owner_patch(
-        path=path, old_string=old_string, new_string=new_string,
-        replace_all=replace_all, dry_run=dry_run,
-    )
-
-
-def hermes_owner_write_file(path: str, content: str, dry_run: bool = True) -> str:
-    return op_workspace.hermes_owner_write_file(path=path, content=content, dry_run=dry_run)
+hermes_gateway_status = _workspace_tools.hermes_gateway_status
+hermes_gateway_restart = _workspace_tools.hermes_gateway_restart
+hermes_workspace_read = _workspace_tools.hermes_workspace_read
+hermes_export_file = _workspace_tools.hermes_export_file
+hermes_workspace_patch = _workspace_tools.hermes_workspace_patch
+hermes_workspace_write_file = _workspace_tools.hermes_workspace_write_file
+hermes_workspace_run_test = _workspace_tools.hermes_workspace_run_test
+hermes_git_status = _workspace_tools.hermes_git_status
+hermes_git_diff = _workspace_tools.hermes_git_diff
+hermes_owner_run_command = _workspace_tools.hermes_owner_run_command
+hermes_owner_patch = _workspace_tools.hermes_owner_patch
+hermes_owner_write_file = _workspace_tools.hermes_owner_write_file
 
 
 # --- Codex background jobs ------------------------------------------------
@@ -1649,26 +1587,7 @@ def register_tools(server: FastMCP) -> None:
 
     _profile_tools.register_admin_tools(server, tool_meta=tool_meta)
 
-    # Gateway / workspace / git / owner
-    server.add_tool(hermes_gateway_status, meta=tool_meta())
-    server.add_tool(hermes_gateway_restart, meta=tool_meta())
-    server.add_tool(hermes_workspace_read, meta=tool_meta())
-    server.add_tool(
-        hermes_export_file,
-        meta=tool_meta(),
-        annotations=ToolAnnotations(
-            title="Export an authorized local file as an MCP embedded resource",
-            readOnlyHint=True,
-        ),
-    )
-    server.add_tool(hermes_workspace_patch, meta=tool_meta())
-    server.add_tool(hermes_workspace_write_file, meta=tool_meta())
-    server.add_tool(hermes_workspace_run_test, meta=tool_meta())
-    server.add_tool(hermes_git_status, meta=tool_meta())
-    server.add_tool(hermes_git_diff, meta=tool_meta())
-    server.add_tool(hermes_owner_run_command, meta=tool_meta())
-    server.add_tool(hermes_owner_patch, meta=tool_meta())
-    server.add_tool(hermes_owner_write_file, meta=tool_meta())
+    _workspace_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
     for tool in (
         hermes_codex_status, hermes_codex_plan, hermes_codex_start,
