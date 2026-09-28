@@ -27,9 +27,10 @@ authorized browsers.
 
 ## Browser access
 
-- Use `hermes_browser_profile_list` to find an authorized local profile, then
-  check its status, tabs, and current snapshot before acting. Attach with
+- Use `hermes_browser_profile_list` to find an authorized local profile and
+  check its status. If it is not attached, attach with
   `hermes_browser_profile_attach` only when the user asks to use that browser.
+  Then list its tabs and read a fresh snapshot before acting.
 - For a managed task, use only its `hermes_task_browser_*` tools with the task
   ID. Set `browser_profile` when starting the task if it should share a
   configured profile browser; otherwise the task uses an isolated browser.
