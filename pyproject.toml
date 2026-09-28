@@ -94,6 +94,8 @@ py-modules = [
   "updater",
   "versioning",
   "hermes_session_history",
+  "server_session_tools",
+  "server_session_control_tools",
   "hermes_state",
   "ui_api",
   "ui_security",
