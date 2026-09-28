@@ -12,17 +12,10 @@ from pathlib import Path
 from typing import Any
 
 import oauth_auth
-import operator_capability_manifest as op_capability_manifest
 import operator_codex as op_codex
-import operator_diagnostics as op_diagnostics
-import operator_events as op_events
 import operator_finance as op_finance
 import operator_job_supervisor as op_jobs
-import operator_live_events as op_live_events
-import operator_mission_ledger as op_mission_ledger
-import operator_oauth as op_oauth
 import operator_policy as op_policy
-import operator_recovery as op_recovery
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
 import operator_status as op_status
@@ -59,6 +52,7 @@ from hermes_session_history import (
 from server_fleet_tools import FleetTools
 from server_hermes_profile_tools import HermesProfileTools
 from server_mission_tools import MissionTools
+from server_operator_tools import OperatorTools
 from server_session_browser_tools import register_session_browser_tools
 from server_session_control_tools import SessionControlTools
 from server_session_task_tools import ManagedSessionTaskTools
@@ -492,17 +486,7 @@ def hermes_finance_analyze(evidence_json: str, timeout: int = 120) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# Operator / Owner Mode tools
-# ---------------------------------------------------------------------------
-#
-# These wrap the operator_* modules. They are registered unconditionally
-# (so MCP clients can see them and understand why they refuse), but
-# mutating tools refuse unless the operator policy is explicitly enabled.
-#
-# Read-only tools (policy/status/audit_tail, cron list/status, skill diff,
-# config get, env status, gateway status, git status/diff) work at any
-# enabled level. Mutating tools refuse without sufficient level + apply_mode.
+# Shared root resolution for operator and profile tool adapters.
 
 
 def _hermes_root_for_operator() -> Path | None:
@@ -555,221 +539,29 @@ def _active_profile_name() -> str:
         return "default"
 
 
-# --- Policy / status / audit (always registered, read-only) ---------------
-
-
-def hermes_operator_policy() -> str:
-    """Return the current operator policy summary. Read-only. Never secrets."""
-    try:
-        policy = op_policy.OperatorPolicy()
-        summary = policy.to_summary()
-        summary["success"] = True
-        return json.dumps(summary, indent=2)
-    except Exception as exc:
-        return json.dumps(
-            op_policy.error_from_exception(
-                exc,
-                layer="operator",
-                code="POLICY_SUMMARY_ERROR",
-                suggested_action="Check operator environment variables.",
-            ),
-            indent=2,
-        )
-
-
-def hermes_operator_status() -> str:
-    """Return operator runtime status. Read-only. Never secrets."""
-    try:
-        default_root = _default_hermes_root()
-        return op_status.build_operator_status(
-            project_path=str(Path(__file__).resolve().parent),
-            agent_root=str(HERMES_ROOT) if HERMES_ROOT else None,
-            default_root=str(default_root) if default_root else None,
-            active_profile=_active_profile_name(),
-        )
-    except Exception as exc:
-        return json.dumps(
-            op_policy.error_from_exception(
-                exc,
-                layer="operator",
-                code="OPERATOR_STATUS_ERROR",
-                suggested_action="Check HERMES_HOME and operator environment variables.",
-            ),
-            indent=2,
-        )
-
-
-def hermes_operator_audit_tail(limit: int = 20) -> str:
-    """Return the last ``limit`` audit records. Read-only."""
-    try:
-        records = op_policy.audit_tail(limit=limit)
-        return json.dumps(
-            {"success": True, "count": len(records), "records": records}, indent=2
-        )
-    except Exception as exc:
-        return json.dumps(
-            op_policy.error_from_exception(
-                exc,
-                layer="audit",
-                code="AUDIT_TAIL_ERROR",
-                suggested_action="Check audit log path and permissions.",
-            ),
-            indent=2,
-        )
-
-
-def hermes_operator_doctor(profile: str = "default") -> str:
-    """Run a read-only health check across operator surfaces."""
-    return op_diagnostics.hermes_operator_doctor(
-        profile=profile, hermes_root=_default_hermes_root()
-    )
-
-
-def hermes_operator_snapshot(profile: str = "default") -> str:
-    """Return a single current-state summary of the operator."""
-    return op_diagnostics.hermes_operator_snapshot(
-        profile=profile, hermes_root=_default_hermes_root()
-    )
-
-
-def hermes_release_doctor(workdir: str | None = None, full_tests: bool = False, timeout: int = 180) -> str:
-    """Check whether the repo/operator is safe to ship."""
-    return op_diagnostics.hermes_release_doctor(
-        workdir=workdir, full_tests=full_tests, timeout=timeout
-    )
-
-
-def hermes_operator_recover(profile: str = "default", apply: bool = False) -> str:
-    """Conservative recovery sequence. Dry-run by default."""
-    return op_diagnostics.hermes_operator_recover(
-        profile=profile, apply=apply, hermes_root=_default_hermes_root()
-    )
-
-
-def hermes_swarm_reconcile(apply: bool = False) -> str:
-    """Reconcile state after a restart (ADR-007): mark interrupted swarm
-    stages blocked (never auto-advance) and reload the durable token store.
-    Dry-run by default; apply requires workspace+direct."""
-    return op_recovery.hermes_operator_reconcile(
-        apply=apply, hermes_root=_default_hermes_root()
-    )
-
-
-def hermes_events_query(
-    source: str = "",
-    subject_id: str = "",
-    kind: str = "",
-    since: str = "",
-    until: str = "",
-    limit: int = 50,
-) -> str:
-    """Query the normalized event timeline (read-only, redacted, bounded)."""
-    return op_events.hermes_events_query(
-        source=source,
-        subject_id=subject_id,
-        kind=kind,
-        since=since,
-        until=until,
-        limit=limit,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_events_tail(limit: int = 20) -> str:
-    """Recent events across all allowed sources (read-only, redacted)."""
-    return op_events.hermes_events_tail(
-        limit=limit, hermes_root=_default_hermes_root()
-    )
-
-
-def hermes_capability_manifest(
-    source: str = "",
-    include_cache: bool = True,
-    limit: int = 100,
-) -> str:
-    """Query the derived capability manifest (read-only, INV-9, bounded)."""
-    return op_capability_manifest.hermes_capability_manifest(
-        source=source,
-        include_cache=include_cache,
-        limit=limit,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_mission_ledger(
-    mission_id: str,
-    source: str = "",
-    cursor: int | str = 0,
-    limit: int = 100,
-    replay: bool = False,
-) -> str:
-    """Query the merged, replayable per-mission ledger (read-only, INV-9).
-
-    ``cursor`` is an opaque watermark token (the ``next_cursor`` value from a
-    previous page) or 0 to start from the beginning.
-    """
-    return op_mission_ledger.hermes_mission_ledger(
-        mission_id=mission_id,
-        source=source,
-        cursor=cursor,
-        limit=limit,
-        replay=replay,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_mission_ledger_replay(
-    mission_id: str,
-    limit: int = 500,
-) -> str:
-    """Replay a mission's full event history (read-only, INV-9)."""
-    return op_mission_ledger.hermes_mission_ledger_replay(
-        mission_id=mission_id,
-        limit=limit,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_live_events_cursor() -> str:
-    """Return the durable v0.9 live-event high-water cursor."""
-    return op_live_events.hermes_live_events_cursor(hermes_root=_default_hermes_root())
-
-
-def hermes_live_events_since(
-    cursor: int = 0,
-    mission_id: str = "",
-    topic: str = "",
-    kind: str = "",
-    limit: int = 100,
-    wait_ms: int = 0,
-) -> str:
-    """Read or wait for durable v0.9 live events after a cursor."""
-    return op_live_events.hermes_live_events_since(
-        cursor=cursor,
-        mission_id=mission_id,
-        topic=topic,
-        kind=kind,
-        limit=limit,
-        wait_ms=wait_ms,
-        hermes_root=_default_hermes_root(),
-    )
-
-
-def hermes_oauth_status() -> str:
-    """Durable token store status: presence/expiry only (read-only)."""
-    return op_oauth.hermes_oauth_status(hermes_root=_default_hermes_root())
-
-
-def hermes_oauth_revoke(
-    confirm: bool = False, dry_run: bool = True, rotate_key: bool = True
-) -> str:
-    """Revoke durable OAuth tokens (owner + direct + confirm, pending legal)."""
-    return op_oauth.hermes_oauth_revoke(
-        confirm=confirm,
-        dry_run=dry_run,
-        rotate_key=rotate_key,
-        hermes_root=_default_hermes_root(),
-    )
+_operator_tools = OperatorTools(
+    get_hermes_root=lambda: _default_hermes_root(),
+    get_agent_root=lambda: HERMES_ROOT,
+    get_project_root=lambda: Path(__file__).resolve().parent,
+    get_active_profile=lambda: _active_profile_name(),
+)
+hermes_operator_policy = _operator_tools.hermes_operator_policy
+hermes_operator_status = _operator_tools.hermes_operator_status
+hermes_operator_audit_tail = _operator_tools.hermes_operator_audit_tail
+hermes_operator_doctor = _operator_tools.hermes_operator_doctor
+hermes_operator_snapshot = _operator_tools.hermes_operator_snapshot
+hermes_release_doctor = _operator_tools.hermes_release_doctor
+hermes_operator_recover = _operator_tools.hermes_operator_recover
+hermes_swarm_reconcile = _operator_tools.hermes_swarm_reconcile
+hermes_events_query = _operator_tools.hermes_events_query
+hermes_events_tail = _operator_tools.hermes_events_tail
+hermes_capability_manifest = _operator_tools.hermes_capability_manifest
+hermes_mission_ledger = _operator_tools.hermes_mission_ledger
+hermes_mission_ledger_replay = _operator_tools.hermes_mission_ledger_replay
+hermes_live_events_cursor = _operator_tools.hermes_live_events_cursor
+hermes_live_events_since = _operator_tools.hermes_live_events_since
+hermes_oauth_status = _operator_tools.hermes_oauth_status
+hermes_oauth_revoke = _operator_tools.hermes_oauth_revoke
 
 
 # Fleet MCP handlers keep their A2A registration list with their adapters.
