@@ -41,6 +41,7 @@ No shell is used. Hermes restores the resumed session's recorded working directo
 - Returned result: clamped to 500–24,000 characters.
 - Concurrency: only one session-control job may run for a given session at a time.
 - Cancellation: only a process still owned by this server instance can be signaled; persisted PIDs are never trusted. POSIX cancellation signals the task's process group and force-stops remaining group members after the main process exits or the three-second grace period expires.
+- Events: `running`, `progress`, and terminal status events are published on the durable `session-job` topic. Progress events are emitted every 15 seconds and contain elapsed time only, never prompts or captured output; the job record remains authoritative after reconnect.
 - Job metadata: stored under the Hermes data root in `session-jobs/`.
 - Prompt privacy: raw prompts are not stored in metadata; only length and SHA-256 digest are retained.
 - Output: captured locally for later result retrieval and redacted before MCP exposure.

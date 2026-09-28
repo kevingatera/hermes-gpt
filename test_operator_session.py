@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import operator_live_events as live_events
 import operator_session as session
 
 
@@ -156,6 +157,7 @@ def test_session_profile_must_also_pass_operator_allowlist(monkeypatch, tmp_path
 def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_path):
     monkeypatch.setenv(session.ENABLE_SESSION_CONTROL_ENV, "1")
     monkeypatch.setenv(session.SESSION_ALLOWED_PROFILES_ENV, "default")
+    monkeypatch.setattr(session, "PROGRESS_EVENT_INTERVAL_SECONDS", 0.1)
     agent_root = tmp_path / "agent"
     executable = agent_root / "venv" / "bin" / "hermes"
     executable.parent.mkdir(parents=True)
@@ -189,6 +191,19 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     else:
         pytest.fail("Hermes cancellation fixture did not start")
 
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        events, _ = live_events.read_since(
+            0,
+            topic=session.SESSION_JOB_TOPIC,
+            hermes_root=tmp_path,
+        )
+        if any(event["kind"] == "progress" for event in events):
+            break
+        time.sleep(0.02)
+    else:
+        pytest.fail("The running session job did not publish a progress event")
+
     cancelled = session.hermes_session_job_cancel(job_id, tmp_path)
     assert cancelled["success"] is True
     assert cancelled["cancelled"] is True
@@ -198,6 +213,16 @@ def test_cancel_stops_owned_process_group_and_persists_status(monkeypatch, tmp_p
     result = session.hermes_session_job_result(job_id, hermes_root=tmp_path)
     assert status["job"]["status"] == "cancelled"
     assert result["status"] == "cancelled"
+    events, _ = live_events.read_since(
+        0,
+        topic=session.SESSION_JOB_TOPIC,
+        hermes_root=tmp_path,
+    )
+    event_kinds = [event["kind"] for event in events]
+    assert event_kinds[0] == "running"
+    assert "progress" in event_kinds
+    assert event_kinds[-1] == "cancelled"
+    assert all("run the local cancellation fixture" not in str(event["payload"]) for event in events)
     with pytest.raises(ProcessLookupError):
         os.kill(pid, 0)
 
@@ -223,6 +248,12 @@ def test_cancel_marks_unowned_job_orphaned_without_signaling_pid(monkeypatch, tm
     assert result["success"] is True
     assert result["status"] == "orphaned"
     assert result["cancelled"] is False
+    events, _ = live_events.read_since(
+        0,
+        topic=session.SESSION_JOB_TOPIC,
+        hermes_root=tmp_path,
+    )
+    assert [event["kind"] for event in events] == ["orphaned"]
 
 
 def test_reconcile_marks_unowned_running_job_orphaned(tmp_path):

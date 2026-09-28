@@ -8,13 +8,16 @@ import os
 import re
 import shutil
 import signal
+import sqlite3
 import subprocess
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import operator_live_events as live_events
 import operator_policy as op
 
 ENABLE_SESSION_CONTROL_ENV = "HERMES_GPT_ENABLE_SESSION_CONTROL"
@@ -23,6 +26,8 @@ MAX_PROMPT_CHARS = 65_536
 MAX_RESULT_CHARS = 24_000
 MIN_TIMEOUT = 10
 MAX_TIMEOUT = 3_600
+PROGRESS_EVENT_INTERVAL_SECONDS = 15
+SESSION_JOB_TOPIC = "session-job"
 
 _lock = threading.RLock()
 _processes: dict[str, subprocess.Popen[str]] = {}
@@ -186,6 +191,51 @@ def _validate_start(
     return session_id.strip(), prompt, max(MIN_TIMEOUT, min(timeout, MAX_TIMEOUT)), safe_profile
 
 
+def _publish_job_event(
+    job_id: str,
+    kind: str,
+    *,
+    session_id: str,
+    hermes_root: Path | None,
+    elapsed_seconds: int = 0,
+) -> None:
+    """Publish bounded lifecycle metadata; job files remain authoritative."""
+    try:
+        live_events.publish_event(
+            topic=SESSION_JOB_TOPIC,
+            kind=kind,
+            subject_type="session_job",
+            subject_id=job_id,
+            source="session_control",
+            event_id=f"session-job:{job_id}:{kind}:{elapsed_seconds}",
+            payload={"status": kind, "session_id": session_id, "elapsed_seconds": elapsed_seconds},
+            hermes_root=hermes_root,
+        )
+    except (OSError, sqlite3.Error, TypeError, ValueError):
+        # The job journal is authoritative; an event-store outage must not
+        # change whether a Hermes task starts or reaches its terminal state.
+        return
+
+
+def _publish_progress_event(
+    job_id: str,
+    *,
+    hermes_root: Path | None,
+    elapsed_seconds: int,
+) -> None:
+    with _lock:
+        meta = _load(job_id, hermes_root) or {}
+        if meta.get("status") != "running" or meta.get("cancel_requested"):
+            return
+        _publish_job_event(
+            job_id,
+            "progress",
+            session_id=str(meta.get("session_id", "")),
+            hermes_root=hermes_root,
+            elapsed_seconds=elapsed_seconds,
+        )
+
+
 def hermes_session_continue(
     session_id: str,
     prompt: str,
@@ -266,6 +316,12 @@ def hermes_session_continue(
     _save(meta, hermes_root)
     with _lock:
         _processes[job_id] = proc
+    _publish_job_event(
+        job_id,
+        "running",
+        session_id=safe_id,
+        hermes_root=hermes_root,
+    )
     threading.Thread(
         target=_watch,
         args=(job_id, proc, output, safe_timeout, hermes_root),
@@ -286,6 +342,8 @@ def _finish_job(
     status: str,
     hermes_root: Path | None,
 ) -> dict[str, Any]:
+    publish_status = ""
+    session_id = ""
     with _lock:
         meta = _load(job_id, hermes_root) or {"job_id": job_id}
         if meta.get("status") not in {"completed", "failed", "timed_out", "cancelled", "orphaned"}:
@@ -293,22 +351,54 @@ def _finish_job(
                 status = "cancelled"
             meta.update({"status": status, "return_code": proc.poll(), "ended_at": _now()})
             _save(meta, hermes_root)
+            publish_status = status
         _processes.pop(job_id, None)
         session_id = str(meta.get("session_id", ""))
         profile = str(meta.get("profile", "default") or "default")
         active_key = f"{profile}:{session_id}"
         if _active_sessions.get(active_key) == job_id:
             _active_sessions.pop(active_key, None)
-        return meta
+    if publish_status:
+        _publish_job_event(
+            job_id,
+            publish_status,
+            session_id=session_id,
+            hermes_root=hermes_root,
+        )
+    return meta
 
 
 def _watch(job_id: str, proc: subprocess.Popen[str], output: Any, timeout: int, hermes_root: Path | None) -> None:
+    started = time.monotonic()
+    deadline = started + timeout
+    progress_interval = max(0.1, PROGRESS_EVENT_INTERVAL_SECONDS)
+    next_progress = started + progress_interval
     try:
-        proc.wait(timeout=timeout)
-        status = "completed" if proc.returncode == 0 else "failed"
-    except subprocess.TimeoutExpired:
-        _terminate(proc)
-        status = "timed_out"
+        while True:
+            now = time.monotonic()
+            remaining = deadline - now
+            if remaining <= 0:
+                _terminate(proc)
+                status = "timed_out"
+                break
+            wait_for = min(remaining, max(0.05, next_progress - now))
+            try:
+                proc.wait(timeout=wait_for)
+                status = "completed" if proc.returncode == 0 else "failed"
+                break
+            except subprocess.TimeoutExpired:
+                now = time.monotonic()
+                if now >= deadline:
+                    _terminate(proc)
+                    status = "timed_out"
+                    break
+                if now >= next_progress:
+                    _publish_progress_event(
+                        job_id,
+                        hermes_root=hermes_root,
+                        elapsed_seconds=int(now - started),
+                    )
+                    next_progress = now + progress_interval
     finally:
         output.close()
     _finish_job(job_id, proc, status, hermes_root)
@@ -359,6 +449,12 @@ def _reconcile(hermes_root: Path | None = None) -> None:
                 "reconciliation": "server restarted; process ownership could not be proven",
             })
             _save(meta, hermes_root)
+            _publish_job_event(
+                job_id,
+                "orphaned",
+                session_id=str(meta.get("session_id", "")),
+                hermes_root=hermes_root,
+            )
 
 
 def hermes_session_job_status(job_id: str, hermes_root: Path | None = None) -> dict[str, Any]:

@@ -4,7 +4,7 @@ Hermes GPT v0.9 adds a durable, bounded live-event bus for clients and parent or
 
 ## Authority model
 
-Live events are notifications, not proof. Mission, Swarm, Work Contract, runner, and Fabric journals remain authoritative. A missing, delayed, duplicated, or reconnected event must never advance work or change an authority decision. Clients use event references to re-read durable state before acting.
+Live events are notifications, not proof. Mission, Swarm, Work Contract, runner, Fabric, and session-job records remain authoritative. A missing, delayed, duplicated, or reconnected event must never advance work or change an authority decision. Clients use event references to re-read durable state before acting.
 
 ## MCP surfaces
 
@@ -33,8 +33,8 @@ Event IDs are idempotent. Consumers should persist the returned cursor and resum
 
 ## Producers
 
-The initial v0.9 producers are first-class Mission lifecycle changes and Swarm operator actions. Producer failure is deliberately non-fatal: publishing a wake-up event cannot roll back or modify the authoritative transaction that produced it.
+The producers are first-class Mission lifecycle changes, Swarm operator actions, and Hermes session-control jobs. Session jobs publish `running`, elapsed-time `progress`, and terminal status events on the `session-job` topic; those payloads do not contain prompts or captured output. Session-job records remain authoritative, and event publication failure is non-fatal: clients re-read job status and result after a wake-up or reconnect.
 
 ## Retention
 
-The live-event journal is bounded. `HERMES_GPT_LIVE_EVENT_RETENTION` controls the retained row count within the implementation hard cap. Retention affects notification history only; it never removes the underlying Mission/Swarm/Fabric evidence stores.
+The live-event journal is bounded. `HERMES_GPT_LIVE_EVENT_RETENTION` controls the retained row count within the implementation hard cap. Retention affects notification history only; it never removes the underlying Mission/Swarm/Fabric/session-job evidence stores.
