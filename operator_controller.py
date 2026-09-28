@@ -87,13 +87,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import operator_contract as contract_mod
+import operator_controller_l2 as _l2
 import operator_delegations as deleg
 import operator_failure_semantics as fs
 import operator_mission_budget as op_mission_budget
 import operator_mission_plan as plan
 import operator_mission_runtime as mission
-import operator_placement as placement
 import operator_policy as op
 from operator_controller_observation import (
     HostObservationAdapter,
@@ -131,6 +130,35 @@ from operator_controller_store import (
     renew_lease,  # noqa: F401
     trigger,
 )
+
+# Keep the pre-split controller names available to tests and integrations.
+CONTROLLER_EXECUTE_ENV = _l2.CONTROLLER_EXECUTE_ENV
+EXECUTABLE_ROW_KEYS = _l2.EXECUTABLE_ROW_KEYS
+ATTENTION_ROW_KEYS = _l2.ATTENTION_ROW_KEYS
+REFUSED_CONFIRM_REQUIRED = _l2.REFUSED_CONFIRM_REQUIRED
+REFUSED_DRY_RUN = _l2.REFUSED_DRY_RUN
+REFUSED_POLICY = _l2.REFUSED_POLICY
+REFUSED_WORKSPACE = _l2.REFUSED_WORKSPACE
+REFUSED_UNSUPPORTED_ACTION = _l2.REFUSED_UNSUPPORTED_ACTION
+REFUSED_ALREADY_EXECUTED = _l2.REFUSED_ALREADY_EXECUTED
+REFUSED_ATTENTION = _l2.REFUSED_ATTENTION
+REFUSED_NO_TARGET = _l2.REFUSED_NO_TARGET
+REFUSED_NO_ACTION = _l2.REFUSED_NO_ACTION
+REFUSED_APPROVAL_GATE = _l2.REFUSED_APPROVAL_GATE
+REFUSED_AUTH_CLASS = _l2.REFUSED_AUTH_CLASS
+REFUSED_SECRET_REQUIREMENT = _l2.REFUSED_SECRET_REQUIREMENT
+EXECUTION_RESULTS = _l2.EXECUTION_RESULTS
+EXECUTION_REFUSAL_CODES = _l2.EXECUTION_REFUSAL_CODES
+EXECUTION_STATE_INTENT = _l2.EXECUTION_STATE_INTENT
+EXECUTION_STATE_DISPATCHED = _l2.EXECUTION_STATE_DISPATCHED
+EXECUTION_STATE_FAILED = _l2.EXECUTION_STATE_FAILED
+EXECUTION_PRIOR_STATES = _l2.EXECUTION_PRIOR_STATES
+L2_FORBIDDEN_AUTH_CLASSES = _l2.L2_FORBIDDEN_AUTH_CLASSES
+_execute_enabled = _l2._execute_enabled
+_execution_block = _l2._execution_block
+_refusal = _l2._refusal
+_live_policy_gate = _l2._live_policy_gate
+_l2_dispatch = _l2._l2_dispatch
 
 SCHEMA_VERSION = "0.9-controller.1"
 PASS_SCHEMA = "hermes.controller-pass/v1"
@@ -170,134 +198,6 @@ TIER_RED = "RED"
 TIERS = (TIER_GREEN, TIER_YELLOW, TIER_RED)
 
 CONTROLLER_MODE = "shadow/observe"  # L0/L1 default; L2 is gated + opt-in
-
-# ---------------------------------------------------------------------------
-# v0.12 slice-2 (Pack B): the L2-rung execution engine (§2 of
-# docs/design/v0.12-controller-l2.md). When (and ONLY when) the machine gate
-# below is set, a persisting pass under the full §2.1 gate set may EXECUTE the
-# smallest recovery action it already computes (idempotency-keyed) instead of
-# only proposing it. Default OFF: with the gate unset every surface is
-# byte-identical to L0/L1.
-# ---------------------------------------------------------------------------
-
-CONTROLLER_EXECUTE_ENV = "HERMES_GPT_CONTROLLER_EXECUTE"
-
-# §2.2 supported execution targets: dispatch-style proposals only, sent through
-# the EXISTING work-contract / delegation authority surfaces. Everything else
-# is either attention-style (needs a human; behaves exactly as today) or
-# refused fail-closed as unsupported.
-EXECUTABLE_ROW_KEYS = frozenset({"dispatch_ready_child"})
-# §2.2 attention-style rows: "needs a human" (park/escalate/observe-only). They
-# are never executable at L2 — they behave exactly as today (spool + proposal).
-ATTENTION_ROW_KEYS = frozenset(
-    {
-        "park_authority",
-        "park_capability",
-        "breaker_exhausted",
-        "unknown_fail_closed",
-        "fail_closed_evidence",
-        "escalate_semantic",
-        "signal_awaiting_approval",
-        "observe_reconciling",
-    }
-)
-
-# §2.1/§2.2 stable refusal codes (bounded enums only).
-REFUSED_CONFIRM_REQUIRED = "confirm_required"
-REFUSED_DRY_RUN = "dry_run"
-REFUSED_POLICY = "operator_policy_required"
-REFUSED_WORKSPACE = "workspace_required"
-REFUSED_UNSUPPORTED_ACTION = "unsupported_action"
-REFUSED_ALREADY_EXECUTED = "already_executed"
-REFUSED_ATTENTION = "not_executable_attention"
-REFUSED_NO_TARGET = "no_capable_target"
-REFUSED_NO_ACTION = "no_action"
-REFUSED_APPROVAL_GATE = "approval_gate"
-REFUSED_AUTH_CLASS = "authorization_class_not_supported"
-REFUSED_SECRET_REQUIREMENT = "secret_like_requirement"
-EXECUTION_RESULTS = ("dispatched", "refused", "failed")
-EXECUTION_REFUSAL_CODES = (
-    REFUSED_CONFIRM_REQUIRED,
-    REFUSED_DRY_RUN,
-    REFUSED_POLICY,
-    REFUSED_WORKSPACE,
-    REFUSED_UNSUPPORTED_ACTION,
-    REFUSED_ALREADY_EXECUTED,
-    REFUSED_ATTENTION,
-    REFUSED_NO_TARGET,
-    REFUSED_NO_ACTION,
-    REFUSED_APPROVAL_GATE,
-    REFUSED_AUTH_CLASS,
-    REFUSED_SECRET_REQUIREMENT,
-)
-
-# §2.2: at most ONE executed action per pass (smallest first, existing order).
-# The durable plan-row execution states; ``intent`` is written BEFORE the
-# dispatch call so a crash mid-execution reconciles fail-closed.
-EXECUTION_STATE_INTENT = "intent"
-EXECUTION_STATE_DISPATCHED = "dispatched"
-EXECUTION_STATE_FAILED = "failed"
-EXECUTION_PRIOR_STATES = (
-    EXECUTION_STATE_INTENT,
-    EXECUTION_STATE_DISPATCHED,
-    EXECUTION_STATE_FAILED,
-)
-
-# §2.3 prohibition guard: the controller never self-authorizes high-impact work
-# (it approves nothing); those proposals stay escalation-only.
-L2_FORBIDDEN_AUTH_CLASSES = frozenset({"high_impact"})
-
-
-def _execute_enabled() -> bool:
-    """Global machine gate (live read, never cached). Default OFF."""
-    return os.environ.get(CONTROLLER_EXECUTE_ENV, "").strip() == "1"
-
-
-def _execution_block(
-    *,
-    executed: bool,
-    action_kind: str,
-    idempotency_key: str,
-    result: str,
-    refused_reason: str | None,
-    placement_view: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Build the additive L2-rung execution envelope member (§2.2 shape)."""
-    return {
-        "enabled": True,
-        "executed": bool(executed),
-        "action_kind": _sanitize(action_kind, 64),
-        "idempotency_key": _sanitize(idempotency_key, 64),
-        "result": result,
-        "refused_reason": refused_reason,
-        "placement": placement_view,
-    }
-
-
-def _refusal(
-    action_kind: str, idempotency_key: str, reason: str
-) -> dict[str, Any]:
-    """A refused execution: no execution writes, no dispatch (§2.1)."""
-    return _execution_block(
-        executed=False,
-        action_kind=action_kind,
-        idempotency_key=idempotency_key,
-        result="refused",
-        refused_reason=reason,
-    )
-
-
-def _live_policy_gate() -> str:
-    """§2.1 gates 3+4, re-read live (never cached).
-
-    Returns ``""`` when the gate is satisfied, else the stable refusal code.
-    """
-    policy = op.OperatorPolicy()
-    if not policy.enabled or policy.apply_mode != "direct":
-        return REFUSED_POLICY
-    if op.level_rank(policy.level) < op.level_rank("workspace"):
-        return REFUSED_WORKSPACE
-    return ""
 
 # ---------------------------------------------------------------------------
 # §7.3 lease TTL = min(max_pass_duration, reconcile_interval*2)
@@ -761,369 +661,6 @@ def _record_telemetry(db: sqlite3.Connection, entry: dict[str, Any]) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# v0.12 slice-2 (Pack B): L2-rung execution engine — placement-informed dispatch of
-# the smallest recovery action through the EXISTING authority surfaces.
-# ---------------------------------------------------------------------------
-
-
-def _l2_prior_execution_block(
-    db: sqlite3.Connection, mission_id: str, key: str
-) -> dict[str, Any] | None:
-    """§2.2 idempotency: the prior execution record for this idempotency key.
-
-    Checked over BOTH durable surfaces: the telemetry execution ledger (a row
-    only carries ``executed_idempotency_key`` when an execution was ATTEMPTED —
-    refusals never write one, so the ledger stays unambiguous) and the
-    ``controller_plan`` decision rows (an ``intent`` row counts as executed: a
-    crash between the plan-write and the dispatch must reconcile fail-closed
-    with no duplicate dispatch).
-
-    Returns the prior block so the caller can carry it forward verbatim: the
-    plan row is REPLACE-keyed by ``(mission_id, node_id, decision_sha256)``, so
-    a later pass with the same decision would otherwise erase the only evidence
-    that this key was already used.
-    """
-    if not key:
-        return None
-    try:
-        row = db.execute(
-            "SELECT executed_result FROM controller_telemetry "
-            "WHERE mission_id=? AND executed_idempotency_key=? LIMIT 1",
-            (mission_id, key),
-        ).fetchone()
-    except sqlite3.Error:
-        row = None
-    if row is not None:
-        result = _sanitize(row["executed_result"], 32)
-        state = (
-            EXECUTION_STATE_DISPATCHED
-            if result == "dispatched"
-            else EXECUTION_STATE_FAILED
-        )
-        return {
-            "state": state,
-            "idempotency_key": key,
-            "result": result,
-            "source": "telemetry",
-        }
-    try:
-        rows = db.execute(
-            "SELECT decision_json FROM controller_plan WHERE mission_id=?",
-            (mission_id,),
-        ).fetchall()
-    except sqlite3.Error:
-        return None
-    for r in rows:
-        try:
-            doc = json.loads(r["decision_json"])
-        except (json.JSONDecodeError, TypeError):
-            continue
-        ex = doc.get("execution") if isinstance(doc, dict) else None
-        if (
-            isinstance(ex, dict)
-            and ex.get("idempotency_key") == key
-            and ex.get("state") in EXECUTION_PRIOR_STATES
-        ):
-            return ex
-    return None
-
-
-def _l2_placement_decision(
-    db: sqlite3.Connection,
-    path: Path,
-    hermes_root: Path | None,
-    mission_id: str,
-    node_id: str,
-) -> tuple[dict[str, Any] | None, str]:
-    """§3 placement-informed dispatch: score the node requirement.
-
-    Consults the same scoring core ``hermes_placement_score`` uses (dry-run
-    path: hard filters + soft scores, no scoring/filter/classification change)
-    so the top candidate becomes the dispatch target. Returns
-    ``(decision_or_None, refusal_code)``; fail-closed: an invalid or
-    secret-like requirement refuses execution.
-    """
-    try:
-        base = placement._read_node_requirement(db, mission_id, node_id)
-        node_def = placement._node_def(path, mission_id, node_id)
-        base["kind"] = node_def["kind"]
-        base["owner"] = node_def["owner"]
-        ctx: dict[str, Any] = {
-            "priority": placement._read_mission_priority(db, mission_id)
-        }
-        bctx = placement._read_budget_context(db, mission_id)
-        if bctx:
-            ctx["budget"] = bctx
-        targets = placement.load_manifest_targets(hermes_root)
-        decision = placement.build_decision(mission_id, node_id, base, targets, ctx)
-        return decision, ""
-    except PermissionError:
-        # Secret-like requirement values never cross the dispatch surface.
-        return None, REFUSED_SECRET_REQUIREMENT
-    except (
-        ValueError,
-        TypeError,
-        LookupError,
-        OSError,
-        sqlite3.Error,
-        json.JSONDecodeError,
-    ):
-        return None, REFUSED_UNSUPPORTED_ACTION
-
-
-def _l2_work_contract(
-    mission_id: str,
-    node_id: str,
-    *,
-    requirement: dict[str, Any],
-    target_name: str,
-    idempotency_key: str,
-    attempt_seq: int,
-    hermes_root: Path | None,
-) -> dict[str, Any]:
-    """Build the bounded M1 work contract for the L2 dispatch.
-
-    INV-9: the controller never reads the raw node objective (the plan store
-    keeps only its hash), so the contract objective is a deterministic bounded
-    pointer and no expected artifacts are fabricated — no raw prompt/objective/
-    secret text is invented or persisted here. Authority metadata mirrors the
-    node's own authorization class (high-impact is refused earlier — the
-    controller approves nothing), and the completion criteria stay
-    unclaimed (``tests_pass``/``review_satisfied`` False): the controller can
-    never assert evidence it did not observe.
-    """
-    workspace = str(_root(hermes_root) / "missions")
-    auth_class = str(requirement.get("authorization_class", "reversible_write"))
-    agent = (
-        target_name if contract_mod._AGENT_RE.fullmatch(target_name or "") else "auto"
-    )
-    return {
-        "schema": contract_mod.CONTRACT_SCHEMA,
-        "task_id": f"ctl-{mission_id[:40]}-{node_id[:32]}-{idempotency_key[:16]}",
-        "assigned_agent": agent,
-        "assigned_profile": str(requirement.get("profile", "")),
-        "objective": (
-            f"controller-l2 dispatch: mission={mission_id} node={node_id} "
-            f"attempt={int(attempt_seq)}"
-        ),
-        "allowed_scope": {
-            "workspaces": [workspace],
-            "profiles": [str(requirement.get("profile", ""))],
-        },
-        "forbidden_actions": [],
-        "expected_artifacts": [],
-        "tests": [],
-        "review_requirements": {},
-        "completion_criteria": {
-            "run_state": {"terminal": True, "outcome_ok": ["completed", "done"]},
-            "artifacts_present": False,
-            "tests_pass": False,
-            "review_satisfied": False,
-            "no_forbidden_actions": True,
-        },
-        "inputs": [],
-        "constraints": [],
-        "authorization": {
-            "class": auth_class,
-            "approved": True,
-            "approved_by": "mission-owner",
-            "approval_reference": f"mission:{mission_id}",
-        },
-    }
-
-
-def _l2_dispatch(
-    contract_doc: dict[str, Any], mission_id: str, hermes_root: Path | None
-) -> tuple[bool, str, str, dict[str, Any]]:
-    """Dispatch through the EXISTING delegation authority surface.
-
-    Returns ``(executed, result, refused_reason, linkage)``. No retry loop:
-    a failed or ambiguous dispatch is terminal for this pass (fail-closed;
-    bounded rework on a new attempt_seq gets a new idempotency key).
-    """
-    try:
-        raw = deleg.hermes_delegation_dispatch(
-            json.dumps(contract_doc),
-            mission_id=mission_id,
-            confirm=True,
-            dry_run=False,
-            hermes_root=hermes_root,
-        )
-        payload = json.loads(raw)
-    except (
-        ValueError,
-        TypeError,
-        LookupError,
-        PermissionError,
-        RuntimeError,
-        OSError,
-        sqlite3.Error,
-        json.JSONDecodeError,
-    ) as exc:
-        return False, "failed", _sanitize(type(exc).__name__, 32), {}
-    if not isinstance(payload, dict):
-        return False, "failed", "invalid_response", {}
-    linkage: dict[str, Any] = {}
-    deleg_row = payload.get("delegation")
-    if isinstance(deleg_row, dict):
-        linkage = {
-            "delegation_id": _sanitize(deleg_row.get("delegation_id", ""), 64),
-            "task_id": _sanitize(deleg_row.get("task_id", ""), 64),
-            "state": _sanitize(deleg_row.get("state", ""), 32),
-        }
-    if payload.get("success") is True and payload.get("changed") is not False:
-        return True, "dispatched", "", linkage
-    if payload.get("submission_may_have_succeeded"):
-        # Ambiguous: the delegation surface records `reconciling`; the next
-        # pass classifies observe_reconciling (attention; never re-executed).
-        return False, "failed", "ambiguous", linkage
-    return (
-        False,
-        "failed",
-        _sanitize(str(payload.get("code", "rejected")), 32),
-        linkage,
-    )
-
-
-def _l2_target_binding(
-    decision: dict[str, Any], requirement: dict[str, Any]
-) -> tuple[str, str, str]:
-    """§3: resolve the scored top candidate onto an existing dispatch identity.
-
-    Returns ``(assigned_agent, assigned_profile, refusal_code)``. Only a
-    ``fleet_peer`` candidate names an agent that exists in the fleet authority
-    manifest — the identity the delegation/fleet dispatch surface authorizes.
-    ``profile`` / ``provider`` / ``fabric_node`` candidates carry no
-    dispatchable agent identity, so the rung refuses (fail closed) instead of
-    inventing one; resolving those to a peer is a later slice's job.
-    """
-    top = decision.get("top_candidate") or {}
-    kind = str(top.get("kind", ""))
-    name = _sanitize(top.get("name", ""), 64)
-    profile = _sanitize(requirement.get("profile", ""), 64)
-    if kind == "fleet_peer" and name:
-        return name, profile, ""
-    return "", "", REFUSED_UNSUPPORTED_ACTION
-
-
-def _l2_plan_execution(
-    db: sqlite3.Connection,
-    path: Path,
-    hermes_root: Path | None,
-    *,
-    mission_id: str,
-    node_id: str,
-    row_key: str,
-    cmds: list[dict[str, Any]],
-    confirm: bool,
-    attempt_seq: int,
-    pass_seq: int,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
-    """§2/§3: decide L2-rung execution for one pass (no execution writes here).
-
-    Returns ``(execution_block, pending, carry)``:
-
-    - a refusal → ``(block, None, None)``: no dispatch, no execution state;
-    - a replay of an already-executed key → ``(block, None, prior_block)`` so
-      the caller can carry the prior evidence forward (the plan row is
-      REPLACE-keyed and would otherwise forget it);
-    - an executable action → ``(None, pending, None)`` where ``pending`` holds
-      the prepared contract; the caller persists the intent row, dispatches,
-      then records the outcome.
-
-    Gate order (§2.1): per-call ``confirm`` → live policy (enabled + direct +
-    workspace) → action kind (§2.2) → idempotency (§2.2) → placement (§3).
-    """
-    key = _sanitize(cmds[0].get("idempotency_key", ""), 64) if cmds else ""
-    if not confirm:
-        return _refusal(row_key, key, REFUSED_CONFIRM_REQUIRED), None, None
-    gate = _live_policy_gate()
-    if gate:
-        return _refusal(row_key, key, gate), None, None
-    if not key or not cmds:
-        # No computed smallest action (terminal/wait rows): nothing to execute.
-        return _refusal(row_key, key, REFUSED_NO_ACTION), None, None
-    if row_key in ATTENTION_ROW_KEYS:
-        # §2.2: "needs a human" proposals are never executable.
-        return _refusal(row_key, key, REFUSED_ATTENTION), None, None
-    if row_key not in EXECUTABLE_ROW_KEYS:
-        # Unknown/new action kinds fail closed — never guess.
-        return _refusal(row_key, key, REFUSED_UNSUPPORTED_ACTION), None, None
-    prior = _l2_prior_execution_block(db, mission_id, key)
-    if prior is not None:
-        block = _refusal(row_key, key, REFUSED_ALREADY_EXECUTED)
-        block["prior_state"] = _sanitize(str(prior.get("state", "")), 32)
-        return block, None, prior
-    decision, refusal = _l2_placement_decision(
-        db, path, hermes_root, mission_id, node_id
-    )
-    if decision is None:
-        return _refusal(row_key, key, refusal or REFUSED_UNSUPPORTED_ACTION), None, None
-
-    requirement = decision.get("requirement") or {}
-    classification = str(decision.get("classification", ""))
-
-    def _view(dispatched: bool, reason: str) -> dict[str, Any]:
-        return placement.dispatch_view(
-            decision,
-            dispatched=dispatched,
-            idempotency_key=key,
-            refused_reason=reason,
-        )
-
-    if str(requirement.get("authorization_class", "")) in L2_FORBIDDEN_AUTH_CLASSES:
-        # §2.3: the controller approves nothing — high-impact work keeps its
-        # human gate; it is never self-authorized by the rung.
-        block = _refusal(row_key, key, REFUSED_AUTH_CLASS)
-        block["placement"] = _view(False, REFUSED_AUTH_CLASS)
-        return block, None, None
-    if classification == placement.CLASS_HUMAN:
-        # Approval node: escalate-only (prohibition: approve nothing).
-        block = _refusal(row_key, key, REFUSED_APPROVAL_GATE)
-        block["placement"] = _view(False, REFUSED_APPROVAL_GATE)
-        return block, None, None
-    if classification == placement.CLASS_NO_TARGET:
-        # §3: escalate through the existing spool; never auto-resolve.
-        _l2_escalate_no_target(
-            mission_id=mission_id,
-            node_id=node_id,
-            pass_seq=pass_seq,
-            hermes_root=hermes_root,
-        )
-        block = _refusal(row_key, key, REFUSED_NO_TARGET)
-        block["placement"] = _view(False, REFUSED_NO_TARGET)
-        block["escalated"] = True
-        return block, None, None
-
-    agent, profile, refusal = _l2_target_binding(decision, requirement)
-    if refusal:
-        block = _refusal(row_key, key, refusal)
-        block["placement"] = _view(False, refusal)
-        return block, None, None
-
-    contract_doc = _l2_work_contract(
-        mission_id,
-        node_id,
-        requirement=requirement,
-        target_name=agent,
-        idempotency_key=key,
-        attempt_seq=attempt_seq,
-        hermes_root=hermes_root,
-    )
-    return (
-        None,
-        {
-            "key": key,
-            "target": agent,
-            "profile": profile,
-            "contract": contract_doc,
-            "placement": _view(True, ""),
-        },
-        None,
-    )
-
-
 def _l2_escalate_no_target(
     *,
     mission_id: str,
@@ -1149,6 +686,163 @@ def _l2_escalate_no_target(
     envelope["metadata"]["proposed_action"] = "escalate capability (placement no_capable_target)"
     envelope["dedupe_key"] = f"controller:l2-no-target:{mission_id}:{node_id}"[:300]
     spool_attention_envelope(envelope, hermes_root=hermes_root)
+
+
+
+def _l2_plan_execution(
+    db: sqlite3.Connection,
+    path: Path,
+    hermes_root: Path | None,
+    *,
+    mission_id: str,
+    node_id: str,
+    row_key: str,
+    cmds: list[dict[str, Any]],
+    confirm: bool,
+    attempt_seq: int,
+    pass_seq: int,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Keep the controller helper signature while delegating the L2 plan."""
+    return _l2.plan_execution(
+        db,
+        path,
+        hermes_root,
+        mission_id=mission_id,
+        node_id=node_id,
+        row_key=row_key,
+        cmds=cmds,
+        confirm=confirm,
+        attempt_seq=attempt_seq,
+        pass_seq=pass_seq,
+        escalate_no_target=_l2_escalate_no_target,
+    )
+
+
+
+def _apply_l2_execution(
+    db: sqlite3.Connection,
+    path: Path,
+    hermes_root: Path | None,
+    *,
+    mission_id: str,
+    node_id: str,
+    row_key: str,
+    cmds: list[dict[str, Any]],
+    confirm: bool,
+    attempt_seq: int,
+    pass_seq: int,
+    record: dict[str, Any],
+    pass_env: dict[str, Any],
+    tier: str,
+    tier_reasons: list[str],
+) -> tuple[str, list[str]]:
+    """Apply L2 execution state to the pending plan and pass envelope.
+
+    The execution intent is persisted before dispatch. This helper updates
+    ``record`` and ``pass_env`` in place and returns any tier change.
+    """
+    if _execute_enabled():
+        execution_block, pending, carry = _l2_plan_execution(
+            db,
+            path,
+            hermes_root,
+            mission_id=mission_id,
+            node_id=node_id,
+            row_key=row_key,
+            cmds=cmds,
+            confirm=confirm,
+            attempt_seq=attempt_seq,
+            pass_seq=pass_seq,
+        )
+        if carry is not None:
+            # Fail-closed replay protection (§2.2/§5): the plan row is
+            # REPLACE-keyed by (mission_id, node_id, decision_sha256), so
+            # carry the prior execution evidence forward verbatim — the key
+            # must stay refused, not be forgotten.
+            record["execution"] = carry
+        if pending is not None:
+            # Persist the pre-execution intent BEFORE the dispatch call so
+            # a crash mid-execution is detectable and reconciles fail-closed
+            # (no duplicate dispatch on recovery).
+            record["execution"] = {
+                "state": EXECUTION_STATE_INTENT,
+                "idempotency_key": pending["key"],
+                "target": pending["target"],
+                "profile": pending["profile"],
+                "result": "",
+            }
+            fs._record_decision(db, record)
+            db.commit()
+            executed, result, refused_reason, linkage = _l2_dispatch(
+                pending["contract"], mission_id, hermes_root
+            )
+            execution_block = _execution_block(
+                executed=executed,
+                action_kind=row_key,
+                idempotency_key=pending["key"],
+                result=result,
+                refused_reason=refused_reason or None,
+                placement_view=pending["placement"],
+            )
+            record["execution"] = {
+                "state": (
+                    EXECUTION_STATE_DISPATCHED
+                    if executed
+                    else EXECUTION_STATE_FAILED
+                ),
+                "idempotency_key": pending["key"],
+                "target": pending["target"],
+                "profile": pending["profile"],
+                "result": result,
+                "linkage": linkage,
+            }
+            record["would_execute"] = bool(executed)
+            pass_env["would_execute"] = bool(executed)
+            pass_env["executed_idempotency_key"] = pending["key"]
+            pass_env["executed_result"] = result
+            pass_env["executed_target"] = pending["target"]
+            pass_env["executed_refused_reason"] = _sanitize(refused_reason, 64)
+            if not executed:
+                # §4/§5: an execution failure surfaces on the pass state
+                # (fail closed), never as silent success, and never as a
+                # retry loop — bounded rework only, on a new attempt_seq.
+                record["pass_result"] = PASS_BLOCKED
+                pass_env["pass_result"] = PASS_BLOCKED
+                if tier == TIER_GREEN:
+                    tier, tier_reasons = TIER_YELLOW, ["execution_failed"]
+                    pass_env["escalation_tier"] = tier
+                    pass_env["escalation_reasons"] = tier_reasons
+                pass_env["actions_taken"].append(
+                    {
+                        "action": "execute_failed",
+                        "detail": _sanitize(
+                            f"{result}:{refused_reason or 'dispatch_failed'}", 120
+                        ),
+                    }
+                )
+            else:
+                pass_env["actions_taken"].append(
+                    {
+                        "action": "execute",
+                        "detail": (
+                            "dispatched via delegation authority surface "
+                            f"(target={pending['target']})"
+                        ),
+                    }
+                )
+        elif execution_block is not None:
+            pass_env["executed_refused_reason"] = _sanitize(
+                str(execution_block.get("refused_reason") or ""), 64
+            )
+            pass_env["actions_taken"].append(
+                {
+                    "action": "execute_refused",
+                    "detail": str(execution_block.get("refused_reason") or ""),
+                }
+            )
+        if execution_block is not None:
+            pass_env["execution"] = execution_block
+    return tier, tier_reasons
 
 
 # ---------------------------------------------------------------------------
@@ -1413,108 +1107,22 @@ def reconcile_pass(
         # state and leaves the L0/L1 output untouched (the envelope only gains
         # the additive execution block).
         # ------------------------------------------------------------------
-        if _execute_enabled():
-            execution_block, pending, carry = _l2_plan_execution(
-                db,
-                path,
-                hermes_root,
-                mission_id=mission_id,
-                node_id=node_id,
-                row_key=row_key,
-                cmds=cmds,
-                confirm=confirm,
-                attempt_seq=attempt_seq,
-                pass_seq=int(acq.get("pass_seq", 0) or 0),
-            )
-            if carry is not None:
-                # Fail-closed replay protection (§2.2/§5): the plan row is
-                # REPLACE-keyed by (mission_id, node_id, decision_sha256), so
-                # carry the prior execution evidence forward verbatim — the key
-                # must stay refused, not be forgotten.
-                record["execution"] = carry
-            if pending is not None:
-                # Persist the pre-execution intent BEFORE the dispatch call so
-                # a crash mid-execution is detectable and reconciles fail-closed
-                # (no duplicate dispatch on recovery).
-                record["execution"] = {
-                    "state": EXECUTION_STATE_INTENT,
-                    "idempotency_key": pending["key"],
-                    "target": pending["target"],
-                    "profile": pending["profile"],
-                    "result": "",
-                }
-                fs._record_decision(db, record)
-                db.commit()
-                executed, result, refused_reason, linkage = _l2_dispatch(
-                    pending["contract"], mission_id, hermes_root
-                )
-                execution_block = _execution_block(
-                    executed=executed,
-                    action_kind=row_key,
-                    idempotency_key=pending["key"],
-                    result=result,
-                    refused_reason=refused_reason or None,
-                    placement_view=pending["placement"],
-                )
-                record["execution"] = {
-                    "state": (
-                        EXECUTION_STATE_DISPATCHED
-                        if executed
-                        else EXECUTION_STATE_FAILED
-                    ),
-                    "idempotency_key": pending["key"],
-                    "target": pending["target"],
-                    "profile": pending["profile"],
-                    "result": result,
-                    "linkage": linkage,
-                }
-                record["would_execute"] = bool(executed)
-                pass_env["would_execute"] = bool(executed)
-                pass_env["executed_idempotency_key"] = pending["key"]
-                pass_env["executed_result"] = result
-                pass_env["executed_target"] = pending["target"]
-                pass_env["executed_refused_reason"] = _sanitize(refused_reason, 64)
-                if not executed:
-                    # §4/§5: an execution failure surfaces on the pass state
-                    # (fail closed), never as silent success, and never as a
-                    # retry loop — bounded rework only, on a new attempt_seq.
-                    pass_result = PASS_BLOCKED
-                    record["pass_result"] = PASS_BLOCKED
-                    pass_env["pass_result"] = PASS_BLOCKED
-                    if tier == TIER_GREEN:
-                        tier, tier_reasons = TIER_YELLOW, ["execution_failed"]
-                        pass_env["escalation_tier"] = tier
-                        pass_env["escalation_reasons"] = tier_reasons
-                    pass_env["actions_taken"].append(
-                        {
-                            "action": "execute_failed",
-                            "detail": _sanitize(
-                                f"{result}:{refused_reason or 'dispatch_failed'}", 120
-                            ),
-                        }
-                    )
-                else:
-                    pass_env["actions_taken"].append(
-                        {
-                            "action": "execute",
-                            "detail": (
-                                "dispatched via delegation authority surface "
-                                f"(target={pending['target']})"
-                            ),
-                        }
-                    )
-            elif execution_block is not None:
-                pass_env["executed_refused_reason"] = _sanitize(
-                    str(execution_block.get("refused_reason") or ""), 64
-                )
-                pass_env["actions_taken"].append(
-                    {
-                        "action": "execute_refused",
-                        "detail": str(execution_block.get("refused_reason") or ""),
-                    }
-                )
-            if execution_block is not None:
-                pass_env["execution"] = execution_block
+        tier, tier_reasons = _apply_l2_execution(
+            db,
+            path,
+            hermes_root,
+            mission_id=mission_id,
+            node_id=node_id,
+            row_key=row_key,
+            cmds=cmds,
+            confirm=confirm,
+            attempt_seq=attempt_seq,
+            pass_seq=int(acq.get("pass_seq", 0) or 0),
+            record=record,
+            pass_env=pass_env,
+            tier=tier,
+            tier_reasons=tier_reasons,
+        )
 
         fs._record_decision(db, record)
         _record_telemetry(db, pass_env)
