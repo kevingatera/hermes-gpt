@@ -140,3 +140,36 @@ def test_profile_runtime_mount_allows_standard_library_secret_named_modules(
     assert task_mounts.readonly_profile_runtime_paths(
         (runtime,), workspace, task_home, home / ".hermes"
     ) == (runtime,)
+
+
+@pytest.mark.parametrize("extra", [None, "data", "symlink"])
+def test_typeshed_credentials_package_requires_only_regular_stubs(tmp_path, extra):
+    home = tmp_path / "home"
+    task_home = home / ".hermes" / "profiles" / ("a" * 32)
+    task_home.mkdir(parents=True)
+    runtime = home / "runtime"
+    package = runtime / "typeshed" / "stubs" / "docker" / "docker" / "credentials"
+    package.mkdir(parents=True)
+    (package / "__init__.pyi").write_text("", encoding="utf-8")
+    (package / "store.pyi").write_text("", encoding="utf-8")
+    if extra == "data":
+        (package / "settings.json").write_text("{}", encoding="utf-8")
+    elif extra == "symlink":
+        (package / "alias.pyi").symlink_to(package / "store.pyi")
+    if extra is None:
+        assert _mount_paths(runtime, home, task_home) == (runtime,)
+    else:
+        with pytest.raises(PermissionError, match="protected runtime path"):
+            _mount_paths(runtime, home, task_home)
+
+
+def test_credentials_directory_outside_typeshed_remains_protected(tmp_path):
+    home = tmp_path / "home"
+    task_home = home / ".hermes" / "profiles" / ("b" * 32)
+    task_home.mkdir(parents=True)
+    runtime = home / "runtime"
+    package = runtime / "credentials"
+    package.mkdir(parents=True)
+    (package / "__init__.pyi").write_text("", encoding="utf-8")
+    with pytest.raises(PermissionError, match="protected runtime path"):
+        _mount_paths(runtime, home, task_home)

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Recognize flat typeshed credential API stub packages while refusing data files, symlinks, and credential directories outside typeshed.
+
 - Accept Python type-stub files as source when validating cloned MCP runtime mounts.
 
 - Include the server tool and runtime modules required by the installed `hermes-gpt` entry point; check local import dependencies against the package manifest.

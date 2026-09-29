@@ -53,6 +53,29 @@ def _path_has_protected_component(path: Path) -> bool:
     return policy.is_denied_path(path)
 
 
+def _is_typeshed_stub_package(entry: Path, runtime_path: Path) -> bool:
+    """Recognize a flat typeshed package without allowing credential data."""
+    parts = entry.relative_to(runtime_path).parts
+    if not any(parts[index:index + 2] == ("typeshed", "stubs")
+               for index in range(len(parts) - 1)):
+        return False
+    if not entry.is_dir() or entry.is_symlink():
+        return False
+    # Docker's public typeshed package is named credentials. Only a bounded,
+    # flat package made entirely of regular .pyi files qualifies here.
+    names = set()
+    try:
+        for child in entry.iterdir():
+            if len(names) >= 1_000:
+                return False
+            if child.is_symlink() or not child.is_file() or child.suffix != ".pyi":
+                return False
+            names.add(child.name)
+    except OSError:
+        return False
+    return "__init__.pyi" in names
+
+
 def _runtime_entry_is_protected(entry: Path, runtime_path: Path) -> bool:
     """Check secrets without treating standard-library modules as credentials."""
     if entry.is_symlink():
@@ -69,7 +92,7 @@ def _runtime_entry_is_protected(entry: Path, runtime_path: Path) -> bool:
 
     name = entry.name.lower()
     if name in policy_paths.DEFAULT_DENIED_BASENAMES or name.startswith(".env."):
-        return True
+        return not (name == "credentials" and _is_typeshed_stub_package(entry, runtime_path))
     if name in _SAFE_RUNTIME_DATA_FILE_NAMES:
         return False
 
