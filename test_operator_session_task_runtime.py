@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import operator_session_task_runtime as task_runtime
 
@@ -40,3 +41,18 @@ def test_browser_bridge_uses_the_hermes_source_virtual_environment(tmp_path):
     python.write_text("python", encoding="utf-8")
 
     assert task_runtime._hermes_python("/usr/bin/hermes", source_root) == str(python)
+
+
+def test_browser_bridge_modules_mount_beside_a_workspace_inside_the_checkout(
+    tmp_path,
+):
+    workspace = Path(__file__).resolve().parent / "docs"
+    task_home = tmp_path / "task"
+    task_home.mkdir()
+
+    paths = task_runtime._readonly_runtime_mounts(
+        task_runtime._browser_bridge_runtime_files(), workspace, task_home
+    )
+
+    assert Path(__file__).resolve().parent not in paths
+    assert Path(__file__).resolve().parent / "hermes_gpt_browser_mcp.py" in paths

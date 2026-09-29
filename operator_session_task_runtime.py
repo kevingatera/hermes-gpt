@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import re
@@ -16,6 +17,7 @@ import operator_policy as op
 import operator_session as sessions
 import operator_session_job_store as job_store
 import operator_session_jobs as job_runtime
+import operator_session_task_mcp as task_mcp
 import operator_session_task_profile as task_profile
 import runner_confinement as confinement
 
@@ -24,6 +26,16 @@ TOOLSETS = "profile-configured+task-browser"
 PROFILE_DEFAULT_TOOLSETS = "profile-configured"
 MAX_TIMEOUT = 3600
 REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"})
+_BROWSER_BRIDGE_MODULES = (
+    "hermes_gpt_browser_mcp",
+    "mcp_compat",
+    "operator_browser",
+    "operator_browser_profiles",
+    "operator_browser_state",
+    "operator_browser_tabs",
+    "operator_policy",
+    "operator_redaction",
+)
 
 
 def _source_root(executable: str, agent_root: Path | None) -> Path:
@@ -127,6 +139,14 @@ def _hermes_python(executable: str, agent_root: Path | None) -> str:
     executable_path = Path(executable)
     candidate = executable_path.with_name("python.exe" if os.name == "nt" else "python")
     return str(candidate) if candidate.is_file() else sys.executable
+
+
+def _browser_bridge_runtime_files() -> tuple[Path, ...]:
+    """Return the bridge's local Python modules as narrow read-only mounts."""
+    return tuple(
+        Path(importlib.import_module(name).__file__).resolve(strict=True)
+        for name in _BROWSER_BRIDGE_MODULES
+    )
 
 
 def _readonly_runtime_mounts(
@@ -250,7 +270,9 @@ def start_turn(
         argv += ["--resume", session_id]
     argv += ["--query-file", "-", "--oneshot", "-Q"]
 
-    readonly_candidates = [source_root, Path(__file__).resolve().parent]
+    readonly_candidates = [source_root]
+    if not browser_enabled:
+        readonly_candidates.append(Path(__file__).resolve().parent)
     hermes_data_root = job_store._data_root(hermes_root).resolve()
     configured_node = hermes_data_root / "node"
     if configured_node.is_dir():
@@ -276,9 +298,13 @@ def start_turn(
         # tree. The plugin host's Python may have an interpreter symlink whose
         # base runtime is outside the task's approved read-only mounts.
         python = _hermes_python(executable, source_root)
-        task_profile.configure_task_browser(str(task["task_id"]), task_home, python)
+        task_mcp.configure_task_browser(str(task["task_id"]), task_home, python)
+        # The workspace can be a subdirectory of this plugin checkout. Binding
+        # the whole checkout would overlap that workspace, so expose only the
+        # bridge modules the child MCP server imports.
+        readonly_candidates.extend(_browser_bridge_runtime_files())
 
-    for candidate in task_profile.configured_mcp_runtime_paths(
+    for candidate in task_mcp.configured_mcp_runtime_paths(
         task_home, os.environ.get("PATH")
     ) + task_profile.profile_resource_runtime_paths(task_home):
         resolved_candidate = candidate.resolve(strict=True)
