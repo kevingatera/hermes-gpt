@@ -54,7 +54,9 @@ def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -
     assert "not inspect another process's environment" in text
     assert "browser.use_real_profile" in text
     assert "same loopback CDP endpoint" in text
-    assert "A2A delegation tools" in text
+    assert "curated `sessions` connection does not register peer-routing tools" in text
+    assert "hermes_fleet_*" in text
+    assert "separately authorized Operator" in text
 
 
 def test_secure_tunnel_launcher_supervises_only_owned_children() -> None:
