@@ -169,6 +169,7 @@ py-modules = [
   "operator_delegation_store",
   "operator_delegations",
   "operator_job_process",
+  "operator_job_store",
   "operator_job_supervisor",
   "operator_runners",
   "operator_runner_common",
