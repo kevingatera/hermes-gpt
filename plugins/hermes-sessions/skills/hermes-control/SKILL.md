@@ -9,6 +9,9 @@ authorized browsers.
 ## Sessions
 
 - Treat regular Hermes session IDs and managed task IDs as different identifiers.
+- Call `hermes_session_profiles` when you need to discover which configured
+  profiles this connection may use and their default model, provider, and
+  reasoning effort. Use only a listed profile.
 - Regular profile sessions use the selected profile's `HERMES_HOME`; Hermes
   loads its configuration and credentials itself. Managed tasks clone the
   selected profile's supported resources into private task state while keeping

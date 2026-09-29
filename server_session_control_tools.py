@@ -7,6 +7,7 @@ from mcp.types import ToolAnnotations
 
 import operator_session as op_session
 import operator_session_metadata as session_metadata
+import operator_session_profiles as session_profiles
 from hermes_session_history import redact_error as _redact_error
 from server_session_context import SessionToolContext
 
@@ -29,6 +30,14 @@ class SessionControlTools:
         """Register profile-session controls only when session control is enabled."""
         if not session_control_enabled:
             return
+        server.add_tool(
+            self.hermes_session_profiles,
+            meta=tool_meta(),
+            annotations=ToolAnnotations(
+                title="List authorized Hermes session profiles",
+                readOnlyHint=True,
+            ),
+        )
         for tool, title in (
             (self.hermes_session_job_status, "Read Hermes session job status"),
             (self.hermes_session_job_result, "Read Hermes session job result"),
@@ -62,6 +71,12 @@ class SessionControlTools:
                     idempotentHint=True,
                 ),
             )
+
+    def hermes_session_profiles(self) -> dict[str, Any]:
+        """List authorized profiles and their non-secret model defaults."""
+        return session_profiles.hermes_session_profiles(
+            self.context.get_hermes_root()
+        )
 
     def hermes_session_start(
         self,

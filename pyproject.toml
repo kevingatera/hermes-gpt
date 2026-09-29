@@ -105,6 +105,7 @@ py-modules = [
   "operator_status",
   "operator_codex",
   "operator_session",
+  "operator_session_profiles",
   "operator_session_metadata",
   "operator_session_jobs",
   "operator_session_job_runtime",

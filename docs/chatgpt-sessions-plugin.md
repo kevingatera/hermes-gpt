@@ -139,6 +139,8 @@ builder does not create the tunnel or the ChatGPT connection.
 - Use `hermes_session_list` and `hermes_session_read` to find and inspect an
   existing profile session. Use `hermes_session_continue` to resume it. Omit
   `model` and `reasoning_effort` to use that profile's configured settings.
+- Use `hermes_session_profiles` to see which profiles this connection may use
+  and their non-secret model, provider, and reasoning-effort defaults.
 - Use `hermes_session_start` to start a profile session. Save its `job_id`, poll
   `hermes_session_job_status`, and retrieve the bounded answer with
   `hermes_session_job_result`.
