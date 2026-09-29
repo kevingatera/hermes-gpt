@@ -371,7 +371,13 @@ def browser_command(
     result = _run(state, command, command_args, headed=bool(state.get("headed")))
     if command == "tab":
         if tab_operation == "list":
-            return browser_tabs.normalize_tab_list(result)
+            normalized = browser_tabs.normalize_tab_list(result)
+            if normalized.get("success") is True:
+                # agent-browser can cache the hostname as a tab title after
+                # navigation. Read the active page without changing tab selection.
+                title_result = _run(state, "get", ["title"], headed=bool(state.get("headed")))
+                browser_tabs.refresh_active_title(normalized, title_result)
+            return normalized
         return browser_tabs.normalize_tab_selection(tab_reference or "", result)
     data = result.get("data") or {}
     if "snapshot" in data:

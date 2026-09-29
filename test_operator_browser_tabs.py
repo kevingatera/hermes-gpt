@@ -111,3 +111,17 @@ def test_browser_command_rejects_tab_close_without_calling_cli(monkeypatch, tmp_
 
     assert result["success"] is False
     assert result["code"] == "INVALID_BROWSER_TAB"
+
+
+def test_active_title_refresh_preserves_other_tabs_and_bounds_output():
+    result = browser_tabs.normalize_tab_list({"success": True, "data": {"tabs": [
+        {"tabId": "t1", "active": True, "title": "example.net"},
+        {"tabId": "t2", "active": False, "title": "Other page"},
+    ]}})
+    browser_tabs.refresh_active_title(result, {"success": True, "data": {"title": "Example Domain"}})
+    assert result["data"]["tabs"][0]["title"] == "Example Domain"
+    assert result["data"]["tabs"][1]["title"] == "Other page"
+    browser_tabs.refresh_active_title(result, {"success": True, "data": {"title": "x" * 500}})
+    assert len(result["data"]["tabs"][0]["title"]) == 240
+    browser_tabs.refresh_active_title(result, {"success": False})
+    assert "title" not in result["data"]["tabs"][0]

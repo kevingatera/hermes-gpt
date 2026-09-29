@@ -82,6 +82,20 @@ def normalize_tab_list(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def refresh_active_title(result: dict[str, Any], observation: dict[str, Any]) -> None:
+    """Replace cached active-tab titles with a bounded current observation."""
+    data = observation.get("data")
+    title = None
+    if observation.get("success") is True and isinstance(data, dict):
+        title = _safe_text(data.get("title"), _MAX_TAB_TITLE_CHARS)
+    for tab in result["data"]["tabs"]:
+        if tab["active"]:
+            # Do not present stale metadata as current if the page read failed.
+            tab.pop("title", None)
+            if title is not None:
+                tab["title"] = title
+
+
 def normalize_tab_selection(reference: str, result: dict[str, Any]) -> dict[str, Any]:
     """Return a small confirmation without forwarding browser-controlled data."""
     if result.get("success") is not True:
@@ -101,6 +115,7 @@ def normalize_tab_selection(reference: str, result: dict[str, Any]) -> dict[str,
 __all__ = [
     "normalize_tab_list",
     "normalize_tab_selection",
+    "refresh_active_title",
     "validate_tab_command_args",
     "validate_tab_reference",
 ]
