@@ -245,6 +245,7 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         pyproject = tomllib.load(fh)
     modules = pyproject["tool"]["setuptools"]["py-modules"]
     assert modules, "pyproject.toml declares no py-modules"
+    assert "operator_session_task_mcp" in modules
     for module in modules:
         top_level = f"{module}.py"
         assert top_level in names, f"wheel missing py-module: {top_level}"
