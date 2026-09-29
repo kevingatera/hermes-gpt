@@ -9,6 +9,7 @@ import pytest
 
 import operator_fleet as fleet
 import operator_fleet_a2a as fleet_a2a
+import operator_fleet_authority as fleet_authority
 import operator_policy as op
 
 HERMES = "/test/hermes"
@@ -102,6 +103,41 @@ def test_authority_manifest_accepts_gaming_4090_peer(tmp_path):
     bad["peers"][0]["allowed_profiles"] = ["default", "rza"]
     path.write_text(json.dumps(bad), encoding="utf-8")
     import pytest
+    with pytest.raises(PermissionError):
+        fleet._load_authority(path)
+
+
+def test_unknown_peer_uses_default_profile_ceiling_without_mutating_defaults(
+    monkeypatch, tmp_path
+):
+    path = tmp_path / "fleet-authority.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "peers": [
+                    {
+                        "name": "new-peer",
+                        "expected_host_role": "worker",
+                        "expected_card_identity": "New Peer",
+                        "allowed_profiles": ["default"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    configured_ceilings = dict(fleet._BUILTIN_PROFILES)
+    monkeypatch.setattr(fleet, "_BUILTIN_PROFILES", configured_ceilings)
+
+    assert fleet._load_authority(path)["new-peer"].allowed_profiles == ("default",)
+    assert "new-peer" not in configured_ceilings
+    assert "new-peer" not in fleet_authority._BUILTIN_PROFILES
+    assert fleet._load_authority(path)["new-peer"].allowed_profiles == ("default",)
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["peers"][0]["allowed_profiles"] = ["gza"]
+    path.write_text(json.dumps(raw), encoding="utf-8")
     with pytest.raises(PermissionError):
         fleet._load_authority(path)
 
