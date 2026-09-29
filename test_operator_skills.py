@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 
 import pytest
 
 import operator_policy as op
+import operator_skill_manager as skill_manager
 import operator_skills as osk
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -151,7 +150,7 @@ def test_skill_create_direct_uses_skill_manager_when_available(hermes_root, clea
             target.write_text(kwargs["content"], encoding="utf-8")
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     out = osk.hermes_skill_create(
         profile="default", name="new-skill", content=_VALID_FRONTMATTER,
         dry_run=False, hermes_root=hermes_root,
@@ -189,7 +188,7 @@ def test_skill_create_scopes_manager_to_requested_profile(
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
     monkeypatch.setattr(
-        osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False
+        skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager
     )
     out = osk.hermes_skill_create(
         profile="target-profile",
@@ -210,7 +209,7 @@ def test_skill_create_refuses_direct_mutation_without_skill_manager(hermes_root,
     monkeypatch.setenv(op.OPERATOR_ENABLED_ENV, "1")
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: None, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: None)
     out = osk.hermes_skill_create(
         profile="default", name="new-skill", content=_VALID_FRONTMATTER,
         dry_run=False, hermes_root=hermes_root,
@@ -224,7 +223,7 @@ def test_skill_create_lazy_import_can_recover_after_initial_failure(hermes_root,
     monkeypatch.setenv(op.OPERATOR_ENABLED_ENV, "1")
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
-    monkeypatch.setattr(osk, "_skill_manager_module", None, raising=False)
+    monkeypatch.setattr(skill_manager, "_skill_manager_module", None)
     attempts = {"count": 0}
 
     class FakeSkillManager:
@@ -238,9 +237,9 @@ def test_skill_create_lazy_import_can_recover_after_initial_failure(hermes_root,
             raise ImportError("not ready yet")
         return FakeSkillManager
 
-    monkeypatch.setattr(osk.importlib, "import_module", fake_import)
-    assert osk._get_skill_manager(hermes_root) is None
-    assert osk._get_skill_manager(hermes_root) is FakeSkillManager
+    monkeypatch.setattr(skill_manager.importlib, "import_module", fake_import)
+    assert skill_manager._get_skill_manager(hermes_root) is None
+    assert skill_manager._get_skill_manager(hermes_root) is FakeSkillManager
 
 
 def test_skill_create_dry_run_returns_plan_and_does_not_mutate(hermes_root, clean_env, audit_override, monkeypatch):
@@ -274,7 +273,7 @@ def test_skill_create_uses_skill_manager_when_available(hermes_root, clean_env, 
             target.write_text(kwargs["content"], encoding="utf-8")
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     out = osk.hermes_skill_create(
         profile="default", name="new-skill", content=_VALID_FRONTMATTER,
         dry_run=False, hermes_root=hermes_root,
@@ -296,6 +295,22 @@ def test_skill_create_refuses_invalid_frontmatter(hermes_root, clean_env, audit_
     parsed = json.loads(out)
     assert parsed["success"] is False
     assert "frontmatter" in parsed["error"].lower()
+
+
+def test_skill_create_rejects_non_mapping_frontmatter(hermes_root, clean_env, audit_override, monkeypatch):
+    monkeypatch.setenv(op.OPERATOR_ENABLED_ENV, "1")
+    monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
+    monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
+    out = osk.hermes_skill_create(
+        profile="default",
+        name="bad-skill",
+        content="---\n- item\n---\n\n# Invalid skill\n",
+        dry_run=False,
+        hermes_root=hermes_root,
+    )
+    parsed = json.loads(out)
+    assert parsed["success"] is False
+    assert "YAML mapping" in parsed["error"]
 
 
 def test_skill_create_refuses_duplicate(hermes_root, clean_env, audit_override, monkeypatch):
@@ -334,7 +349,7 @@ def test_skill_edit_direct_uses_skill_manager_when_available(hermes_root, clean_
             target.write_text(kwargs["content"], encoding="utf-8")
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     edited = _VALID_FRONTMATTER.replace("Do the thing.", "Do the edited thing.")
     out = osk.hermes_skill_edit(
         profile="default", name="my-skill", content=edited,
@@ -382,7 +397,7 @@ def test_skill_patch_direct_uses_skill_manager_when_available(hermes_root, clean
             target.write_text((skill_dir / "SKILL.md").read_text(encoding="utf-8").replace("Do the thing.", kwargs["new_string"]), encoding="utf-8")
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     out = osk.hermes_skill_patch(
         profile="default", name="my-skill",
         old_string="Do the thing.", new_string="Do the new thing.",
@@ -400,7 +415,7 @@ def test_skill_patch_refuses_direct_mutation_without_skill_manager(hermes_root, 
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
     _make_skill(hermes_root, "my-skill")
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: None, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: None)
     out = osk.hermes_skill_patch(
         profile="default", name="my-skill",
         old_string="Do the thing.", new_string="Do the new thing.",
@@ -416,7 +431,7 @@ def test_skill_patch_refuses_ambiguous_match(hermes_root, clean_env, audit_overr
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
     content = _VALID_FRONTMATTER + "duplicate\nduplicate\n"
-    skill_dir = _make_skill(hermes_root, "my-skill", content=content)
+    _make_skill(hermes_root, "my-skill", content=content)
 
     out = osk.hermes_skill_patch(
         profile="default", name="my-skill",
@@ -433,7 +448,7 @@ def test_skill_patch_replace_all(hermes_root, clean_env, audit_override, monkeyp
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
     content = _VALID_FRONTMATTER + "duplicate\nduplicate\n"
-    skill_dir = _make_skill(hermes_root, "my-skill", content=content)
+    _make_skill(hermes_root, "my-skill", content=content)
     calls = []
 
     class FakeSkillManager:
@@ -445,7 +460,7 @@ def test_skill_patch_replace_all(hermes_root, clean_env, audit_override, monkeyp
             target.write_text(text.replace(kwargs["old_string"], kwargs["new_string"]), encoding="utf-8")
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     out = osk.hermes_skill_patch(
         profile="default", name="my-skill",
         old_string="duplicate", new_string="unique",
@@ -529,7 +544,7 @@ def test_skill_write_file_uses_skill_manager_when_available(hermes_root, clean_e
             target.write_text(kwargs["file_content"], encoding="utf-8")
             return json.dumps({"success": True, "path": str(target)}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     out = osk.hermes_skill_write_file(
         profile="default", name="my-skill",
         file_path="references/guide.md", file_content="# Guide\n",
@@ -546,7 +561,7 @@ def test_skill_write_file_refuses_direct_mutation_without_skill_manager(hermes_r
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
     _make_skill(hermes_root, "my-skill")
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: None, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: None)
     out = osk.hermes_skill_write_file(
         profile="default", name="my-skill",
         file_path="references/guide.md", file_content="# Guide\n",
@@ -666,7 +681,7 @@ def test_skill_delete_direct_uses_skill_manager_when_available(hermes_root, clea
             shutil.rmtree(skill_dir)
             return json.dumps({"success": True, "message": "deleted"}, indent=2)
 
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: FakeSkillManager)
     out = osk.hermes_skill_delete(
         profile="default", name="my-skill",
         dry_run=False, hermes_root=hermes_root,
@@ -682,7 +697,7 @@ def test_skill_delete_refuses_direct_mutation_without_skill_manager(hermes_root,
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "skills")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
     _make_skill(hermes_root, "my-skill")
-    monkeypatch.setattr(osk, "_get_skill_manager", lambda hermes_root=None: None, raising=False)
+    monkeypatch.setattr(skill_manager, "_get_skill_manager", lambda hermes_root=None: None)
     out = osk.hermes_skill_delete(
         profile="default", name="my-skill",
         dry_run=False, hermes_root=hermes_root,
