@@ -127,8 +127,10 @@ builder does not create the tunnel or the ChatGPT connection.
 - Use `hermes_browser_profile_*` to operate an authorized profile browser
   without starting a Hermes model turn. Use `hermes_task_browser_*` for the
   browser owned by a managed task.
-- Use the existing A2A delegation tools when the work should run on another
-  Hermes peer. Keep direct session and browser control on this MCP connection
+- The curated `sessions` connection does not register peer-routing tools. Use
+  `hermes_fleet_*` for bounded work on another configured Hermes peer when
+  those tools are available through a separately authorized Operator
+  connection. Keep direct session and browser control on this MCP connection
   so it remains attached to the selected local profile and browser.
 
 For the available tools, bounds, and error behavior, see [Hermes session control](session-control.md)

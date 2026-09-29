@@ -46,6 +46,9 @@ authorized browsers.
 
 ## Delegation
 
-Use A2A when a bounded task benefits from execution by another Hermes peer.
-Keep same-host session and browser control on the Hermes GPT tools so it stays
-bound to the selected local profile.
+Use `hermes_fleet_*` tools for bounded work on another configured Hermes peer
+when those tools are available on the active connection. The curated sessions
+plugin does not register peer-routing tools. If remote execution is needed but
+those tools are unavailable, explain that it requires a separately authorized
+Operator connection; keep same-host session and browser control on this
+connection so it stays bound to the selected local profile.
