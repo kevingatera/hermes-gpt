@@ -20,6 +20,14 @@ _TASK_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _PROFILE_MARKER = ".hermes-gpt-task-profile.json"
 _SESSION_STATE_FILES = ("state.db", "state.db-wal", "state.db-shm")
 _BROWSER_SERVER_PREFIX = "hermes-gpt-browser-"
+_SYSTEM_RUNTIME_ROOTS = {
+    Path("/usr"),
+    Path("/lib"),
+    Path("/lib64"),
+    Path("/bin"),
+    Path("/sbin"),
+    Path("/nix"),
+}
 
 
 def _profile_paths(task_id: str, hermes_root: Path | None) -> tuple[Path, Path]:
@@ -351,14 +359,8 @@ def configure_task_browser(
             servers.pop(old_name, None)
     servers[server_name] = server_config
 
-    platform_toolsets = config.get("platform_toolsets")
-    if isinstance(platform_toolsets, dict):
-        cli_toolsets = platform_toolsets.get("cli")
-        if isinstance(cli_toolsets, list):
-            cli_toolsets[:] = [name for name in cli_toolsets if name not in own_names or name == server_name]
-            if server_name not in cli_toolsets:
-                cli_toolsets.append(server_name)
-
+    # Hermes discovers enabled MCP servers separately from platform toolsets.
+    # Keep the profile's built-in toolset selection unchanged.
     temporary = config_path.with_name(f".{config_path.name}.{os.getpid()}.tmp")
     temporary.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     try:
@@ -396,8 +398,11 @@ def configured_mcp_runtime_paths(task_home: Path, path_value: str | None) -> tup
                 executable = Path(located) if located else Path()
             if executable.is_file():
                 candidates.add(executable.parent)
+                candidates.update(_python_environment_paths(executable))
                 try:
-                    candidates.add(executable.resolve(strict=True).parent)
+                    resolved_executable = executable.resolve(strict=True)
+                    candidates.add(resolved_executable.parent)
+                    candidates.update(_python_environment_paths(resolved_executable))
                 except OSError:
                     pass
 
@@ -417,6 +422,51 @@ def configured_mcp_runtime_paths(task_home: Path, path_value: str | None) -> tup
                 candidates.add(directory.resolve())
 
     return tuple(sorted(candidates, key=str))
+
+
+def _python_environment_paths(executable: Path) -> set[Path]:
+    """Expose a configured Python environment and the base runtime behind its symlink."""
+    if executable.parent.name not in {"bin", "Scripts"}:
+        return set()
+
+    environment = executable.parent.parent
+    config_path = environment / "pyvenv.cfg"
+    if not config_path.is_file():
+        # MCP commands may use the resolved interpreter path rather than the
+        # venv symlink. Mount that interpreter's runtime so its standard
+        # library remains available inside the task sandbox.
+        is_python = re.fullmatch(
+            r"python(?:\d+(?:\.\d+)*)?(?:\.exe)?",
+            executable.name,
+            re.IGNORECASE,
+        )
+        if is_python and any((environment / "lib").glob("python*")):
+            return {environment.resolve(strict=True)}
+        return set()
+
+    paths: set[Path] = set()
+    try:
+        paths.add(environment.resolve(strict=True))
+        config = config_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return paths
+
+    for line in config.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or key.strip().lower() != "home":
+            continue
+        home = Path(value.strip()).expanduser()
+        runtime = home.parent if home.name in {"bin", "Scripts"} else home
+        if any(runtime == root or root in runtime.parents for root in _SYSTEM_RUNTIME_ROOTS):
+            continue
+        if not runtime.is_dir():
+            continue
+        try:
+            paths.add(runtime.resolve(strict=True))
+        except OSError:
+            pass
+        break
+    return paths
 
 
 def _browser_state_file(task_home: Path) -> Path:

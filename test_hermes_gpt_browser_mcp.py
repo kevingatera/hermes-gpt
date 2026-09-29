@@ -11,7 +11,7 @@ def test_managed_browser_bridge_registers_tab_tools():
 
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
 
-    assert "browser_tabs" in tools
-    assert "browser_select_tab" in tools
-    assert tools["browser_tabs"].annotations.read_only_hint is True
-    assert tools["browser_select_tab"].annotations.destructive_hint is True
+    assert "task_browser_tabs" in tools
+    assert "task_browser_select_tab" in tools
+    assert tools["task_browser_tabs"].annotations.read_only_hint is True
+    assert tools["task_browser_select_tab"].annotations.destructive_hint is True

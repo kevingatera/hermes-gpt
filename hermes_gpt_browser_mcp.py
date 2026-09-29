@@ -20,60 +20,60 @@ def build_server(state_file: Path) -> HermesMCP:
     """Build browser tools bound to one task's private browser-state file."""
     server = HermesMCP("hermes-gpt-browser", version="0.1.0")
 
-    def browser_navigate(url: str) -> dict[str, Any]:
+    def task_browser_navigate(url: str) -> dict[str, Any]:
         """Open an http(s) page or about:blank in this task's configured browser."""
         return browser_state_file_command(state_file, "navigate", [url])
 
-    def browser_snapshot() -> dict[str, Any]:
+    def task_browser_snapshot() -> dict[str, Any]:
         """Read the current page's accessible text and element references."""
         return browser_state_file_command(state_file, "snapshot")
 
-    def browser_tabs() -> dict[str, Any]:
+    def task_browser_tabs() -> dict[str, Any]:
         """List open tabs using stable IDs without returning page contents."""
         return browser_state_file_command(state_file, "tab", ["list"])
 
-    def browser_select_tab(tab: str) -> dict[str, Any]:
+    def task_browser_select_tab(tab: str) -> dict[str, Any]:
         """Switch the current browser target to a tab ID or label."""
         return browser_state_file_command(state_file, "tab", ["select", tab])
 
-    def browser_click(ref: str) -> dict[str, Any]:
+    def task_browser_click(ref: str) -> dict[str, Any]:
         """Click one element reference from the latest browser snapshot."""
         return browser_state_file_command(state_file, "click", [ref])
 
-    def browser_type(ref: str, text: str) -> dict[str, Any]:
+    def task_browser_type(ref: str, text: str) -> dict[str, Any]:
         """Type text into an element reference from the latest browser snapshot."""
         return browser_state_file_command(state_file, "type", [ref, text])
 
-    def browser_scroll(direction: str, pixels: int = 500) -> dict[str, Any]:
+    def task_browser_scroll(direction: str, pixels: int = 500) -> dict[str, Any]:
         """Scroll the current page by a bounded number of pixels."""
         return browser_state_file_command(state_file, "scroll", [direction, str(pixels)])
 
-    def browser_back() -> dict[str, Any]:
+    def task_browser_back() -> dict[str, Any]:
         """Go back one page in this session's browser history."""
         return browser_state_file_command(state_file, "back")
 
-    def browser_press(key: str) -> dict[str, Any]:
+    def task_browser_press(key: str) -> dict[str, Any]:
         """Press a keyboard key or a key combination on the current page."""
         return browser_state_file_command(state_file, "press", [key])
 
-    server.add_tool(browser_navigate)
+    server.add_tool(task_browser_navigate)
     server.add_tool(
-        browser_snapshot,
+        task_browser_snapshot,
         annotations=ToolAnnotations(readOnlyHint=True),
     )
     server.add_tool(
-        browser_tabs,
+        task_browser_tabs,
         annotations=ToolAnnotations(readOnlyHint=True),
     )
     server.add_tool(
-        browser_select_tab,
+        task_browser_select_tab,
         annotations=ToolAnnotations(destructiveHint=True),
     )
-    server.add_tool(browser_click)
-    server.add_tool(browser_type)
-    server.add_tool(browser_scroll)
-    server.add_tool(browser_back)
-    server.add_tool(browser_press)
+    server.add_tool(task_browser_click)
+    server.add_tool(task_browser_type)
+    server.add_tool(task_browser_scroll)
+    server.add_tool(task_browser_back)
+    server.add_tool(task_browser_press)
     return server
 
 

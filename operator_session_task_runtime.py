@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -26,6 +27,7 @@ REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhig
 
 
 def _source_root(executable: str, agent_root: Path | None) -> Path:
+    """Find the Hermes source tree that the confined CLI needs to import."""
     candidates: list[Path] = []
     if agent_root is not None:
         candidates.append(Path(agent_root).expanduser())
@@ -44,7 +46,63 @@ def _source_root(executable: str, agent_root: Path | None) -> Path:
             continue
         if (root / "hermes_cli" / "main.py").is_file() and (root / "agent").is_dir():
             return root
+
+    install_root = _installed_source_root(executable)
+    if install_root is not None:
+        try:
+            root = install_root.resolve(strict=True)
+        except OSError:
+            root = None
+        if root and (root / "hermes_cli" / "main.py").is_file() and (root / "agent").is_dir():
+            return root
     raise FileNotFoundError("Hermes Agent source root could not be resolved for confined execution")
+
+
+def _installed_source_root(executable: str) -> Path | None:
+    """Read the installation path from Hermes when its CLI is a wrapper script."""
+    safe_env = {
+        name: value
+        for name, value in os.environ.items()
+        if name
+        in {
+            "PATH",
+            "HOME",
+            "USER",
+            "LOGNAME",
+            "SHELL",
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "SYSTEMROOT",
+            "WINDIR",
+            "COMSPEC",
+            "PATHEXT",
+        }
+        and value
+    }
+    try:
+        result = subprocess.run(
+            [executable, "--version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            cwd=Path.home(),
+            env=safe_env,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key.strip().lower() == "install directory":
+            candidate = Path(value.strip()).expanduser()
+            if candidate.is_dir():
+                return candidate
+    return None
 
 
 def _validate_model_and_effort(model: str, effort: str) -> tuple[str, str]:
@@ -197,6 +255,29 @@ def start_turn(
     configured_node = hermes_data_root / "node"
     if configured_node.is_dir():
         readonly_candidates.append(configured_node)
+
+    if browser_enabled:
+        browser_state = json.loads(browser.browser_state_file(task_home).read_text(encoding="utf-8"))
+        browser_executable_path = Path(str(browser_state["executable"])).expanduser()
+        browser_executable = browser_executable_path.resolve(strict=True)
+        # Keep the bridge target fixed even though Hermes can write its own home.
+        # Mount the private task directory, not only its descriptor file. A
+        # file bind creates synthetic 0755 parents inside bubblewrap, which
+        # correctly fail the bridge's private-directory check.
+        readonly_candidates.append(browser.browser_state_file(task_home).parent)
+        # agent-browser may be a symlink. The bridge validates and launches the
+        # configured path, so expose its directory as well as the resolved
+        # binary's directory below.
+        readonly_candidates.append(browser_executable_path.parent)
+        writable_task_paths.append(Path(str(browser_state["socket_dir"])))
+        if not configured_node.is_dir():
+            readonly_candidates.append(browser_executable.parent)
+        # Run the bridge in the same virtual environment as the Hermes source
+        # tree. The plugin host's Python may have an interpreter symlink whose
+        # base runtime is outside the task's approved read-only mounts.
+        python = _hermes_python(executable, source_root)
+        task_profile.configure_task_browser(str(task["task_id"]), task_home, python)
+
     for candidate in task_profile.configured_mcp_runtime_paths(
         task_home, os.environ.get("PATH")
     ) + task_profile.profile_resource_runtime_paths(task_home):
@@ -219,24 +300,6 @@ def start_turn(
         ):
             continue
         readonly_candidates.append(candidate)
-    if browser_enabled:
-        browser_state = json.loads(browser.browser_state_file(task_home).read_text(encoding="utf-8"))
-        browser_executable_path = Path(str(browser_state["executable"])).expanduser()
-        browser_executable = browser_executable_path.resolve(strict=True)
-        # Keep the bridge target fixed even though Hermes can write its own home.
-        # Mount the private task directory, not only its descriptor file. A
-        # file bind creates synthetic 0755 parents inside bubblewrap, which
-        # correctly fail the bridge's private-directory check.
-        readonly_candidates.append(browser.browser_state_file(task_home).parent)
-        # agent-browser may be a symlink. The bridge validates and launches the
-        # configured path, so expose its directory as well as the resolved
-        # binary's directory below.
-        readonly_candidates.append(browser_executable_path.parent)
-        writable_task_paths.append(Path(str(browser_state["socket_dir"])))
-        if not configured_node.is_dir():
-            readonly_candidates.append(browser_executable.parent)
-        python = _hermes_python(executable, agent_root)
-        task_profile.configure_task_browser(str(task["task_id"]), task_home, python)
 
     readonly_paths = _readonly_runtime_mounts(tuple(readonly_candidates), workspace, task_home)
     sandboxed_argv = confinement.wrap_argv(

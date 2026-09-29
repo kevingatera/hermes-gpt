@@ -54,7 +54,7 @@ Managed tasks expose `hermes_task_browser_status`, `hermes_task_browser_snapshot
 
 Browser status and command output redact URL user information and common secret-bearing query or fragment parameters. Redaction is best-effort; do not pass secrets in URLs when a safer authentication method is available.
 
-The task receives its cloned profile's enabled tools plus a per-task browser bridge, which offers tab listing and tab selection. ChatGPT receives the `hermes_task_browser_*` tools and operates the same named `agent-browser` session. An isolated session is separate from the user's ordinary Chrome profile; `headed_browser=true` opens a visible isolated browser where a display is available. Inactive isolated browser daemons expire after 24 hours. Restarting an expired or closed isolated browser creates a fresh browser context. A profile-attached browser remains the profile's live browser, including its open tabs and logged-in state.
+The task receives its cloned profile's enabled tools plus a per-task MCP browser bridge with `task_browser_*` tools. ChatGPT receives the `hermes_task_browser_*` tools and operates the same named `agent-browser` session. An isolated session is separate from the user's ordinary Chrome profile; `headed_browser=true` opens a visible isolated browser where a display is available. Inactive isolated browser daemons expire after 24 hours. Restarting an expired or closed isolated browser creates a fresh browser context. A profile-attached browser remains the profile's live browser, including its open tabs and logged-in state.
 
 Browser navigation can reach local and private-network addresses. Only enable this feature on the intended trusted local MCP connection. Do not expose it through a public unauthenticated server.
 

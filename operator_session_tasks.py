@@ -1,9 +1,9 @@
 """Scoped Hermes tasks built on the existing session-job lifecycle.
 
-Each task gets a private Hermes data home and a narrow shared-browser MCP
-toolset. The child is OS-confined to its authorized workspace, its own session
-data, and the read-only Hermes runtime. Follow-up turns reuse the same task
-home, browser profile, and Hermes session ID.
+Each task gets a private clone of an allowed Hermes profile, its own session
+data, and an optional isolated browser. The child is OS-confined to its
+authorized workspace and the runtime resources required by that profile.
+Follow-up turns reuse the same task home, browser profile, and Hermes session.
 """
 
 from __future__ import annotations
