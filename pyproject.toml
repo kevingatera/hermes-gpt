@@ -40,6 +40,7 @@ include-package-data = true
 py-modules = [
   "server",
   "server_http",
+  "server_cli",
   "server_codex_tools",
   "server_hermes_runtime",
   "server_hermes_tools",

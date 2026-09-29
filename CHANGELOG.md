@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Extract the server CLI orchestration (`_run_codex_mcp`, `_run_legacy_server`, `main`) into `server_cli.py`. `server.py` keeps those names as wrappers that pass an explicit context of its own collaborators, so CLI flags, authorization gates, transport defaults, stderr messages, and monkeypatch behavior are unchanged; `server_cli` never imports `server`.
 - Refresh the active browser tab title from the current page instead of forwarding stale CLI metadata; omit it when the observation fails.
 
 - Separate budget policy validation, SQLite storage, and MCP actions into focused modules while retaining the established budget imports and enforcement gates.

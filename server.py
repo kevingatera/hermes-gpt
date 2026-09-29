@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import argparse
-import asyncio
 import inspect
 import json
 import os
@@ -16,6 +14,7 @@ import operator_finance as op_finance
 import operator_policy as op_policy
 import operator_session as op_session
 import operator_session_tasks as op_session_tasks
+import server_cli
 import server_codex_tools as codex_tools
 import server_hermes_runtime as hermes_runtime
 import server_hermes_tools as hermes_tools
@@ -800,133 +799,46 @@ def build_codex_mcp_server(
 mcp = build_server()
 
 
-def _run_codex_mcp(argv: list[str]) -> None:
-    parser = argparse.ArgumentParser(prog="hermes-gpt mcp", description="Run the Hermes GPT Codex MCP server.")
-    parser.add_argument("--http", action="store_true", help="Run streamable HTTP instead of stdio.")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=7677)
-    args = parser.parse_args(argv)
-    server = build_codex_mcp_server(host=args.host, port=args.port, http=args.http)
-    if not args.http:
-        eprint("hermes-gpt Codex MCP server starting in stdio mode.")
-        server.run(transport="stdio")
-        return
-    eprint(f"hermes-gpt Codex MCP server running at http://{args.host}:{args.port}/mcp")
-    import uvicorn
+def _cli_context() -> server_cli.ServerCliContext:
+    """Snapshot the CLI collaborators from this module's current state.
 
-    # No forwarded_allow_ips override: uvicorn defaults to loopback-only
-    # proxy trust (or the operator-set FORWARDED_ALLOW_IPS env). A wildcard
-    # here would trust client-supplied X-Forwarded-For from any peer
-    # (security review t_f9925699 hardening note).
-    uvicorn.run(server.streamable_http_app(), host=args.host, port=args.port, proxy_headers=True)
+    Read per call rather than captured at import time: monkeypatching
+    ``server.build_server`` (or any other passed callable) still affects the CLI
+    path, exactly as it did when these functions lived here.
+    """
+    return server_cli.ServerCliContext(
+        build_server=build_server,
+        build_codex_mcp_server=build_codex_mcp_server,
+        build_asgi_app=build_asgi_app,
+        run_codex_mcp=_run_codex_mcp,
+        run_legacy_server=_run_legacy_server,
+        register_fleet_local_card=_register_fleet_local_card,
+        gateway_status=hermes_gateway_status,
+        auth_enabled=auth_enabled,
+        authenticated_http_security_options=authenticated_http_security_options,
+        is_loopback_host=is_loopback_host,
+        eprint=eprint,
+        env_enabled=env_enabled,
+        local_dev_profile=LOCAL_DEV_PROFILE,
+        remote_profile=REMOTE_PROFILE,
+        unsafe_remote_ack=UNSAFE_REMOTE_ACK,
+        unsafe_remote_env=UNSAFE_REMOTE_ENV,
+    )
+
+
+def _run_codex_mcp(argv: list[str]) -> None:
+    """Run the Codex MCP surface; see server_cli.run_codex_mcp."""
+    server_cli.run_codex_mcp(argv, _cli_context())
 
 
 def _run_legacy_server(argv: list[str]) -> None:
-    parser = argparse.ArgumentParser(description="Hermes Agent MCP sidecar.")
-    parser.add_argument("--http", action="store_true", help="Run streamable HTTP transport instead of stdio.")
-    parser.add_argument("--sse", action="store_true", help="Run legacy SSE transport instead of stdio.")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=7677)
-    parser.add_argument("--cert", help="Path to SSL certificate file (enables HTTPS)")
-    parser.add_argument("--key", help="Path to SSL key file (enables HTTPS)")
-    parser.add_argument(
-        "--profile",
-        choices=[LOCAL_DEV_PROFILE, REMOTE_PROFILE],
-        default=LOCAL_DEV_PROFILE,
-        help="Release safety profile. Remote mode requires authentication unless unsafe no-auth is explicitly acknowledged.",
-    )
-    parser.add_argument(
-        UNSAFE_REMOTE_ACK,
-        action="store_true",
-        dest="unsafe_remote_ack",
-        help="Allow remote profile without auth. For experiments only; not release-safe.",
-    )
-    args = parser.parse_args(argv)
-
-    if args.http and args.sse:
-        raise SystemExit("Choose only one of --http or --sse.")
-    configured_auth = auth_enabled()
-    proxy_headers, forwarded_allow_ips = authenticated_http_security_options(
-        profile=args.profile,
-        host=args.host,
-        cert=args.cert,
-        key=args.key,
-        configured_auth=configured_auth,
-    )
-    remote_unsafe_noauth = args.unsafe_remote_ack and env_enabled(UNSAFE_REMOTE_ENV)
-    if args.profile == REMOTE_PROFILE and not (configured_auth or remote_unsafe_noauth):
-        raise SystemExit(
-            "Remote profile requires real authentication. Configure a static bearer token or confidential-client OAuth. "
-            f"For temporary experiments only, pass {UNSAFE_REMOTE_ACK} and set {UNSAFE_REMOTE_ENV}=1."
-        )
-    if args.profile == LOCAL_DEV_PROFILE and not is_loopback_host(args.host) and not configured_auth:
-        eprint(
-            "WARNING: local-dev profile is bound to a non-loopback host. "
-            "Do not expose hermes-gpt without real authentication."
-        )
-    if args.profile == REMOTE_PROFILE and remote_unsafe_noauth and not configured_auth:
-        eprint("WARNING: remote no-auth mode is explicitly unsafe and intended only for temporary experiments.")
-
-    transport = "streamable-http" if args.http else "sse" if args.sse else "stdio"
-    server = build_server(host=args.host, port=args.port, http=args.http)
-    if transport == "stdio":
-        eprint("hermes-gpt MCP server starting in stdio mode.")
-        server.run(transport="stdio")
-    else:
-        path = "/mcp" if args.http else "/sse"
-        eprint(f"hermes-gpt MCP server running at http://{args.host}:{args.port}{path}")
-
-        # Run with uvicorn instead of FastMCP.run() so TLS can be enabled for
-        # local-only testing when cert/key are provided.
-        import uvicorn
-        app = build_asgi_app(server, http=args.http)
-        _register_fleet_local_card()
-
-        uvicorn.run(
-            app,
-            host=args.host,
-            port=args.port,
-            ssl_certfile=args.cert if args.cert else None,
-            ssl_keyfile=args.key if args.key else None,
-            proxy_headers=proxy_headers,
-            forwarded_allow_ips=forwarded_allow_ips,
-        )
+    """Run the legacy MCP surface; see server_cli.run_legacy_server."""
+    server_cli.run_legacy_server(argv, _cli_context())
 
 
 def main(argv: list[str] | None = None) -> None:
     """Run legacy MCP, the Codex MCP alias, or the Codex installer helpers."""
-    args = list(sys.argv[1:] if argv is None else argv)
-    if args and args[0] == "mcp":
-        _run_codex_mcp(args[1:])
-        return
-    if args and args[0] == "update":
-        import updater
-
-        updater.main(args[1:])
-        return
-    if args and args[0] == "codex":
-        if len(args) > 1 and args[1] == "mcp":
-            _run_codex_mcp(args[2:])
-            return
-        import codex_config
-
-        def list_tools() -> list[str]:
-            return [tool.name for tool in asyncio.run(build_codex_mcp_server().list_tools())]
-
-        def status() -> dict[str, Any]:
-            try:
-                data = json.loads(hermes_gateway_status())
-                return {
-                    "ok": bool(data.get("success")),
-                    "gateway": "running" if data.get("gateway_running") else "not_running",
-                    "gateway_pid_source": data.get("gateway_pid_source"),
-                }
-            except Exception:  # noqa: BLE001 - Diagnostics must return a stable unavailable state.
-                return {"ok": False, "gateway": "unknown"}
-
-        codex_config.main(args[1:], list_tools=list_tools, status=status)
-        return
-    _run_legacy_server(args)
+    server_cli.main(argv, _cli_context())
 
 
 if __name__ == "__main__":
