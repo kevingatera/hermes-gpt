@@ -1,8 +1,7 @@
-"""Operator policy, audit log, path safety, and profile helpers for hermes-gpt.
+"""Operator policy gates and structured error helpers for hermes-gpt.
 
-This module is the foundational layer for the tiered Operator / Owner control
-plane. It is import-safe: Hermes internals are loaded lazily and failures
-degrade to conservative defaults rather than raising.
+This module keeps the policy snapshot and structured errors together. It also
+re-exports audit, path, and subprocess helpers for existing Operator callers.
 
 Design rules enforced here:
 - Default behavior is read-only.
@@ -13,21 +12,44 @@ Design rules enforced here:
 - No secrets are exposed.
 - No `.env` raw read/write.
 - No vault/token/auth/cookie/SSH access.
-- No `shell=True` anywhere in this module.
+- Child processes use the fixed-argv, `shell=False` helper in
+  ``operator_subprocess``.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
-import threading
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any
 
+import operator_audit as _audit
+import operator_policy_paths as _paths
+import operator_subprocess as _subprocess
 from operator_redaction import redact_output
+
+# Keep the historical imports used by the Operator tools and adapters.
+set_audit_log_override = _audit.set_audit_log_override
+audit_log_path = _audit.audit_log_path
+audit_record = _audit.audit_record
+audit_tail = _audit.audit_tail
+run_argv = _subprocess.run_argv
+AUDIT_LOG_HERMES_PATH = _audit.AUDIT_LOG_HERMES_PATH
+AUDIT_LOG_FALLBACK_PATH = _audit.AUDIT_LOG_FALLBACK_PATH
+DEFAULT_DENIED_BASENAMES = _paths.DEFAULT_DENIED_BASENAMES
+DEFAULT_DENIED_DIR_NAMES = _paths.DEFAULT_DENIED_DIR_NAMES
+SECRET_PATH_SUBSTRINGS = _paths.SECRET_PATH_SUBSTRINGS
+_normalize_path = _paths._normalize_path
+normalize_hermes_data_root = _paths.normalize_hermes_data_root
+is_denied_path = _paths.is_denied_path
+validate_profile_name = _paths.validate_profile_name
+parse_allowed_profiles = _paths.parse_allowed_profiles
+profile_is_allowed = _paths.profile_is_allowed
+list_existing_profiles = _paths.list_existing_profiles
+resolve_profile_home = _paths.resolve_profile_home
+profile_exists = _paths.profile_exists
+parse_path_list = _paths.parse_path_list
+path_under_allowed = _paths.path_under_allowed
 
 # ---------------------------------------------------------------------------
 # Env var names
@@ -44,21 +66,11 @@ OWNER_ACTIVE_ENV = "HERMES_GPT_OWNER_ACTIVE"
 
 OWNER_ACK_REQUIRED_VALUE = "I_UNDERSTAND_THIS_CAN_MUTATE_MY_MACHINE"
 
-# Default audit log locations (tried in order; first writable wins).
-AUDIT_LOG_HERMES_PATH = Path.home() / "AppData" / "Local" / "hermes" / "logs" / "hermes_gpt_operator_audit.jsonl"
-AUDIT_LOG_FALLBACK_PATH = Path(__file__).resolve().parent / "logs" / "hermes_gpt_operator_audit.jsonl"
-
-# Override hook for tests: when set, the audit log is written/read from this
-# path instead of the production locations. Set via ``set_audit_log_override``.
-_audit_log_override: Optional[Path] = None
-_audit_lock = threading.Lock()
-
 # ---------------------------------------------------------------------------
 # Truthy helper
 # ---------------------------------------------------------------------------
 
 _TRUTHY_VALUES = {"1", "true", "yes", "on", "enabled"}
-_FALSEY_VALUES = {"0", "false", "no", "off", "disabled", "", "0", "false"}
 
 
 def is_truthy(value: Any) -> bool:
@@ -107,6 +119,7 @@ _ERROR_LAYERS: frozenset[str] = frozenset(
         "system",
     }
 )
+
 
 def new_trace_id() -> str:
     """Return a short random trace id for correlating operator failures."""
@@ -225,334 +238,6 @@ def has_level(required: str, actual: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Policy
-# ---------------------------------------------------------------------------
-
-# Default denied path fragments. These are matched as path segments / suffixes
-# conservatively. The check is intentionally broad: false positives (refusing
-# to write a benign file that happens to look secret-like) are acceptable;
-# false negatives (writing to a real secret store) are not.
-DEFAULT_DENIED_BASENAMES: frozenset[str] = frozenset(
-    {
-        ".env",
-        ".env.local",
-        ".env.development",
-        ".env.production",
-        ".env.test",
-        ".env.staging",
-        ".envrc",
-        "auth.json",
-        "auth.lock",
-        ".anthropic_oauth.json",
-        "google_oauth.json",
-        "webhook_subscriptions.json",
-        "bws_cache.json",
-        "mcp-tokens",
-        "credentials",
-        ".npmrc",
-        ".pypirc",
-        ".netrc",
-        ".pgpass",
-        ".git-credentials",
-    }
-)
-
-DEFAULT_DENIED_DIR_NAMES: frozenset[str] = frozenset(
-    {
-        ".ssh",
-        ".aws",
-        ".gnupg",
-        ".kube",
-        ".docker",
-        ".azure",
-        "vault",
-        "secrets",
-        "mcp-tokens",
-        "pairing",
-        ".config",
-    }
-)
-
-# Substrings that, when present in a path, mark it as secret-like.
-SECRET_PATH_SUBSTRINGS: tuple[str, ...] = (
-    "token",
-    "secret",
-    "credential",
-    "oauth",
-    "cookie",
-    "private",
-    "password",
-    "passwd",
-    ".key",
-    "id_rsa",
-    "id_ed25519",
-    "authorized_keys",
-)
-
-
-def _normalize_path(path: str | os.PathLike[str]) -> Path:
-    """Expand ~ and resolve. Never raises; falls back to expanded path."""
-    try:
-        return Path(os.path.expanduser(str(path))).resolve()
-    except Exception:
-        try:
-            return Path(os.path.expanduser(str(path)))
-        except Exception:
-            return Path(str(path))
-
-
-def normalize_hermes_data_root(path: str | os.PathLike[str] | None) -> Path | None:
-    """Normalize a Hermes install path to the data root.
-
-    ``.../profiles/<profile>`` -> ``...``
-    ``.../hermes-agent`` -> ``...``
-    Already-normalized data roots remain unchanged.
-    """
-    if path is None:
-        return None
-    raw = Path(os.path.expanduser(str(path)))
-    try:
-        parts = [part.lower() for part in raw.parts]
-    except Exception:
-        return raw
-    if not parts:
-        return raw
-    if parts[-1] == "hermes-agent":
-        return raw.parent
-    if len(parts) >= 2 and parts[-2] == "profiles":
-        return raw.parent.parent
-    return raw
-
-
-def is_denied_path(path: str | os.PathLike[str]) -> bool:
-    """Return True if ``path`` is a secret / credential / vault / token path.
-
-    Conservative: returns True for any path whose basename matches a known
-    secret file, whose parent directory is a known secret directory, whose
-    name contains a secret-like substring, or that resolves into a known
-    Hermes internal credential area (mcp-tokens, pairing, auth.json under a
-    Hermes home).
-
-    Defense-in-depth, not a security boundary (the terminal tool can still
-    bypass). But operator tools rely on this as a hard refusal gate.
-    """
-    if path is None:
-        return True
-
-    resolved = _normalize_path(path)
-    name = resolved.name.lower()
-
-    # Exact-basename deny.
-    if name in DEFAULT_DENIED_BASENAMES:
-        return True
-
-    # .env.* glob-style match.
-    if name.startswith(".env."):
-        return True
-
-    # Any parent directory in the denied dir set.
-    try:
-        for parent in resolved.parents:
-            if parent.name.lower() in DEFAULT_DENIED_DIR_NAMES:
-                return True
-    except Exception:
-        pass
-
-    # Secret-like substring in the final path component.
-    lower_name = name
-    for needle in SECRET_PATH_SUBSTRINGS:
-        if needle in lower_name:
-            return True
-
-    # Hermes-internal credential stores: detect by path shape (works even
-    # when HERMES_HOME is overridden for tests, because we look at the
-    # segment names, not the absolute prefix).
-    parts = [p.lower() for p in resolved.parts]
-    for segment in ("mcp-tokens", "pairing"):
-        if segment in parts:
-            return True
-    # auth.json / .anthropic_oauth.json / google_oauth.json under any
-    # hermes home or profile dir.
-    if name in {"auth.json", "auth.lock", ".anthropic_oauth.json", "google_oauth.json", "webhook_subscriptions.json", "bws_cache.json"}:
-        return True
-    # cache/bws_cache.json shape.
-    if name == "bws_cache.json" and "cache" in parts:
-        return True
-
-    return False
-
-
-# ---------------------------------------------------------------------------
-# Profile helpers
-# ---------------------------------------------------------------------------
-
-# Profile names must match Hermes' profile id regex.
-_PROFILE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-
-# Reserved names that would create confusing on-disk collisions or conflict
-# with Hermes itself. Mirrors Hermes' _RESERVED_NAMES, with the special alias
-# ``default`` handled separately (it is the built-in profile).
-_RESERVED_PROFILE_NAMES: frozenset[str] = frozenset(
-    {"hermes", "test", "tmp", "root", "sudo"}
-)
-
-
-def validate_profile_name(name: str) -> str:
-    """Return the canonical profile id, raising ValueError if invalid.
-
-    Mirrors Hermes' normalize_profile_name + validate_profile_name. The
-    special alias ``default`` is allowed and normalized to itself.
-    """
-    if not isinstance(name, str):
-        raise ValueError("profile name must be a string")
-    stripped = name.strip()
-    if not stripped:
-        raise ValueError("profile name cannot be empty")
-    if stripped.casefold() == "default":
-        return "default"
-    canon = stripped.lower()
-    if not _PROFILE_NAME_RE.match(canon):
-        raise ValueError(
-            f"Invalid profile name {name!r}. Must match [a-z0-9][a-z0-9_-]{{0,63}}"
-        )
-    if canon in _RESERVED_PROFILE_NAMES:
-        raise ValueError(
-            f"Profile name {name!r} is reserved — it collides with either "
-            f"the Hermes installation itself or a common system binary. "
-            f"Pick a different name."
-        )
-    return canon
-
-
-def parse_allowed_profiles(raw: str | None) -> list[str]:
-    """Parse the HERMES_GPT_OPERATOR_ALLOWED_PROFILES env value.
-
-    Returns a list of canonical profile names. ``"*"`` is preserved as a
-    sentinel meaning "all existing profiles".
-    """
-    if not raw:
-        return ["default"]
-    items = [item.strip() for item in raw.split(",") if item.strip()]
-    if not items:
-        return ["default"]
-    if "*" in items:
-        return ["*"]
-    normalized: list[str] = []
-    for item in items:
-        try:
-            normalized.append(validate_profile_name(item))
-        except ValueError:
-            continue
-    return normalized or ["default"]
-
-
-def profile_is_allowed(profile: str, allowed: list[str], existing_profiles: Iterable[str] | None = None) -> bool:
-    """Return True if ``profile`` is in the ``allowed`` set.
-
-    If ``allowed`` is ``["*"]``, every profile is allowed (subject to the
-    caller validating that ``profile`` actually exists).
-    """
-    if not allowed:
-        return False
-    if allowed == ["*"]:
-        return True
-    try:
-        canon = validate_profile_name(profile)
-    except ValueError:
-        return False
-    return canon in {validate_profile_name(p) for p in allowed}
-
-
-def list_existing_profiles(hermes_root: Path | None) -> list[str]:
-    """List existing profile names under ``hermes_root``. Best-effort.
-
-    Returns ``["default"]`` at minimum. Named profiles are discovered by
-    listing ``<root>/profiles/*``.
-    """
-    names = ["default"]
-    if hermes_root is None:
-        return names
-    profiles_dir = hermes_root / "profiles"
-    if not profiles_dir.is_dir():
-        return names
-    try:
-        for entry in sorted(profiles_dir.iterdir()):
-            if not entry.is_dir():
-                continue
-            try:
-                canon = validate_profile_name(entry.name)
-            except ValueError:
-                continue
-            if canon != "default" and canon not in names:
-                names.append(canon)
-    except OSError:
-        pass
-    return names
-
-
-def resolve_profile_home(profile: str, hermes_root: Path | None) -> Path:
-    """Resolve the HERMES_HOME path for a profile.
-
-    ``default`` -> ``hermes_root``
-    ``<name>``  -> ``hermes_root / profiles / <name>``
-    """
-    canon = validate_profile_name(profile)
-    if hermes_root is None:
-        raise RuntimeError("Hermes root is not available; cannot resolve profile home")
-    hermes_root = normalize_hermes_data_root(hermes_root) or hermes_root
-    if canon == "default":
-        return hermes_root
-    return hermes_root / "profiles" / canon
-
-
-def profile_exists(profile: str, hermes_root: Path | None) -> bool:
-    """Return True if ``profile`` exists on disk under ``hermes_root``."""
-    if hermes_root is None:
-        return profile == "default"
-    hermes_root = normalize_hermes_data_root(hermes_root) or hermes_root
-    try:
-        home = resolve_profile_home(profile, hermes_root)
-    except (ValueError, RuntimeError):
-        return False
-    return home.is_dir()
-
-
-# ---------------------------------------------------------------------------
-# Allowed / denied path policy
-# ---------------------------------------------------------------------------
-
-
-def parse_path_list(raw: str | None) -> list[Path]:
-    """Parse a comma- or newline-separated path list. Returns resolved Paths."""
-    if not raw:
-        return []
-    sep = ","
-    if "\n" in raw and "," not in raw:
-        sep = "\n"
-    out: list[Path] = []
-    for item in raw.split(sep):
-        text = item.strip()
-        if not text:
-            continue
-        out.append(_normalize_path(text))
-    return out
-
-
-def path_under_allowed(path: str | os.PathLike[str], allowed: list[Path]) -> bool:
-    """Return True if ``path`` resolves under one of the ``allowed`` roots."""
-    if not allowed:
-        return False
-    resolved = _normalize_path(path)
-    for root in allowed:
-        try:
-            resolved.relative_to(root)
-            return True
-        except ValueError:
-            continue
-    return False
-
-
-# ---------------------------------------------------------------------------
 # Policy snapshot
 # ---------------------------------------------------------------------------
 
@@ -565,16 +250,16 @@ class OperatorPolicy:
     """
 
     __slots__ = (
+        "allowed_paths",
+        "allowed_profiles",
+        "apply_mode",
+        "denied_paths",
         "enabled",
         "level",
-        "apply_mode",
-        "allowed_profiles",
-        "allowed_paths",
-        "denied_paths",
+        "mutation_allowed",
         "owner_ack",
         "owner_active",
         "owner_mode_ready",
-        "mutation_allowed",
     )
 
     def __init__(self) -> None:
@@ -595,15 +280,11 @@ class OperatorPolicy:
         self.allowed_profiles = parse_allowed_profiles(
             os.environ.get(OPERATOR_ALLOWED_PROFILES_ENV)
         )
-        self.allowed_paths = parse_path_list(
-            os.environ.get(OPERATOR_ALLOWED_PATHS_ENV)
-        )
+        self.allowed_paths = parse_path_list(os.environ.get(OPERATOR_ALLOWED_PATHS_ENV))
         # Denied paths env adds to the built-in defaults; it cannot remove
         # the defaults. We don't store the env list as paths here because
         # ``is_denied_path`` already covers the built-in conservative set.
-        self.denied_paths = parse_path_list(
-            os.environ.get(OPERATOR_DENIED_PATHS_ENV)
-        )
+        self.denied_paths = parse_path_list(os.environ.get(OPERATOR_DENIED_PATHS_ENV))
 
         self.owner_ack = os.environ.get(OWNER_ACK_ENV, "")
 
@@ -632,8 +313,7 @@ class OperatorPolicy:
     def require_enabled(self) -> None:
         if not self.enabled:
             raise PermissionError(
-                "Operator mode is disabled. Set "
-                f"{OPERATOR_ENABLED_ENV}=1 to enable it."
+                f"Operator mode is disabled. Set {OPERATOR_ENABLED_ENV}=1 to enable it."
             )
 
     def require_level(self, required: str) -> None:
@@ -669,12 +349,10 @@ class OperatorPolicy:
                 f"{OWNER_ACK_ENV}={OWNER_ACK_REQUIRED_VALUE!r}."
             )
         # Owner direct still requires direct apply mode + dry_run=False.
-        if not self.effective_dry_run(dry_run):
-            if self.apply_mode != "direct":
-                raise PermissionError(
-                    "Owner direct mutation requires "
-                    f"{OPERATOR_APPLY_MODE_ENV}=direct."
-                )
+        if not self.effective_dry_run(dry_run) and self.apply_mode != "direct":
+            raise PermissionError(
+                f"Owner direct mutation requires {OPERATOR_APPLY_MODE_ENV}=direct."
+            )
 
     def require_profile(self, profile: str, hermes_root: Path | None) -> None:
         canon = validate_profile_name(profile)
@@ -718,13 +396,9 @@ class OperatorPolicy:
             "apply_mode": self.apply_mode,
             "allowed_profiles": list(self.allowed_profiles),
             "allowed_paths_count": len(self.allowed_paths),
-            "allowed_paths_summary": [
-                str(p) for p in self.allowed_paths[:8]
-            ],
+            "allowed_paths_summary": [str(p) for p in self.allowed_paths[:8]],
             "denied_paths_count": len(self.denied_paths),
-            "denied_paths_summary": [
-                str(p) for p in self.denied_paths[:8]
-            ],
+            "denied_paths_summary": [str(p) for p in self.denied_paths[:8]],
             "owner_active": self.owner_active,
             "owner_mode_ready": self.owner_mode_ready,
             "mutation_allowed": self.mutation_allowed,
@@ -746,263 +420,6 @@ def _capability_groups(level: str) -> list[str]:
     if level_rank(level) >= level_rank("owner"):
         groups.append("owner")
     return groups
-
-
-# ---------------------------------------------------------------------------
-# Audit log
-# ---------------------------------------------------------------------------
-
-
-def set_audit_log_override(path: Path | None) -> None:
-    """Set or clear the audit log path override (for tests)."""
-    global _audit_log_override
-    with _audit_lock:
-        _audit_log_override = path
-
-
-def audit_log_path() -> Path:
-    """Return the active audit log path."""
-    with _audit_lock:
-        if _audit_log_override is not None:
-            return _audit_log_override
-    # Prefer the Hermes logs dir if it exists / is writable.
-    try:
-        if AUDIT_LOG_HERMES_PATH.parent.exists():
-            return AUDIT_LOG_HERMES_PATH
-    except OSError:
-        pass
-    return AUDIT_LOG_FALLBACK_PATH
-
-
-def _hash_secret_text(text: str | None) -> tuple[int, str]:
-    """Return (length, sha256_hex) for prompt/content fields. Never log raw."""
-    if text is None:
-        return (0, "")
-    data = text.encode("utf-8", errors="replace")
-    return (len(data), hashlib.sha256(data).hexdigest())
-
-
-def audit_record(
-    *,
-    tool: str,
-    level: str,
-    apply_mode: str,
-    dry_run: bool,
-    success: bool,
-    changed: bool = False,
-    summary: str = "",
-    error: str = "",
-    profile: str | None = None,
-    source_profile: str | None = None,
-    target_profile: str | None = None,
-    path: str | None = None,
-    job_id: str | None = None,
-    skill_name: str | None = None,
-    prompt: str | None = None,
-    content: str | None = None,
-    key: str | None = None,
-    extra: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Append a single audit record to the JSONL log. Returns the record.
-
-    Sensitive inputs (prompt, content) are recorded as length + sha256 only.
-    Path is summarized to its basename + length, not the full path, to avoid
-    leaking directory structure that might itself contain secret hints.
-
-    The record is also returned so callers can include it in tool output.
-    """
-    prompt_len, prompt_sha = _hash_secret_text(prompt)
-    content_len, content_sha = _hash_secret_text(content)
-
-    path_summary = ""
-    if path:
-        try:
-            resolved = _normalize_path(path)
-            path_summary = f"{resolved.name} (<{len(str(resolved))} chars>)"
-        except Exception:
-            path_summary = f"<path> (<{len(str(path))} chars>)"
-
-    record: dict[str, Any] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "tool": tool,
-        "level": level,
-        "apply_mode": apply_mode,
-        "dry_run": bool(dry_run),
-        "success": bool(success),
-        "changed": bool(changed),
-        "summary": summary[:500] if summary else "",
-        "error": error[:500] if error else "",
-        "profile": profile,
-        "source_profile": source_profile,
-        "target_profile": target_profile,
-        "path_summary": path_summary,
-        "job_id": job_id,
-        "skill_name": skill_name,
-        "key": key,
-        "prompt_len": prompt_len,
-        "prompt_sha256": prompt_sha,
-        "content_len": content_len,
-        "content_sha256": content_sha,
-    }
-    if extra:
-        # Extra must already be sanitized by the caller; we only truncate
-        # string values to avoid accidental giant dumps.
-        for k, v in extra.items():
-            if isinstance(v, str):
-                record[k] = v[:500]
-            else:
-                record[k] = v
-
-    try:
-        log_path = audit_log_path()
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(record, ensure_ascii=False, sort_keys=True)
-        with _audit_lock:
-            with open(log_path, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
-    except OSError:
-        # Audit failure must never break a tool. The record is returned so
-        # callers can still surface it inline.
-        pass
-
-    return record
-
-
-def audit_tail(limit: int = 20) -> list[dict[str, Any]]:
-    """Read the last ``limit`` audit records. Returns newest-last."""
-    log_path = audit_log_path()
-    if not log_path.exists():
-        return []
-    records: list[dict[str, Any]] = []
-    try:
-        with open(log_path, "r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-    except OSError:
-        return []
-    if limit <= 0:
-        return records
-    return records[-limit:]
-
-
-# ---------------------------------------------------------------------------
-# Subprocess helper (shared by cron / gateway / workspace run_test / owner)
-# ---------------------------------------------------------------------------
-
-
-def run_argv(
-    argv: list[str],
-    *,
-    timeout: int = 120,
-    workdir: str | None = None,
-    env: dict[str, str] | None = None,
-    max_output_chars: int = 4096,
-    timeout_cap: int = 600,
-) -> tuple[int, str, str]:
-    """Run ``argv`` with bounded output and process-group cleanup.
-
-    Every invocation gets its own process group on POSIX. If the command
-    times out, terminate the entire group before collecting stdout/stderr so
-    descendants cannot keep the pipes open and wedge the MCP tool call.
-    ``timeout_cap`` defaults to 10 minutes; narrowly scoped callers such as
-    the cron runner may explicitly raise it, up to the hard two-hour ceiling.
-    """
-    import os
-    import signal
-    import subprocess
-    import time
-
-    if not isinstance(argv, list) or not argv:
-        raise ValueError("argv must be a non-empty list")
-
-    safe_timeout_cap = max(1, min(int(timeout_cap), 7200))
-    capped_timeout = max(1, min(int(timeout), safe_timeout_cap))
-    capped_output = max(1, min(int(max_output_chars), 1_048_576))
-
-    popen_kwargs: dict[str, Any] = {
-        "cwd": workdir,
-        "env": env,
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.PIPE,
-        "text": True,
-        "shell": False,
-    }
-    if os.name == "posix":
-        popen_kwargs["start_new_session"] = True
-
-    try:
-        proc = subprocess.Popen(argv, **popen_kwargs)
-    except FileNotFoundError as exc:
-        return (127, "", _truncate(str(exc), capped_output))
-
-    def terminate_process_group() -> None:
-        if os.name == "posix":
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except (ProcessLookupError, OSError):
-                return
-
-            deadline = time.monotonic() + 0.25
-            while time.monotonic() < deadline:
-                try:
-                    os.killpg(proc.pid, 0)
-                except (ProcessLookupError, OSError):
-                    return
-                time.sleep(0.02)
-
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, OSError):
-                pass
-        else:
-            try:
-                proc.kill()
-            except OSError:
-                pass
-
-    try:
-        out, err = proc.communicate(timeout=capped_timeout)
-    except subprocess.TimeoutExpired as exc:
-        terminate_process_group()
-        try:
-            out, err = proc.communicate(timeout=1)
-        except subprocess.TimeoutExpired:
-            try:
-                proc.kill()
-            except OSError:
-                pass
-            out, err = proc.communicate()
-
-        if not out and isinstance(exc.stdout, str):
-            out = exc.stdout
-        if not err and isinstance(exc.stderr, str):
-            err = exc.stderr
-
-        return (
-            124,
-            _truncate(out or "", capped_output),
-            _truncate(err or f"timed out after {capped_timeout}s", capped_output),
-        )
-
-    return (
-        proc.returncode,
-        _truncate(out or "", capped_output),
-        _truncate(err or "", capped_output),
-    )
-
-
-def _truncate(text: str, limit: int = 4096) -> str:
-    if not text:
-        return ""
-    if len(text) <= limit:
-        return text
-    return text[:limit] + f"\n... [truncated {len(text) - limit} chars]"
 
 
 # ---------------------------------------------------------------------------
