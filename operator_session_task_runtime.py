@@ -10,38 +10,19 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 import operator_browser as browser
-import operator_config as op_config
 import operator_policy as op
-import operator_runner_common as runner_common
 import operator_session as sessions
 import operator_session_job_store as job_store
 import operator_session_jobs as job_runtime
+import operator_session_task_profile as task_profile
 import runner_confinement as confinement
 
 MODEL_ID = "deepseek/deepseek-v4.1-flash"
-TOOLSETS = "file,hermes-gpt-browser"
-FILE_ONLY_TOOLSETS = "file"
+TOOLSETS = "profile-configured+task-browser"
+PROFILE_DEFAULT_TOOLSETS = "profile-configured"
 MAX_TIMEOUT = 3600
 REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"})
-PROVIDER_KEY_ENVS = {
-    "deepseek": ("DEEPSEEK_API_KEY",),
-    "openai-api": ("OPENAI_API_KEY",),
-    "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN"),
-    "openrouter": ("OPENROUTER_API_KEY",),
-    "gemini": ("GOOGLE_API_KEY", "GEMINI_API_KEY"),
-    "zai": ("GLM_API_KEY", "ZAI_API_KEY", "Z_AI_API_KEY"),
-    "kimi-coding": ("KIMI_API_KEY", "KIMI_CODING_API_KEY"),
-    "alibaba": ("DASHSCOPE_API_KEY",),
-    "xai": ("XAI_API_KEY",),
-    "nvidia": ("NVIDIA_API_KEY",),
-    "fireworks": ("FIREWORKS_API_KEY",),
-    "deepinfra": ("DEEPINFRA_API_KEY",),
-    "mistral": ("MISTRAL_API_KEY",),
-    "groq": ("GROQ_API_KEY",),
-}
 
 
 def _source_root(executable: str, agent_root: Path | None) -> Path:
@@ -66,33 +47,12 @@ def _source_root(executable: str, agent_root: Path | None) -> Path:
     raise FileNotFoundError("Hermes Agent source root could not be resolved for confined execution")
 
 
-def _model_credentials(model: str, profile: str, hermes_root: Path | None) -> tuple[str, str]:
-    """Read only the selected provider key from the explicitly allowed profile."""
-    provider, separator, _model_name = model.partition("/")
-    candidates = PROVIDER_KEY_ENVS.get(provider.lower())
-    if not separator or not candidates:
-        supported = ", ".join(sorted(PROVIDER_KEY_ENVS))
-        raise ValueError(f"model must use a supported provider/model ID; supported providers: {supported}")
-    profile_home = op.resolve_profile_home(profile, hermes_root) if hermes_root is not None else None
-    for env_name in candidates:
-        key = os.environ.get(env_name, "").strip()
-        if not key and profile_home is not None:
-            raw = op_config._read_env_value(profile_home / ".env", env_name) or ""
-            key = runner_common._unquote_env_value(raw).strip()
-        if key:
-            return env_name, key
-    raise PermissionError(f"No {provider} API key is available in the selected credential profile")
-
-
 def _validate_model_and_effort(model: str, effort: str) -> tuple[str, str]:
     if not isinstance(model, str) or len(model) > 256 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+/-]*", model):
         raise ValueError("model must be a valid provider/model ID")
     provider, separator, model_name = model.partition("/")
     if not separator or not provider or not model_name:
         raise ValueError("model must use provider/model syntax")
-    if provider.lower() not in PROVIDER_KEY_ENVS:
-        supported = ", ".join(sorted(PROVIDER_KEY_ENVS))
-        raise ValueError(f"model provider is unsupported; choose one of: {supported}")
     if not isinstance(effort, str) or effort not in REASONING_EFFORTS:
         choices = ", ".join(sorted(REASONING_EFFORTS))
         raise ValueError(f"reasoning_effort must be one of: {choices}")
@@ -109,27 +69,6 @@ def _hermes_python(executable: str, agent_root: Path | None) -> str:
     executable_path = Path(executable)
     candidate = executable_path.with_name("python.exe" if os.name == "nt" else "python")
     return str(candidate) if candidate.is_file() else sys.executable
-
-
-def _browser_mcp_config(task_home: Path, agent_python: str) -> dict[str, Any]:
-    package_root = Path(__file__).resolve().parent
-    return {
-        "mcp_servers": {
-            "hermes-gpt-browser": {
-                "command": agent_python,
-                "args": ["-m", "hermes_gpt_browser_mcp"],
-                "env": {
-                    "PYTHONPATH": str(package_root),
-                    "HERMES_GPT_BROWSER_STATE_FILE": str(browser.browser_state_file(task_home)),
-                },
-                "enabled": True,
-                "connect_timeout": 15,
-                "timeout": 60,
-                "supports_parallel_tool_calls": False,
-                "tools": {"resources": False, "prompts": False},
-            }
-        }
-    }
 
 
 def _readonly_runtime_mounts(
@@ -192,14 +131,17 @@ def start_turn(
             "workspace_id": task["workspace_id"],
             "model": model,
             "reasoning_effort": reasoning_effort,
-            "toolsets": TOOLSETS if browser_enabled else FILE_ONLY_TOOLSETS,
+            "toolsets": TOOLSETS if browser_enabled else PROFILE_DEFAULT_TOOLSETS,
             "browser_enabled": browser_enabled,
             "allow_workspace_write": bool(task.get("allow_workspace_write")),
         }
     if not confirm:
         return {"success": False, "code": "CONFIRMATION_REQUIRED", "safe_message": "Starting a Hermes task requires explicit confirmation."}
 
-    profile = _profile_key_source(str(task["credential_profile"]), hermes_root)
+    profile = _profile_key_source(
+        str(task.get("profile") or task.get("credential_profile") or "default"),
+        hermes_root,
+    )
     model, reasoning_effort = _validate_model_and_effort(
         str(task.get("model") or MODEL_ID), str(task.get("reasoning_effort") or "high")
     )
@@ -217,7 +159,16 @@ def start_turn(
 
     executable = job_runtime._hermes_executable(agent_root)
     source_root = _source_root(executable, agent_root)
-    task_home = Path(str(task["task_home"])).expanduser().resolve(strict=True)
+    task_home = Path(str(task["task_home"])).expanduser()
+    profile_home = op.resolve_profile_home(profile, hermes_root)
+    task_home = task_profile.prepare_task_profile(
+        str(task["task_id"]),
+        profile,
+        task_home,
+        hermes_root=hermes_root,
+        executable=executable,
+        source_home=profile_home,
+    )
     task_root = (job_store._data_root(hermes_root) / "profiles").resolve(strict=True)
     try:
         task_home.relative_to(task_root)
@@ -226,17 +177,15 @@ def start_turn(
     if task_home == workspace or workspace in task_home.parents or task_home in workspace.parents:
         raise PermissionError("Hermes task data and workspace paths must be separate")
 
-    key_env, key = _model_credentials(model, profile, hermes_root)
     session_id = str(task.get("session_id") or "")
-    toolsets = TOOLSETS if bool(task.get("browser_enabled")) else FILE_ONLY_TOOLSETS
+    browser_enabled = bool(task.get("browser_enabled"))
+    toolsets = TOOLSETS if browser_enabled else PROFILE_DEFAULT_TOOLSETS
     writable_task_paths = [task_home]
     argv = [
         executable,
         "chat",
         "--model", model,
         "--reasoning", reasoning_effort,
-        "--toolsets", toolsets,
-        "--ignore-rules",
         "--in", str(workspace),
     ]
     if session_id:
@@ -244,7 +193,33 @@ def start_turn(
     argv += ["--query-file", "-", "--oneshot", "-Q"]
 
     readonly_candidates = [source_root, Path(__file__).resolve().parent]
-    if bool(task.get("browser_enabled")):
+    hermes_data_root = job_store._data_root(hermes_root).resolve()
+    configured_node = hermes_data_root / "node"
+    if configured_node.is_dir():
+        readonly_candidates.append(configured_node)
+    for candidate in task_profile.configured_mcp_runtime_paths(
+        task_home, os.environ.get("PATH")
+    ) + task_profile.profile_resource_runtime_paths(task_home):
+        resolved_candidate = candidate.resolve(strict=True)
+        in_task_home = resolved_candidate == task_home or task_home in resolved_candidate.parents
+        profiles_root = hermes_data_root / "profiles"
+        in_profile_tree = (
+            resolved_candidate == profiles_root or profiles_root in resolved_candidate.parents
+        )
+        # A profile's MCP command may expose its own executable folder, but it
+        # cannot expand the sandbox to the host root or an entire user/profile home.
+        if (
+            resolved_candidate in {
+                Path("/"),
+                Path.home().resolve(),
+                hermes_data_root,
+                profiles_root,
+            }
+            or (in_profile_tree and not in_task_home)
+        ):
+            continue
+        readonly_candidates.append(candidate)
+    if browser_enabled:
         browser_state = json.loads(browser.browser_state_file(task_home).read_text(encoding="utf-8"))
         browser_executable_path = Path(str(browser_state["executable"])).expanduser()
         browser_executable = browser_executable_path.resolve(strict=True)
@@ -258,16 +233,10 @@ def start_turn(
         # binary's directory below.
         readonly_candidates.append(browser_executable_path.parent)
         writable_task_paths.append(Path(str(browser_state["socket_dir"])))
-        configured_node = Path(hermes_root).expanduser() / "node" if hermes_root else None
-        readonly_candidates.append(configured_node if configured_node and configured_node.is_dir() else browser_executable.parent)
+        if not configured_node.is_dir():
+            readonly_candidates.append(browser_executable.parent)
         python = _hermes_python(executable, agent_root)
-        config = _browser_mcp_config(task_home, python)
-        config_path = task_home / "config.yaml"
-        config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
-        try:
-            config_path.chmod(0o600)
-        except OSError:
-            pass
+        task_profile.configure_task_browser(str(task["task_id"]), task_home, python)
 
     readonly_paths = _readonly_runtime_mounts(tuple(readonly_candidates), workspace, task_home)
     sandboxed_argv = confinement.wrap_argv(
@@ -277,11 +246,11 @@ def start_turn(
         readonly_paths=readonly_paths,
         writable_paths=tuple(writable_task_paths),
     )
-    child_env = runner_common._minimal_child_env()
+    child_env = os.environ.copy()
     child_env.update({
         "HOME": str(task_home),
         "HERMES_HOME": str(task_home),
-        key_env: key,
+        "HERMES_PROFILE": str(task["task_id"]),
     })
     result = job_runtime.start_managed_session_job(
         argv=sandboxed_argv,

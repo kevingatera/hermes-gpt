@@ -22,12 +22,12 @@ import operator_policy as op
 import operator_session as sessions
 import operator_session_job_store as job_store
 import operator_session_jobs as job_runtime
+import operator_session_task_profile as task_profile
 import operator_session_task_runtime as runtime
 import runner_confinement as confinement
 from operator_session_task_runtime import (
-    FILE_ONLY_TOOLSETS,
     MODEL_ID,
-    PROVIDER_KEY_ENVS,
+    PROFILE_DEFAULT_TOOLSETS,
     REASONING_EFFORTS,
     TOOLSETS,
 )
@@ -91,7 +91,6 @@ def hermes_task_workspaces(hermes_root: Path | None = None) -> dict[str, Any]:
             "model": MODEL_ID,
             "toolsets": TOOLSETS,
             "reasoning_efforts": sorted(REASONING_EFFORTS),
-            "supported_model_providers": sorted(PROVIDER_KEY_ENVS),
             "browser_available": browser.browser_available(hermes_root),
             "write_confinement_available": confinement.confinement_available(writable=True),
             "read_confinement_available": confinement.confinement_available(writable=False),
@@ -150,7 +149,7 @@ def hermes_task_list(
 def hermes_task_start(
     prompt: str,
     workspace_id: str,
-    credential_profile: str = "default",
+    profile: str = "default",
     allow_workspace_write: bool = False,
     confirm: bool = False,
     dry_run: bool = True,
@@ -163,6 +162,7 @@ def hermes_task_start(
     browser_profile: str | None = None,
     hermes_root: Path | None = None,
     agent_root: Path | None = None,
+    credential_profile: str | None = None,
 ) -> dict[str, Any]:
     """Start a scoped Hermes session with a private workspace and browser."""
     task_home: Path | None = None
@@ -199,9 +199,14 @@ def hermes_task_start(
         workspace = workspaces.get(alias)
         if workspace is None:
             raise ValueError("workspace_id is not configured for scoped Hermes tasks")
-        profile = runtime._profile_key_source(str(credential_profile or "default"), hermes_root)
+        if credential_profile and profile != "default" and credential_profile != profile:
+            raise ValueError("profile and credential_profile must identify the same Hermes profile")
+        selected_profile = runtime._profile_key_source(
+            str(profile if profile != "default" else credential_profile or profile),
+            hermes_root,
+        )
         task_id = uuid4().hex
-        toolsets = TOOLSETS if browser_enabled else FILE_ONLY_TOOLSETS
+        toolsets = TOOLSETS if browser_enabled else PROFILE_DEFAULT_TOOLSETS
         if not browser_enabled:
             browser_source = "disabled"
         elif browser_cdp_port is not None:
@@ -225,13 +230,16 @@ def hermes_task_start(
             }
         if not confirm:
             return {"success": False, "code": "CONFIRMATION_REQUIRED", "safe_message": "Starting a Hermes task requires explicit confirmation."}
-        runtime._model_credentials(model, profile, hermes_root)
         task_home = (job_store._data_root(hermes_root) / "profiles" / task_id).resolve()
-        task_home.mkdir(parents=True, mode=0o700)
-        try:
-            task_home.chmod(0o700)
-        except OSError:
-            pass
+        executable = job_runtime._hermes_executable(agent_root)
+        task_home = task_profile.prepare_task_profile(
+            task_id,
+            selected_profile,
+            task_home,
+            hermes_root=hermes_root,
+            executable=executable,
+            source_home=op.resolve_profile_home(selected_profile, hermes_root),
+        )
         if browser_enabled:
             if browser_cdp_port is not None:
                 browser_result = browser.create_profile_browser_session(
@@ -253,7 +261,7 @@ def hermes_task_start(
             "workspace": str(workspace),
             "task_home": str(task_home),
             "hermes_root": str(job_store._data_root(hermes_root)),
-            "credential_profile": profile,
+            "profile": selected_profile,
             "allow_workspace_write": bool(allow_workspace_write),
             "model": model,
             "reasoning_effort": reasoning_effort,
@@ -327,7 +335,7 @@ def hermes_task_continue(
         )
         task["model"] = selected_model
         task["reasoning_effort"] = selected_effort
-        task["toolsets"] = TOOLSETS if bool(task.get("browser_enabled")) else FILE_ONLY_TOOLSETS
+        task["toolsets"] = TOOLSETS if bool(task.get("browser_enabled")) else PROFILE_DEFAULT_TOOLSETS
         latest_job = job_store._load(str(task.get("latest_job_id") or ""), hermes_root) or {}
         if job_runtime._recover_task_session_id(latest_job, hermes_root):
             job_store._save(latest_job, hermes_root)
@@ -389,7 +397,7 @@ def hermes_task_status(task_id: str, hermes_root: Path | None = None) -> dict[st
                 "status": task.get("status"),
                 "model": str(task.get("model") or MODEL_ID),
                 "reasoning_effort": str(task.get("reasoning_effort") or "high"),
-                "toolsets": str(task.get("toolsets") or FILE_ONLY_TOOLSETS),
+                "toolsets": str(task.get("toolsets") or PROFILE_DEFAULT_TOOLSETS),
                 "browser_enabled": bool(task.get("browser_enabled")),
                 "headed_browser": bool(task.get("headed_browser")),
                 "browser": browser.browser_session_state(Path(str(task["task_home"])))

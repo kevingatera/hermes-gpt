@@ -9,11 +9,10 @@ authorized browsers.
 ## Sessions
 
 - Treat regular Hermes session IDs and managed task IDs as different identifiers.
-- Prefer regular profile sessions when the user wants Hermes's configured
-  providers, tools, MCP servers, skills, memory, or other profile resources.
-  These sessions run with the selected profile's `HERMES_HOME`; Hermes loads its
-  configuration and credentials itself. Never ask for or copy a provider API
-  key for this workflow.
+- Regular profile sessions use the selected profile's `HERMES_HOME`; Hermes
+  loads its configuration and credentials itself. Managed tasks clone the
+  selected profile's supported resources into private task state while keeping
+  session history separate. Neither workflow needs a separate provider key.
 - For an existing regular session, use `hermes_session_list` and
   `hermes_session_read` to find the intended session, then call
   `hermes_session_continue` with its session ID and profile.
@@ -21,13 +20,11 @@ authorized browsers.
   poll `hermes_session_job_status`, and read `hermes_session_job_result`. Use
   the session ID returned in job status for later turns; never pass its job ID
   to a continue tool.
-- Use `hermes_task_start` only when the user asks for a confined workspace
-  session. It uses a private Hermes home and limited file/browser toolset, so it
-  does not load the selected profile's full tool and MCP configuration. Start
-  it with an authorized
-  workspace alias and credential profile. Use `hermes_task_list` to find it
-  later, then resume it with `hermes_task_continue` and its task ID. A task
-  continues in the same workspace and Hermes session.
+- Use `hermes_task_start` when the user asks for a confined workspace session.
+  Start it with an authorized workspace alias and Hermes profile. Use
+  `hermes_task_list` to find it later, then resume it with
+  `hermes_task_continue` and its task ID. A task continues in the same
+  workspace and private Hermes session.
 - Pass `model` and `reasoning_effort` only when the user requests an override.
   Otherwise omit both so Hermes uses the selected profile's configuration. Do
   not request a separate provider key or silently switch models.

@@ -79,7 +79,7 @@ class ManagedSessionTaskTools:
         self,
         prompt: str,
         workspace_id: str,
-        credential_profile: str = "default",
+        profile: str = "default",
         allow_workspace_write: bool = False,
         confirm: bool = False,
         dry_run: bool = True,
@@ -90,11 +90,11 @@ class ManagedSessionTaskTools:
         headed_browser: bool = False,
         browser_profile: str | None = None,
     ) -> dict[str, Any]:
-        """Start a confined task with an isolated or configured Hermes browser."""
+        """Start a profile-backed Hermes task with an isolated or configured browser."""
         return self.context.managed_tasks.hermes_task_start(
             prompt=prompt,
             workspace_id=workspace_id,
-            credential_profile=credential_profile,
+            profile=profile,
             allow_workspace_write=allow_workspace_write,
             confirm=confirm,
             dry_run=dry_run,

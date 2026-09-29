@@ -49,11 +49,11 @@ only for a requested per-turn override.
 
 ## Add managed workspaces and browser access
 
-Managed tasks are an optional confined-workspace mode. They use a private Hermes
-home and a limited toolset; they do not load the full profile tool and MCP
-configuration. Use the normal profile session tools when the request needs all
-capabilities configured for Hermes. Managed tasks also need a configured
-workspace, Operator workspace authority, and working OS confinement. On Linux,
+Managed tasks are an optional confined-workspace mode. They clone the selected
+profile's supported Hermes resources into a private home, including provider
+configuration and enabled tool and MCP settings. They keep their own session
+database and need a configured workspace, Operator workspace authority, and
+working OS confinement. On Linux,
 install `bwrap`; on macOS, use the supported
 `sandbox-exec` confinement. Add the workspace's parent directory to the
 Operator path allowlist:
@@ -129,9 +129,10 @@ builder does not create the tunnel or the ChatGPT connection.
   `hermes_session_job_status`, and retrieve the bounded answer with
   `hermes_session_job_result`.
 - Use `hermes_task_start` when the user asks for a confined workspace session
-  with an isolated or profile-attached browser. Its private home and limited
-  toolset are separate from a full profile session. Use `hermes_task_continue`
-  with its task ID to resume that same Hermes session and workspace.
+  with an isolated or profile-attached browser. It clones the selected Hermes
+  profile's configuration and enabled resources into its private home while
+  keeping session state separate. Use `hermes_task_continue` with its task ID
+  to resume that same Hermes session and workspace.
 - Use `hermes_browser_profile_*` to operate an authorized profile browser
   without starting a Hermes model turn. Use `hermes_task_browser_*` for the
   browser owned by a managed task.

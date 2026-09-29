@@ -50,7 +50,8 @@ def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -
     assert "profile's configured defaults" in text
     assert "does not require a separate provider API key" in text
     assert "selected profile's Hermes configuration" in text
-    assert "limited toolset" in text
+    assert "clone the selected" in text
+    assert "enabled tool and MCP settings" in text
     assert "plugin_asdk_app" in text
     assert "tools/build_chatgpt_sessions_plugin.py" in text
     assert "dist-plugin/hermes-sessions" in text
