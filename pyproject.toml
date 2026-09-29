@@ -115,6 +115,7 @@ py-modules = [
   "operator_session_tasks",
   "operator_session_task_profile",
   "operator_session_task_mcp",
+  "operator_session_task_mounts",
   "operator_session_task_store",
   "operator_session_task_runtime",
   "operator_session_browser",

@@ -18,6 +18,7 @@ import operator_session as sessions
 import operator_session_job_store as job_store
 import operator_session_jobs as job_runtime
 import operator_session_task_mcp as task_mcp
+import operator_session_task_mounts as task_mounts
 import operator_session_task_profile as task_profile
 import runner_confinement as confinement
 
@@ -307,28 +308,17 @@ def start_turn(
         # bridge modules the child MCP server imports.
         readonly_candidates.extend(_browser_bridge_runtime_files())
 
-    for candidate in task_mcp.configured_mcp_runtime_paths(
+    profile_runtime_candidates = task_mcp.configured_mcp_runtime_paths(
         task_home, os.environ.get("PATH")
-    ) + task_profile.profile_resource_runtime_paths(task_home):
-        resolved_candidate = candidate.resolve(strict=True)
-        in_task_home = resolved_candidate == task_home or task_home in resolved_candidate.parents
-        profiles_root = hermes_data_root / "profiles"
-        in_profile_tree = (
-            resolved_candidate == profiles_root or profiles_root in resolved_candidate.parents
+    ) + task_profile.profile_resource_runtime_paths(task_home)
+    readonly_candidates.extend(
+        task_mounts.readonly_profile_runtime_paths(
+            profile_runtime_candidates,
+            workspace,
+            task_home,
+            hermes_data_root,
         )
-        # A profile's MCP command may expose its own executable folder, but it
-        # cannot expand the sandbox to the host root or an entire user/profile home.
-        if (
-            resolved_candidate in {
-                Path("/"),
-                Path.home().resolve(),
-                hermes_data_root,
-                profiles_root,
-            }
-            or (in_profile_tree and not in_task_home)
-        ):
-            continue
-        readonly_candidates.append(candidate)
+    )
 
     readonly_paths = _readonly_runtime_mounts(tuple(readonly_candidates), workspace, task_home)
     sandboxed_argv = confinement.wrap_argv(

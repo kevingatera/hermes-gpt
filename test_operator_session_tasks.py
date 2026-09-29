@@ -93,6 +93,63 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert "test-deepseek-key" not in json.dumps(launched["metadata"])
 
 
+def test_task_start_refuses_secret_directory_from_profile_runtime(
+    monkeypatch, tmp_path
+):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    source_root = tmp_path / "hermes-agent"
+    source_root.mkdir()
+    ssh_directory = tmp_path / "host-home" / ".ssh"
+    ssh_directory.mkdir(parents=True)
+    launched = []
+
+    monkeypatch.setattr(
+        tasks.job_runtime,
+        "_hermes_executable",
+        lambda _root: "/opt/hermes/bin/hermes",
+    )
+    monkeypatch.setattr(
+        tasks.runtime, "_source_root", lambda _executable, _root: source_root
+    )
+    monkeypatch.setattr(
+        tasks.confinement, "confinement_available", lambda *, writable: True
+    )
+    monkeypatch.setattr(
+        tasks.runtime.task_mcp,
+        "configured_mcp_runtime_paths",
+        lambda *_args: (ssh_directory,),
+    )
+    monkeypatch.setattr(
+        tasks.runtime.task_profile,
+        "profile_resource_runtime_paths",
+        lambda _home: (),
+    )
+    monkeypatch.setattr(
+        tasks.job_runtime,
+        "start_managed_session_job",
+        lambda **kwargs: launched.append(kwargs),
+    )
+
+    result = tasks.hermes_task_start(
+        "Inspect the project.",
+        "demo",
+        confirm=True,
+        dry_run=False,
+        browser_enabled=False,
+        hermes_root=root,
+        agent_root=source_root,
+    )
+
+    assert result["success"] is False
+    assert result["code"] == "TASK_START_ERROR"
+    assert result["safe_message"] == (
+        "Selected Hermes profile references a protected runtime path"
+    )
+    assert launched == []
+
+
 def test_task_start_dry_run_reports_selection_without_reading_credentials(
     monkeypatch, tmp_path
 ):
