@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+import operator_delegation_cancel as delegation_cancel
+import operator_delegation_dispatch as delegation_dispatch
 import operator_delegations as delegations
 import operator_mission_runtime as missions
 import operator_policy as op
@@ -800,7 +802,7 @@ def test_dispatch_post_backend_persistence_failure_marks_submission_ambiguous(tm
             raise sqlite3.OperationalError("simulated delegation store failure")
         return real_connect(path, write=write)
 
-    monkeypatch.setattr(delegations, "_connect", failing_connect)
+    monkeypatch.setattr(delegation_dispatch, "_connect", failing_connect)
     out = json.loads(
         delegations.hermes_delegation_dispatch(
             json.dumps(_contract(workspace, task_id="delegation-task-postdispatch")),
@@ -1903,7 +1905,7 @@ def test_reserved_cancel_cas_loss_does_not_forge_cancellation(tmp_path: Path, mo
                 self.db.execute("UPDATE delegations SET dispatch_phase='invoking' WHERE delegation_id=?", (parameters[-1],))
             return self.db.execute(sql, parameters)
 
-    monkeypatch.setattr(delegations, "_connect", lambda path, write=False: RacingConnection(real_connect(path, write=write)) if write else real_connect(path, write=write))
+    monkeypatch.setattr(delegation_cancel, "_connect", lambda path, write=False: RacingConnection(real_connect(path, write=write)) if write else real_connect(path, write=write))
     out = json.loads(delegations.hermes_delegation_cancel("dlg-cancel-race", confirm=True, dry_run=False, hermes_root=root))
     assert out["success"] is False and out["code"] == "DELEGATION_CANCEL_AMBIGUOUS" and out["changed"] is False
     assert out["delegation"]["dispatch_phase"] == "invoking"
