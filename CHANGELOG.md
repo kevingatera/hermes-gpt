@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Include the server tool and runtime modules required by the installed `hermes-gpt` entry point; check local import dependencies against the package manifest.
+
 - Restore the confined task browser bridge import dependencies after the Operator policy split.
 
 - Bound A2A discovery and RPC response reads to 1 MiB before decoding peer JSON.
