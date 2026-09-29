@@ -8,7 +8,7 @@ from mcp.types import ToolAnnotations
 import operator_session as op_session
 import operator_session_metadata as session_metadata
 from hermes_session_history import redact_error as _redact_error
-from server_session_tools import SessionToolContext
+from server_session_context import SessionToolContext
 
 DEFAULT_SESSION_TIMEOUT = 900
 

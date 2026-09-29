@@ -257,6 +257,9 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         "operator_mission_plan_schema",
         "operator_mission_plan_store",
         "operator_mission_plan_tools",
+        "server_session_context",
+        "server_session_bot_chat_tools",
+        "server_session_history_tools",
     } <= set(modules)
     for module in modules:
         top_level = f"{module}.py"

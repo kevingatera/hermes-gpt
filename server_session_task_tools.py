@@ -8,7 +8,7 @@ from typing import Any
 from mcp.types import ToolAnnotations
 
 import operator_session as op_session
-from server_session_tools import SessionToolContext
+from server_session_context import SessionToolContext
 
 DEFAULT_SESSION_TIMEOUT = 900
 
