@@ -131,7 +131,7 @@ def test_profile_runtime_mount_allows_standard_library_secret_named_modules(
     (runtime / "cookiejar0.2").mkdir(parents=True)
     task_home.mkdir(parents=True)
     (runtime / "cookiejar0.2" / "cookiejar.tcl").write_text("", encoding="utf-8")
-    for module in ("token.py", "tokenize.py", "secrets.py"):
+    for module in ("token.py", "tokenize.py", "secrets.py", "tokens.pyi"):
         (runtime / module).write_text("", encoding="utf-8")
     (runtime / "secrets_introspect.xml").write_text("", encoding="utf-8")
     workspace = home / "workspace"

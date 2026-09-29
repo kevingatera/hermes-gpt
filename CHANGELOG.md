@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accept Python type-stub files as source when validating cloned MCP runtime mounts.
+
 - Include the server tool and runtime modules required by the installed `hermes-gpt` entry point; check local import dependencies against the package manifest.
 
 - Restore the confined task browser bridge import dependencies after the Operator policy split.

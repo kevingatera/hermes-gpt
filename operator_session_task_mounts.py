@@ -25,6 +25,7 @@ _SOURCE_FILE_SUFFIXES = frozenset(
         ".php",
         ".py",
         ".pyc",
+        ".pyi",
         ".rb",
         ".rs",
         ".sh",
