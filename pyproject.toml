@@ -42,6 +42,7 @@ py-modules = [
   "server_http",
   "server_fleet_tools",
   "oauth_auth",
+  "oauth_config",
   "oauth_http",
   "operator_policy",
   "operator_audit",
