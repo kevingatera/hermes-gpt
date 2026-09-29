@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Separate budget policy validation, SQLite storage, and MCP actions into focused modules while retaining the established budget imports and enforcement gates.
+
 - Keep malformed workflow and delegation observations unverified instead of raising during mission reconciliation.
 
 - Recognize flat typeshed credential API stub packages while refusing data files, symlinks, and credential directories outside typeshed.
