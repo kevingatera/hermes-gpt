@@ -58,6 +58,8 @@ py-modules = [
   "operator_skill_catalog",
   "operator_skill_resolution",
   "operator_config",
+  "operator_config_common",
+  "operator_env",
   "operator_workspace",
   "operator_workspace_files",
   "operator_gateway",
