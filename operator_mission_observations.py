@@ -24,7 +24,11 @@ def workflow_state(root: Path, ref: str) -> str:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return "unknown"
+    if not isinstance(raw, dict):
+        return "unknown"
     status = raw.get("status")
+    if not isinstance(status, str):
+        return "unknown"
     return {
         "running": "running",
         "blocked": "blocked",
@@ -55,12 +59,18 @@ def delegation_state(
         sqlite3.Error,
     ):
         return "blocked", False, None
+    if not isinstance(payload, dict):
+        return "blocked", False, None
     row = payload.get("delegation")
     if not payload.get("success") or not isinstance(row, dict):
         return "blocked", False, None
     if str(row.get("mission_id") or "") != mission_id:
         return "blocked", False, None
-    authority_version = int(row.get("authority_version") or 0)
+    try:
+        authority_version = int(row.get("authority_version") or 0)
+    except (TypeError, ValueError, OverflowError):
+        # Invalid authority cannot be used as a completion-guard snapshot.
+        return "blocked", False, None
     if bool(row.get("cancellation_in_progress")) or (
         bool(row.get("cancel_requested"))
         and str(row.get("state") or "") != "cancelled"

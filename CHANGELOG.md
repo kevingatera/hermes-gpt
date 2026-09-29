@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep malformed workflow and delegation observations unverified instead of raising during mission reconciliation.
+
 - Recognize flat typeshed credential API stub packages while refusing data files, symlinks, and credential directories outside typeshed.
 
 - Accept Python type-stub files as source when validating cloned MCP runtime mounts.
