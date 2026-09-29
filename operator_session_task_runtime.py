@@ -34,6 +34,9 @@ _BROWSER_BRIDGE_MODULES = (
     "operator_browser_state",
     "operator_browser_tabs",
     "operator_policy",
+    "operator_audit",
+    "operator_policy_paths",
+    "operator_subprocess",
     "operator_redaction",
 )
 

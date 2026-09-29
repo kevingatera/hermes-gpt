@@ -56,3 +56,28 @@ def test_browser_bridge_modules_mount_beside_a_workspace_inside_the_checkout(
 
     assert Path(__file__).resolve().parent not in paths
     assert Path(__file__).resolve().parent / "hermes_gpt_browser_mcp.py" in paths
+
+
+def test_browser_bridge_mounts_include_local_import_dependencies():
+    import ast
+
+    root = Path(task_runtime.__file__).resolve().parent
+    mounted = {path.stem for path in task_runtime._browser_bridge_runtime_files()}
+    pending = ["hermes_gpt_browser_mcp"]
+    visited = set()
+    while pending:
+        name = pending.pop()
+        if name in visited:
+            continue
+        visited.add(name)
+        assert name in mounted, f"browser bridge dependency is not mounted: {name}"
+        tree = ast.parse((root / f"{name}.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [alias.name.split(".")[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module.split(".")[0]]
+            else:
+                continue
+            pending.extend(dependency for dependency in names
+                           if (root / f"{dependency}.py").is_file())
