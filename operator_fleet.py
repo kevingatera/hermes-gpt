@@ -393,24 +393,6 @@ def _get_task(agent: str, peer: dict[str, Any], task_id: str, timeout: int) -> d
     return resp.get("result", {})
 
 
-def _unwrap_task(payload: dict[str, Any]) -> dict[str, Any]:
-    current: Any = payload
-    for _ in range(8):
-        if not isinstance(current, dict):
-            break
-        if isinstance(current.get("task"), dict):
-            current = current["task"]
-        elif isinstance(current.get("result"), dict):
-            current = current["result"]
-        elif isinstance(current.get("data"), dict):
-            current = current["data"]
-        else:
-            break
-    if not isinstance(current, dict):
-        raise ValueError("A2A task lookup returned an invalid task shape")
-    return current
-
-
 def _registry_official(*, timeout: int = _A2A_DEFAULT_REGISTRY_TIMEOUT) -> list[dict[str, Any]]:
     """List configured A2A peers by reading config.yaml a2a_agents and probing cards."""
     peers = _a2a_peers_with_resolved_tokens()
@@ -520,25 +502,6 @@ def _parse_json(stdout: str, *, operation: str) -> dict[str, Any]:
     if cleaned.rstrip().endswith(("{", "[", ",", ":")) or cleaned.count("{") > cleaned.count("}"):
         raise ValueError(f"{operation} returned truncated JSON")
     raise ValueError(f"{operation} returned invalid JSON")
-
-
-def _registry(*, runner: Runner | None, hermes_bin: str | None, timeout: int = _A2A_DEFAULT_REGISTRY_TIMEOUT) -> tuple[list[dict[str, Any]], str | None]:
-    mode = _a2a_mode()
-    if mode == "bridge":
-        return _registry_bridge(runner=runner, hermes_bin=hermes_bin)
-    if mode == "official":
-        return _registry_official(timeout=timeout), None
-
-    # auto: prefer official config; fall back to the bridge CLI if it is still available.
-    official = _registry_official(timeout=timeout)
-    if official:
-        return official, None
-    try:
-        bridge, binary = _registry_bridge(runner=runner, hermes_bin=hermes_bin)
-        return bridge, binary
-    except Exception:
-        return [], None
-
 
 
 def _registered_agent(agent: str, *, runner: Runner | None, hermes_bin: str | None) -> tuple[str, str | None]:
