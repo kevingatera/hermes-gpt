@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 import operator_diagnostics as od
+import operator_diagnostics_reports as od_reports
 import operator_policy as op
 
 # ---------------------------------------------------------------------------
@@ -198,17 +199,17 @@ def test_doctor_handles_missing_skills_dir(hermes_root, clean_env, audit_overrid
 
 
 def test_doctor_structures_upstream_502_like_failure(hermes_root, clean_env, audit_override, monkeypatch):
-    def _boom(*args, **kwargs):
-        raise RuntimeError("upstream returned 502 Bad Gateway for /connector/health")
+    def gateway_check_failed(_profile_home):
+        return od._check_result(
+            status=od.STATUS_FAIL,
+            layer="connector",
+            code="UPSTREAM_502",
+            message="Upstream connector health check returned 502 Bad Gateway.",
+            suggested_action="Check the connector or restart the gateway.",
+            extra={"trace_id": op.new_trace_id()},
+        )
 
-    monkeypatch.setattr(od, "_check_gateway_status", lambda profile_home: od._check_result(
-        status=od.STATUS_FAIL,
-        layer="connector",
-        code="UPSTREAM_502",
-        message="Upstream connector health check returned 502 Bad Gateway.",
-        suggested_action="Check the connector or restart the gateway.",
-        extra={"trace_id": op.new_trace_id()},
-    ))
+    monkeypatch.setattr(od_reports, "_check_gateway_status", gateway_check_failed)
     out = od.hermes_operator_doctor(profile="default", hermes_root=hermes_root)
     parsed = json.loads(out)
     assert parsed["success"] is True
@@ -266,7 +267,10 @@ def test_snapshot_has_expected_top_level_keys(hermes_root, clean_env, audit_over
 
 
 def test_snapshot_partial_failure_does_not_crash(hermes_root, clean_env, audit_override, monkeypatch):
-    monkeypatch.setattr(od, "_count_skills_safe", lambda _profile_home: (_ for _ in ()).throw(OSError("nope")))
+    def count_skills_fails(_profile_home):
+        raise OSError("nope")
+
+    monkeypatch.setattr(od_reports, "_count_skills_safe", count_skills_fails)
     out = od.hermes_operator_snapshot(profile="default", hermes_root=hermes_root)
     parsed = json.loads(out)
     assert parsed["success"] is True
