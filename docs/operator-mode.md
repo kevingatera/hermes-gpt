@@ -283,6 +283,8 @@ The packaged remote endpoint is `hermes-gpt-fabric-peer`. Loopback HTTP is permi
 
 Fabric routing is fail-closed. Placement considers node health and capability freshness, backend support, profile/workspace policy, and the server-controlled authority ceiling. A remote peer cannot widen the coordinator's authority. Remote worker self-report is transport data, not Work Contract completion evidence.
 
+Fabric configuration and routing-policy JSON files have a 128 KiB payload limit. File reads stop at that limit plus one byte so oversized input is rejected before the whole file is loaded into memory.
+
 Remote evidence and artifacts are admitted through coordinator-controlled paths. Required unavailable evidence cannot become `SATISFIED`; artifact bytes are verified before admission. Restart, timeout, and cancellation reconciliation preserve the original attempt where recovery is possible rather than silently creating a replacement writer.
 
 Flight Deck adds read-only Fabric node, placement, attempt, evidence, and routing views. The selected-route record carries the authoritative health, capability-freshness, eligibility, transport-backend, and authority-ceiling fields used to explain placement.

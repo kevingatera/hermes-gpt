@@ -148,7 +148,9 @@ def load_routing_policy(
             raise RoutingError("FABRIC_ROUTING_CONFIG_MISSING", "configured Fabric routing policy is missing")
         return RoutingPolicy(targets={})
     try:
-        raw = fabric.strict_json_loads(target_path.read_bytes())
+        # Keep file reads bounded before the strict parser checks payload size.
+        with target_path.open("rb") as handle:
+            raw = fabric.strict_json_loads(handle.read(fabric._MAX_BODY + 1))
     except OSError as exc:
         raise RoutingError("FABRIC_ROUTING_CONFIG_INVALID", "routing policy could not be read") from exc
     if not isinstance(raw, dict) or set(raw) != {"schema", "version", "targets"}:
