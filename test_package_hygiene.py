@@ -251,6 +251,9 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         "operator_skill_manager",
         "operator_skill_content",
         "operator_skill_files",
+        "operator_mission_plan_schema",
+        "operator_mission_plan_store",
+        "operator_mission_plan_tools",
     } <= set(modules)
     for module in modules:
         top_level = f"{module}.py"
