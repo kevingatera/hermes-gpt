@@ -112,6 +112,7 @@ py-modules = [
   "operator_mission_plan",
   "operator_mission_ledger",
   "operator_mission_budget",
+  "operator_mission_budget_breaker",
   "operator_capability_manifest",
   "operator_placement_common",
   "operator_placement_scoring",

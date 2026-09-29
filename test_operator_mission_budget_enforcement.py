@@ -34,6 +34,7 @@ import pytest
 
 import operator_controller as ctl
 import operator_mission_budget as budget
+import operator_mission_budget_breaker as breaker
 import operator_mission_plan as plan
 import operator_mission_runtime as mission
 import operator_policy as op
@@ -191,6 +192,12 @@ def _full_gates_on(monkeypatch) -> None:
     monkeypatch.setenv(budget.BUDGET_HARD_BLOCK_ENV, "1")
     monkeypatch.setenv(op.OPERATOR_ENABLED_ENV, "1")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
+
+
+def test_breaker_module_keeps_budget_facade_exports() -> None:
+    assert budget.enforce_budget_breaker is breaker.enforce_budget_breaker
+    assert budget._break_reason_sha is breaker._break_reason_sha
+    assert budget.BUDGET_HARD_BLOCK_ENV == breaker.BUDGET_HARD_BLOCK_ENV
 
 
 # ---------------------------------------------------------------------------
