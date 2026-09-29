@@ -9,7 +9,7 @@ conversational UI. It owns:
 - The JSON envelope helpers (``ok`` / ``err``) that compose with redaction so
   a handler cannot accidentally serialize an unredacted payload.
 - Authn/authz wiring guidance: the UI reuses ``BearerAuthMiddleware`` from
-  ``oauth_auth``; loopback default (no auth); static bearer or OAuth when
+  ``oauth_http``; loopback default (no auth); static bearer or OAuth when
   configured. Remote profile remains blocked by the existing server gates.
 - Account / capability context (``GET /api/me``): profile, accountStatus
   ``ok|expired|revoked|unauthorized``, operatorLevel, allowedSurfaces,

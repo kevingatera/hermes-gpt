@@ -56,7 +56,7 @@ user's own text only; unambiguous secret shapes are still removed.
 
 ## 3. Authn / authz
 
-- The UI reuses `oauth_auth.BearerAuthMiddleware` and the existing
+- The UI reuses `oauth_http.BearerAuthMiddleware` and the existing
   `build_asgi_app` wiring — **loopback default (no auth)**; static bearer or
   confidential-client OAuth when configured; remote profile remains blocked
   by the existing server gates. The UI adds no auth path of its own.

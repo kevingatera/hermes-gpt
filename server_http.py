@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import BaseRoute, Mount, Route
 
 import oauth_auth
+import oauth_http
 import operator_fleet
 import operator_live_events
 
@@ -166,7 +167,7 @@ def build_asgi_app(
     if oauth_state is not None and not http:
         raise ValueError("Built-in OAuth is supported only with streamable HTTP (--http).")
     raw_mcp_app = server.streamable_http_app() if http else server.sse_app()
-    mcp_app = oauth_auth.DefaultMcpAcceptMiddleware(raw_mcp_app)
+    mcp_app = oauth_http.DefaultMcpAcceptMiddleware(raw_mcp_app)
     static_bearer = oauth_auth.static_bearer_from_env() or ""
 
     async def live_websocket_authorized(websocket: Any) -> bool:
@@ -179,7 +180,7 @@ def build_asgi_app(
             nonlocal admitted
             admitted = True
 
-        auth_middleware = oauth_auth.BearerAuthMiddleware(
+        auth_middleware = oauth_http.BearerAuthMiddleware(
             admitted_app,
             oauth_state,
             static_token=static_bearer,
@@ -220,16 +221,16 @@ def build_asgi_app(
     )
     if oauth_state is not None:
         async def resource_metadata(request: Request) -> JSONResponse:
-            return oauth_auth.protected_resource_metadata(request, oauth_state)
+            return oauth_http.protected_resource_metadata(request, oauth_state)
 
         async def authorization_server_metadata(request: Request) -> JSONResponse:
-            return oauth_auth.authorization_metadata(request, oauth_state)
+            return oauth_http.authorization_metadata(request, oauth_state)
 
         async def authorize(request: Request) -> Response:
-            return oauth_auth.authorize(request, oauth_state)
+            return oauth_http.authorize(request, oauth_state)
 
         async def token(request: Request) -> JSONResponse:
-            return await oauth_auth.token(request, oauth_state)
+            return await oauth_http.token(request, oauth_state)
 
         routes.extend(
             [
@@ -259,7 +260,7 @@ def build_asgi_app(
     )
     origins = [origin for origin in ("https://chatgpt.com", issuer_origin) if origin]
     return CORSMiddleware(
-        oauth_auth.BearerAuthMiddleware(app, oauth_state, static_token=static_bearer),
+        oauth_http.BearerAuthMiddleware(app, oauth_state, static_token=static_bearer),
         allow_origins=origins,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],

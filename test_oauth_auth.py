@@ -18,8 +18,6 @@ from starlette.testclient import TestClient
 from oauth_auth import (
     ACCESS_TOKEN_TTL_SECONDS,
     AUTH_TOKEN_ENV,
-    BearerAuthMiddleware,
-    DefaultMcpAcceptMiddleware,
     MAX_ACCESS_TOKENS,
     MAX_AUTH_CODES,
     MAX_REFRESH_TOKENS,
@@ -32,14 +30,17 @@ from oauth_auth import (
     OAuthConfig,
     OAuthError,
     OAuthState,
+    config_from_env,
+)
+from oauth_http import (
+    BearerAuthMiddleware,
+    DefaultMcpAcceptMiddleware,
     authorization_metadata,
     authorize,
-    config_from_env,
     protected_resource_metadata,
     token,
     validate_bearer_token,
 )
-
 
 CLIENT_ID = "chatgpt-client"
 CLIENT_SECRET = "test-client-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
