@@ -33,6 +33,8 @@ _SOURCE_FILE_SUFFIXES = frozenset(
         ".tsx",
     }
 )
+# jeepney ships this D-Bus interface fixture; "secrets" names the API it
+# describes, and the file contains no credential data.
 _SAFE_RUNTIME_DATA_FILE_NAMES = frozenset({"secrets_introspect.xml"})
 
 
