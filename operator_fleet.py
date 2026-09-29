@@ -22,6 +22,7 @@ from typing import Any
 
 import operator_fleet_a2a as fleet_a2a
 import operator_fleet_authority as fleet_authority
+import operator_fleet_work_orders as fleet_work_orders
 import operator_policy as op
 
 # Keep the established fleet imports available while implementation is split.
@@ -69,26 +70,26 @@ _MAX_MANIFEST_BYTES = fleet_authority._MAX_MANIFEST_BYTES
 _MAX_TEXT = fleet_authority._MAX_TEXT
 _MAX_ITEMS = fleet_authority._MAX_ITEMS
 _BUILTIN_PROFILES = fleet_authority._BUILTIN_PROFILES
-_PUBLIC_ACTION_RE = fleet_authority._PUBLIC_ACTION_RE
-_NEGATED_ACTION_RE = fleet_authority._NEGATED_ACTION_RE
-_COMMAND_PREFIX_RE = fleet_authority._COMMAND_PREFIX_RE
-_SECRET_RE = fleet_authority._SECRET_RE
-_VAULT_RE = fleet_authority._VAULT_RE
-_FLEET_POLICY_ACTION_RE = fleet_authority._FLEET_POLICY_ACTION_RE
-_CHILD_MCP_ACTION_RE = fleet_authority._CHILD_MCP_ACTION_RE
 _clean_text = fleet_authority._clean_text
 _string_list = fleet_authority._string_list
 _manifest_path = fleet_authority._manifest_path
-_authorization = fleet_authority._authorization
-_requests_affirmative_action = fleet_authority._requests_affirmative_action
-_requests_public_action = fleet_authority._requests_public_action
-_requests_fleet_policy_change = fleet_authority._requests_fleet_policy_change
-_requests_child_mcp_inheritance = fleet_authority._requests_child_mcp_inheritance
-_work_order_text_fields = fleet_authority._work_order_text_fields
-_requests_raw_secret = fleet_authority._requests_raw_secret
-_requests_vault_policy_change = fleet_authority._requests_vault_policy_change
-_canonical_work_order = fleet_authority._canonical_work_order
-_authorize_order = fleet_authority._authorize_order
+_PUBLIC_ACTION_RE = fleet_work_orders._PUBLIC_ACTION_RE
+_NEGATED_ACTION_RE = fleet_work_orders._NEGATED_ACTION_RE
+_COMMAND_PREFIX_RE = fleet_work_orders._COMMAND_PREFIX_RE
+_SECRET_RE = fleet_work_orders._SECRET_RE
+_VAULT_RE = fleet_work_orders._VAULT_RE
+_FLEET_POLICY_ACTION_RE = fleet_work_orders._FLEET_POLICY_ACTION_RE
+_CHILD_MCP_ACTION_RE = fleet_work_orders._CHILD_MCP_ACTION_RE
+_authorization = fleet_work_orders._authorization
+_requests_affirmative_action = fleet_work_orders._requests_affirmative_action
+_requests_public_action = fleet_work_orders._requests_public_action
+_requests_fleet_policy_change = fleet_work_orders._requests_fleet_policy_change
+_requests_child_mcp_inheritance = fleet_work_orders._requests_child_mcp_inheritance
+_work_order_text_fields = fleet_work_orders._work_order_text_fields
+_requests_raw_secret = fleet_work_orders._requests_raw_secret
+_requests_vault_policy_change = fleet_work_orders._requests_vault_policy_change
+_canonical_work_order = fleet_work_orders._canonical_work_order
+_authorize_order = fleet_work_orders._authorize_order
 
 
 def _load_authority(path: Path | None = None) -> dict[str, AuthorityPeer]:
