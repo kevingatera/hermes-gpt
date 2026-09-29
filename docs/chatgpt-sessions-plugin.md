@@ -40,14 +40,21 @@ export HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES=chatgpt
 export HERMES_GPT_OPERATOR_ALLOWED_PROFILES=chatgpt
 ```
 
-The profile's `.env` contains provider credentials. Session start and continue
-accept optional `model` and `reasoning_effort`; managed tasks default to
-`deepseek/deepseek-v4.1-flash` with `high` effort.
+Normal `hermes_session_*` runs use the selected profile's Hermes configuration,
+including its configured provider, authentication, tools, MCP servers, skills,
+SOUL, memory, and session data. Hermes GPT lets Hermes resolve those resources
+and does not require a separate provider API key for the plugin. Omit `model`
+and `reasoning_effort` to use the profile's configured defaults; pass either
+only for a requested per-turn override.
 
 ## Add managed workspaces and browser access
 
-Managed tasks need a configured workspace, Operator workspace authority, and
-working OS confinement. On Linux, install `bwrap`; on macOS, use the supported
+Managed tasks are an optional confined-workspace mode. They use a private Hermes
+home and a limited toolset; they do not load the full profile tool and MCP
+configuration. Use the normal profile session tools when the request needs all
+capabilities configured for Hermes. Managed tasks also need a configured
+workspace, Operator workspace authority, and working OS confinement. On Linux,
+install `bwrap`; on macOS, use the supported
 `sandbox-exec` confinement. Add the workspace's parent directory to the
 Operator path allowlist:
 
@@ -116,14 +123,15 @@ builder does not create the tunnel or the ChatGPT connection.
 ## Use the tools
 
 - Use `hermes_session_list` and `hermes_session_read` to find and inspect an
-  existing profile session. Use `hermes_session_continue` to resume it with an
-  optional model and effort override.
+  existing profile session. Use `hermes_session_continue` to resume it. Omit
+  `model` and `reasoning_effort` to use that profile's configured settings.
 - Use `hermes_session_start` to start a profile session. Save its `job_id`, poll
   `hermes_session_job_status`, and retrieve the bounded answer with
   `hermes_session_job_result`.
-- Use `hermes_task_start` for a confined workspace session with an isolated or
-  profile-attached browser. Use `hermes_task_continue` with its task ID to
-  resume that same Hermes session and workspace.
+- Use `hermes_task_start` when the user asks for a confined workspace session
+  with an isolated or profile-attached browser. Its private home and limited
+  toolset are separate from a full profile session. Use `hermes_task_continue`
+  with its task ID to resume that same Hermes session and workspace.
 - Use `hermes_browser_profile_*` to operate an authorized profile browser
   without starting a Hermes model turn. Use `hermes_task_browser_*` for the
   browser owned by a managed task.

@@ -4,6 +4,12 @@ This package adds session and browser workflows for the Hermes GPT MCP
 connection. The connection itself must already be registered in ChatGPT
 Developer Mode and reachable through the private tunnel.
 
+Regular session tools run Hermes with the selected profile's configuration,
+provider authentication, tools, MCP servers, skills, and session data. The
+plugin does not need a separate provider API key. Confined workspace tasks are
+an optional limited mode; see the repository's managed-session guide for its
+separate boundaries.
+
 Build an account-bound package from the repository root:
 
 ```bash

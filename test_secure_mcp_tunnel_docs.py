@@ -46,8 +46,11 @@ def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -
         "HERMES_GPT_OPERATOR_APPLY_MODE=direct",
     ):
         assert env_name in text
-    assert "deepseek/deepseek-v4.1-flash" in text
     assert "reasoning_effort" in text
+    assert "profile's configured defaults" in text
+    assert "does not require a separate provider API key" in text
+    assert "selected profile's Hermes configuration" in text
+    assert "limited toolset" in text
     assert "plugin_asdk_app" in text
     assert "tools/build_chatgpt_sessions_plugin.py" in text
     assert "dist-plugin/hermes-sessions" in text
@@ -57,6 +60,14 @@ def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -
     assert "curated `sessions` connection does not register peer-routing tools" in text
     assert "hermes_fleet_*" in text
     assert "separately authorized Operator" in text
+
+
+def test_session_control_docs_use_selected_profile_resources_by_default() -> None:
+    text = _read(ROOT / "docs" / "session-control.md")
+
+    assert "selected profile as `HERMES_HOME`" in text
+    assert "does not parse or copy provider credentials" in text
+    assert "Omit `model` and `reasoning_effort`" in text
 
 
 def test_secure_tunnel_launcher_supervises_only_owned_children() -> None:

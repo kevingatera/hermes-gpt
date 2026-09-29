@@ -1,8 +1,8 @@
 # Managed Hermes sessions and browser access
 
-The optional managed-session tools let a trusted MCP client start and resume a real Hermes Agent session in an explicitly configured workspace. Each session has its own Hermes home and a browser shared with ChatGPT through a small MCP bridge. By default, the browser is isolated for that task. A task may instead attach to a local Chromium browser already configured by an explicitly allowlisted Hermes profile.
+The optional managed-session tools let a trusted MCP client start and resume a real Hermes Agent session in an explicitly configured workspace. Each session has its own Hermes home and a browser shared with ChatGPT through a small MCP bridge. By default, the browser is isolated for that task. A task may instead attach to a local Chromium browser already configured by an explicitly allowlisted Hermes profile. For a normal session that should use the selected profile's full Hermes configuration and capabilities, use `hermes_session_start` and `hermes_session_continue`; those tools need no separate provider key.
 
-The attach option reads only `browser.cdp_url` from the selected browser profile. It accepts a loopback endpoint and does not copy the profile's config, plugins, MCP servers, cookies, or password vault into the task. The selected model's API key is read separately from `credential_profile`. The built-in Hermes `browser` toolset, terminal, raw CDP, and vault tools are not enabled.
+The attach option reads only `browser.cdp_url` from the selected browser profile. It accepts a loopback endpoint and does not copy the profile's config, plugins, MCP servers, cookies, or password vault into the task. This confined mode checks the selected model's provider key from the server environment or `credential_profile`'s `.env`; it does not load the profile's provider configuration, other authentication stores, or MCP servers. The built-in Hermes `browser` toolset, terminal, raw CDP, and vault tools are not enabled.
 
 ## Configure a workspace
 
@@ -22,7 +22,7 @@ export HERMES_GPT_OPERATOR_ALLOWED_PROFILES=chatgpt-task,chatgpt-browser
 export HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES=chatgpt-task,chatgpt-browser
 ```
 
-Create a dedicated credential profile listed in both session-control and Operator profile allowlists. Put the provider API key in that profile's `.env`. Managed sessions support model IDs in `provider/model` form for the provider keys declared in `operator_session_tasks.py`; other profile keys are not copied.
+For this confined mode, select a profile listed in both session-control and Operator profile allowlists. Its `.env` or the MCP server environment must contain the selected provider's supported API key. Managed sessions support model IDs in `provider/model` form for the provider keys declared in `operator_session_tasks.py`; other provider configuration and authentication stores are not loaded. This provider-key check applies only to managed tasks; regular profile sessions let Hermes resolve the selected profile's configured provider and authentication.
 
 To attach an existing browser, also list its Hermes profile in `HERMES_GPT_TASK_BROWSER_ALLOWED_PROFILES`, `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES`, and `HERMES_GPT_OPERATOR_ALLOWED_PROFILES`. Set that profile's `browser.cdp_url` to its local Chromium DevTools endpoint. The MCP caller selects it with `browser_profile` when starting a task. The endpoint must use `localhost`, `127.0.0.1`, or `::1`, and cannot contain credentials or a query string. Remote browser services are not supported by this attach path. The selected profile controls which live browser the task and ChatGPT share; it does not change the task's Hermes home or model credentials.
 

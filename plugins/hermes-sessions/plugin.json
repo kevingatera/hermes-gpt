@@ -29,7 +29,7 @@
           "Write"
         ],
         "defaultPrompt": [
-          "Find and continue a Hermes session, or start one with a chosen model and reasoning effort.",
+          "Find and continue a Hermes session with its profile settings, or start one with optional model and reasoning overrides.",
           "Inspect or operate an authorized Hermes browser profile."
         ],
         "brandColor": "#2563EB"

@@ -32,7 +32,11 @@ def test_builder_creates_plugin_and_normalizes_chatgpt_app_id(tmp_path: Path) ->
 
     assert app_manifest == {"apps": {"hermes-gpt": {"id": "asdk_app_test-123"}}}
     assert openai_extension["apps"] == "./.app.json"
-    assert (output / "skills" / "hermes-control" / "SKILL.md").is_file()
+    skill = output / "skills" / "hermes-control" / "SKILL.md"
+    assert skill.is_file()
+    skill_text = skill.read_text(encoding="utf-8")
+    assert "Never ask for or copy a provider API\n  key for this workflow." in skill_text
+    assert "selected profile's full tool and MCP configuration" in skill_text
     assert not (ROOT / "plugins" / "hermes-sessions" / ".app.json").exists()
 
 

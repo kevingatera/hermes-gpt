@@ -1,6 +1,6 @@
 # Hermes session control
 
-Hermes GPT can start a new session or send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. An MCP client can use the selected profile's configured provider or choose a model and reasoning effort for that turn without invoking Codex.
+Hermes GPT can start a new session or send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. Each run starts the Hermes CLI with the selected profile as `HERMES_HOME`, so Hermes loads that profile's own `config.yaml`, `.env`, authentication, tools, MCP servers, skills, SOUL, memory, and session data. Hermes GPT does not parse or copy provider credentials, and a normal profile session needs no second provider key.
 
 ## Enable locally
 
@@ -20,7 +20,7 @@ Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SE
 ## Workflow
 
 1. Call `hermes_session_start(prompt, profile="chatgpt", timeout=900)` to create a new session, or find a session ID with `hermes_session_list` when history is enabled and use `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias.
-2. For either path, optional `model` and `reasoning_effort` values select the provider/model and reasoning level for that turn. The profile must be explicitly authorized in both allowlists.
+2. Omit `model` and `reasoning_effort` to let the selected Hermes profile choose its configured defaults. Pass either value only when the user requests a per-turn override. The profile must be explicitly authorized in both allowlists.
 3. Save the returned `job_id`.
 4. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`. The new session ID appears in the job status after Hermes reports it.
 5. Call `hermes_session_job_cancel(job_id)` to stop a running job owned by this server process.
