@@ -136,6 +136,9 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: >-
           python -m ruff check
+          server_cli.py test_server_cli.py
+          operator_browser_tabs.py test_operator_browser_tabs.py
+          operator_fabric_config.py test_fabric_config_read_bounds.py
           mcp_compat.py codex_mcp.py test_mcp_sdk_migration.py test_mcp_compat.py
           test_mcp_transport_mode.py test_codex_mcp.py test_hermetic_environment.py test_operator_codex.py
           fabric_artifacts.py fabric_write_guard.py
