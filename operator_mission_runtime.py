@@ -18,24 +18,31 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import operator_mission_spec as mission_spec
+import operator_mission_store as mission_store
 import operator_policy as op
 
-SCHEMA_VERSION = "0.9-mission.2"
-MISSION_SPEC_SCHEMA = "hermes.mission-spec/v1"
-MISSION_SCHEMA = "hermes.mission/v1"
-MISSION_EVENT_SCHEMA = "hermes.mission-event/v1"
+SCHEMA_VERSION = mission_store.SCHEMA_VERSION
+MISSION_SCHEMA = mission_store.MISSION_SCHEMA
+MISSION_EVENT_SCHEMA = mission_store.MISSION_EVENT_SCHEMA
 
-MISSION_ID_RE = re.compile(r"^msn-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$")
-WORKFLOW_REF_RE = re.compile(r"^sw-[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
-SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+MISSION_SPEC_SCHEMA = mission_spec.MISSION_SPEC_SCHEMA
+MISSION_ID_RE = mission_spec.MISSION_ID_RE
+REF_RE = mission_spec.REF_RE
+WORKFLOW_REF_RE = mission_spec.WORKFLOW_REF_RE
+SHA_RE = mission_spec.SHA_RE
+
+MAX_TITLE = mission_spec.MAX_TITLE
+MAX_OBJECTIVE = mission_spec.MAX_OBJECTIVE
+MAX_ACCEPTANCE = mission_spec.MAX_ACCEPTANCE
+MAX_ACCEPTANCE_ITEM = mission_spec.MAX_ACCEPTANCE_ITEM
+MAX_CONTEXT = mission_spec.MAX_CONTEXT
+MAX_SKILLS = mission_spec.MAX_SKILLS
 
 STATUSES = (
     "draft",
@@ -58,279 +65,35 @@ MISSION_TRANSITIONS = {
     "awaiting_approval": {"running", "blocked", "failed", "cancelled"},
 }
 
-MAX_TITLE = 200
-MAX_OBJECTIVE = 8_000
-MAX_ACCEPTANCE = 32
-MAX_ACCEPTANCE_ITEM = 500
-MAX_CONTEXT = 64
-MAX_SKILLS = 64
 MAX_ATTACHMENTS = 512
 MAX_LIST = 200
 
-_ALLOWED_SPEC_KEYS = {
-    "schema",
-    "mission_id",
-    "title",
-    "objective",
-    "owner_profile",
-    "acceptance_criteria",
-    "context_refs",
-    "skills",
-    "final_approval_required",
-}
-_ALLOWED_PATCH_KEYS = {
-    "title",
-    "objective",
-    "owner_profile",
-    "acceptance_criteria",
-    "context_refs",
-    "skills",
-}
-_ALLOWED_CONTEXT_KEYS = {"kind", "ref", "label", "sha256"}
-_ALLOWED_SKILL_KEYS = {"name", "version", "ref", "sha256"}
+_ALLOWED_SPEC_KEYS = mission_spec._ALLOWED_SPEC_KEYS
+_ALLOWED_PATCH_KEYS = mission_spec._ALLOWED_PATCH_KEYS
+_ALLOWED_CONTEXT_KEYS = mission_spec._ALLOWED_CONTEXT_KEYS
+_ALLOWED_SKILL_KEYS = mission_spec._ALLOWED_SKILL_KEYS
+
+# Existing mission callers import these private helpers from this module.
+_closed = mission_spec._closed
+_bounded_text = mission_spec._bounded_text
+_normalize_acceptance = mission_spec._normalize_acceptance
+_normalize_context = mission_spec._normalize_context
+_normalize_skills = mission_spec._normalize_skills
+_normalize_spec = mission_spec._normalize_spec
+
+# These helpers stay available here because mission consumers share this
+# module as the stable entry point for its SQLite records.
+_root = mission_store.root
+_db_path = mission_store.db_path
+_connect = mission_store.connect
+_init_db = mission_store.init_db
+_begin_write = mission_store.begin_write
+_row_to_mission = mission_store.row_to_mission
+_get_row = mission_store.get_row
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _root(hermes_root: Path | None) -> Path:
-    if hermes_root is not None:
-        return Path(hermes_root)
-    env_home = os.environ.get("HERMES_HOME")
-    if env_home:
-        normalized = op.normalize_hermes_data_root(Path(env_home).expanduser())
-        if normalized is not None:
-            return normalized
-    return Path.home() / ".hermes"
-
-
-def _db_path(hermes_root: Path | None) -> Path:
-    return _root(hermes_root) / "missions" / "missions.db"
-
-
-def _connect(path: Path, *, write: bool) -> sqlite3.Connection:
-    if write:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(path)
-        _init_db(db)
-    else:
-        if not path.is_file():
-            raise FileNotFoundError(path)
-        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys=ON")
-    return db
-
-
-def _init_db(db: sqlite3.Connection) -> None:
-    db.executescript(
-        """
-        PRAGMA journal_mode=WAL;
-        CREATE TABLE IF NOT EXISTS missions (
-            mission_id TEXT PRIMARY KEY,
-            spec_json TEXT NOT NULL,
-            status TEXT NOT NULL,
-            version INTEGER NOT NULL,
-            approval_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS attachments (
-            mission_id TEXT NOT NULL,
-            kind TEXT NOT NULL,
-            ref TEXT NOT NULL,
-            relationship TEXT NOT NULL,
-            state TEXT NOT NULL,
-            evidence_ref TEXT NOT NULL DEFAULT '',
-            verified INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            PRIMARY KEY (mission_id, kind, ref),
-            FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE
-        );
-        CREATE TABLE IF NOT EXISTS mission_events (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            mission_id TEXT NOT NULL,
-            event_type TEXT NOT NULL,
-            from_status TEXT NOT NULL DEFAULT '',
-            to_status TEXT NOT NULL DEFAULT '',
-            reason_sha256 TEXT NOT NULL DEFAULT '',
-            details_json TEXT NOT NULL DEFAULT '{}',
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (mission_id) REFERENCES missions(mission_id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status, updated_at);
-        CREATE INDEX IF NOT EXISTS idx_attachments_mission ON attachments(mission_id, kind,state);
-        CREATE INDEX IF NOT EXISTS idx_events_mission ON mission_events(mission_id, seq);
-        """
-    )
-    columns = {str(row[1]) for row in db.execute("PRAGMA table_info(attachments)").fetchall()}
-    if "verified" not in columns:
-        db.execute("ALTER TABLE attachments ADD COLUMN verified INTEGER NOT NULL DEFAULT 0")
-    db.commit()
-
-
-def _begin_write(db: sqlite3.Connection) -> None:
-    db.execute("BEGIN IMMEDIATE")
-
-
-def _closed(value: dict[str, Any], allowed: set[str], name: str) -> None:
-    unknown = set(value) - allowed
-    if unknown:
-        raise ValueError(f"{name} contains unknown fields: {', '.join(sorted(unknown))}")
-
-
-def _bounded_text(value: Any, field: str, maximum: int, *, required: bool = False) -> str:
-    if value is None:
-        value = ""
-    if not isinstance(value, str):
-        raise TypeError(f"{field} must be a string")
-    value = value.strip()
-    if required and not value:
-        raise ValueError(f"{field} is required")
-    if len(value) > maximum:
-        raise ValueError(f"{field} exceeds {maximum} characters")
-    return value
-
-
-def _normalize_acceptance(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if not isinstance(raw, list) or len(raw) > MAX_ACCEPTANCE:
-        raise ValueError(f"acceptance_criteria must be a list with at most {MAX_ACCEPTANCE} items")
-    return [_bounded_text(v, "acceptance_criteria item", MAX_ACCEPTANCE_ITEM, required=True) for v in raw]
-
-
-def _normalize_context(raw: Any) -> list[dict[str, str]]:
-    if raw is None:
-        return []
-    if not isinstance(raw, list) or len(raw) > MAX_CONTEXT:
-        raise ValueError(f"context_refs must be a list with at most {MAX_CONTEXT} items")
-    out: list[dict[str, str]] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            raise TypeError("context_refs items must be objects")
-        _closed(item, _ALLOWED_CONTEXT_KEYS, "context ref")
-        kind = _bounded_text(item.get("kind"), "context kind", 64, required=True)
-        ref = _bounded_text(item.get("ref"), "context ref", 256, required=True)
-        if not REF_RE.fullmatch(ref):
-            raise ValueError("context ref contains unsupported characters")
-        normalized = {"kind": kind, "ref": ref}
-        label = _bounded_text(item.get("label"), "context label", 160)
-        if label:
-            normalized["label"] = label
-        sha = _bounded_text(item.get("sha256"), "context sha256", 64)
-        if sha:
-            if not SHA_RE.fullmatch(sha):
-                raise ValueError("context sha256 must be lowercase SHA-256")
-            normalized["sha256"] = sha
-        out.append(normalized)
-    return out
-
-
-def _normalize_skills(raw: Any) -> list[dict[str, str]]:
-    if raw is None:
-        return []
-    if not isinstance(raw, list) or len(raw) > MAX_SKILLS:
-        raise ValueError(f"skills must be a list with at most {MAX_SKILLS} items")
-    out: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            raise TypeError("skills items must be objects")
-        _closed(item, _ALLOWED_SKILL_KEYS, "skill")
-        name = _bounded_text(item.get("name"), "skill name", 128, required=True)
-        if name in seen:
-            raise ValueError(f"duplicate skill {name!r}")
-        seen.add(name)
-        normalized = {"name": name}
-        for key, limit in (("version", 64), ("ref", 256), ("sha256", 64)):
-            value = _bounded_text(item.get(key), f"skill {key}", limit)
-            if value:
-                if key == "ref" and not REF_RE.fullmatch(value):
-                    raise ValueError("skill ref contains unsupported characters")
-                if key == "sha256" and not SHA_RE.fullmatch(value):
-                    raise ValueError("skill sha256 must be lowercase SHA-256")
-                normalized[key] = value
-        out.append(normalized)
-    return out
-
-
-def _normalize_spec(raw: dict[str, Any], *, mission_id: str | None = None) -> dict[str, Any]:
-    _closed(raw, _ALLOWED_SPEC_KEYS, "mission spec")
-    schema = raw.get("schema", MISSION_SPEC_SCHEMA)
-    if schema != MISSION_SPEC_SCHEMA:
-        raise ValueError(f"mission spec schema must be {MISSION_SPEC_SCHEMA!r}")
-    mid = mission_id or _bounded_text(raw.get("mission_id"), "mission_id", 68)
-    if not mid:
-        digest = hashlib.sha256(
-            (str(raw.get("title") or "") + "\0" + str(raw.get("objective") or "") + "\0" + _now()).encode()
-        ).hexdigest()[:20]
-        mid = f"msn-{digest}"
-    if not MISSION_ID_RE.fullmatch(mid):
-        raise ValueError("mission_id is invalid")
-    final_approval = raw.get("final_approval_required", True)
-    if not isinstance(final_approval, bool):
-        raise TypeError("final_approval_required must be boolean")
-    return {
-        "schema": MISSION_SPEC_SCHEMA,
-        "mission_id": mid,
-        "title": _bounded_text(raw.get("title"), "title", MAX_TITLE, required=True),
-        "objective": _bounded_text(raw.get("objective"), "objective", MAX_OBJECTIVE, required=True),
-        "owner_profile": _bounded_text(raw.get("owner_profile") or "default", "owner_profile", 128, required=True),
-        "acceptance_criteria": _normalize_acceptance(raw.get("acceptance_criteria")),
-        "context_refs": _normalize_context(raw.get("context_refs")),
-        "skills": _normalize_skills(raw.get("skills")),
-        "final_approval_required": final_approval,
-    }
-
-
-def _row_to_mission(db: sqlite3.Connection, row: sqlite3.Row, *, include_events: bool = False) -> dict[str, Any]:
-    spec = json.loads(row["spec_json"])
-    attachments = [
-        dict(r)
-        for r in db.execute(
-            "SELECT kind,ref,relationship,state,evidence_ref,verified,created_at,updated_at "
-            "FROM attachments WHERE mission_id=? ORDER BY kind,ref",
-            (row["mission_id"],),
-        ).fetchall()
-    ]
-    approval = json.loads(row["approval_json"] or "{}")
-    value: dict[str, Any] = {
-        "schema": MISSION_SCHEMA,
-        "schema_version": SCHEMA_VERSION,
-        **spec,
-        "status": row["status"],
-        "version": int(row["version"]),
-        "approval": approval,
-        "attachments": attachments,
-        "created_at": row["created_at"],
-        "updated_at": row["updated_at"],
-    }
-    if include_events:
-        value["events"] = [
-            {
-                "schema": MISSION_EVENT_SCHEMA,
-                **dict(r),
-                "details": json.loads(r["details_json"] or "{}"),
-            }
-            for r in db.execute(
-                "SELECT seq,event_type,from_status,to_status,reason_sha256,details_json,created_at "
-                "FROM mission_events WHERE mission_id=? ORDER BY seq DESC LIMIT 200",
-                (row["mission_id"],),
-            ).fetchall()
-        ]
-    return value
-
-
-def _get_row(db: sqlite3.Connection, mission_id: str) -> sqlite3.Row:
-    if not MISSION_ID_RE.fullmatch(mission_id):
-        raise ValueError("mission_id is invalid")
-    row = db.execute("SELECT * FROM missions WHERE mission_id=?", (mission_id,)).fetchone()
-    if row is None:
-        raise LookupError(f"mission {mission_id!r} not found")
-    return row
 
 
 def _event(
