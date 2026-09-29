@@ -65,3 +65,23 @@ Browser navigation can reach local and private-network addresses. Only enable th
 - Hermes writes its session ID to stderr in quiet one-shot chat mode; the job watcher records it for later turns and can recover it after a server restart. Older jobs that used a structured usage report remain readable. Process ownership is not inferred from a saved PID.
 
 The MCP tools are the initial interface. A task panel or Hermes slash-command UI can be added later without changing the session and browser ownership model.
+
+## Verify the integration
+
+Check the task runtime and packaging boundaries before testing through ChatGPT:
+
+```bash
+python -m pytest -q test_operator_session_task_mounts.py \
+  test_operator_session_task_runtime.py test_operator_session_task_mcp.py \
+  test_operator_session_tasks.py test_package_imports.py test_package_hygiene.py
+```
+
+For a real model check, use an existing authorized profile and provider. No additional model-provider key is needed:
+
+1. Preview `hermes_task_start` with `dry_run=true`, an authorized `workspace_id` and `profile`, and explicit `model` and `reasoning_effort` overrides.
+2. Start with `confirm=true` and `dry_run=false`. Ask Hermes to navigate a harmless test page using its `task_browser_*` tools and remember a unique marker.
+3. Poll `hermes_task_result` until the turn is terminal. Check the response, return code, and recorded session ID. Independently inspect the same page with `hermes_task_browser_snapshot`.
+4. Continue with `hermes_task_continue`, changing the effort override. Ask Hermes to recall the marker and snapshot the existing page without navigating. Verify that the session ID is unchanged.
+5. Once the turn is terminal, restart the MCP service. Check task status again. Navigate the browser through the client's `hermes_task_browser_navigate` tool, then continue Hermes and ask it to report the current page without supplying that page's URL in the prompt.
+
+These checks distinguish durable Hermes history, model/effort overrides, and shared browser control. They do not prove that isolated browser tabs or login state survive a service restart, or that the account-side ChatGPT plugin is connected. Test discovery and a tool call from ChatGPT itself after creating that connection.
