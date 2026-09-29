@@ -87,7 +87,10 @@ def _read_closed_json(path: Path, *, maximum: int = _MAX_BODY) -> dict[str, Any]
     if op.is_denied_path(path) or path.is_symlink():
         raise FabricError("FABRIC_CONFIG_INVALID", "Fabric configuration path is not allowed")
     try:
-        raw = path.read_bytes()
+        # Read one byte beyond the parser limit to detect oversized files
+        # without first loading the entire file into memory.
+        with path.open("rb") as handle:
+            raw = handle.read(maximum + 1)
     except FileNotFoundError as exc:
         raise FabricError("FABRIC_CONFIG_MISSING", f"Fabric configuration is missing: {path.name}") from exc
     value = strict_json_loads(raw, maximum=maximum)
