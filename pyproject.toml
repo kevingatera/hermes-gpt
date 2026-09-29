@@ -183,6 +183,8 @@ py-modules = [
   "operator_live_events",
   "operator_oauth",
   "token_store",
+  "token_store_crypto",
+  "token_store_legacy",
   "operator_swarm",
   "operator_swarm_advance_tools",
   "operator_swarm_approval_tools",

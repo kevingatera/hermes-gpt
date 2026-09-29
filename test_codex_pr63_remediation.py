@@ -1358,22 +1358,13 @@ def test_revoke_rotation_failure_reported_as_failure(tmp_path: Path, monkeypatch
     state.access_tokens[token] = item
     state.persist_tokens(root)
 
-    # Force the rotation to fail for whatever source is active.
+    # Exercise the post-commit error summary without touching the real key store.
     monkeypatch.setattr(
-        token_store, "_store_key_in_keyring", lambda key: False, raising=False
+        token_store,
+        "_rotate_active_key",
+        lambda _root: {"outcome": "failed", "source": "keyring"},
     )
-    real_unlink = token_store.key_file_path
-
-    def _boom(path):
-        raise OSError("injected failure")
-
-    monkeypatch.setattr(token_store.Path, "unlink", _boom) if False else None
-    # Simpler: patch _rotate_active_key's file branch by making unlink fail.
-    import unittest.mock as mock
-
-    with mock.patch.object(token_store, "_rotate_active_key") as rot:
-        rot.return_value = {"outcome": "failed", "source": "keyring"}
-        result = token_store.revoke_tokens(root, rotate_key=True)
+    result = token_store.revoke_tokens(root, rotate_key=True)
     assert result["key_rotated"] is False
     assert "FAILED" in result["key_rotation_note"]
     assert "env-managed" not in result["key_rotation_note"]

@@ -1,32 +1,17 @@
-"""Durable encrypted token storage for hermes-gpt v0.7 (Flight Deck, S5).
+"""Transactional SQLite storage for encrypted Hermes OAuth tokens.
 
-Implements ADR-001: OAuth credentials survive restarts via an encrypted
-envelope at ``<hermes_data>/secrets/hermes_gpt_tokens.json`` (0600),
-AES-256-GCM, with key management precedence OS keyring (``keyring`` lib,
-optional) → key file (``<hermes_data>/secrets/hermes_gpt_token_key``, 0600) →
-env ``HERMES_GPT_TOKEN_MASTER_KEY`` (CI/test only, weakest).
-
-Rotation via ``kid``; revocation deletes the envelope (optionally rotates the
-key). No token material ever appears in audit records or MCP responses — the
-public surface exposes presence/expiry only.
-
-Token store is NOT an MCP mutation surface: only ``oauth_auth`` calls it.
+The module coordinates token rows, revocation epochs, and atomic mutations.
+Key management lives in ``token_store_crypto``; pre-SQLite JSON migration
+lives in ``token_store_legacy``. OAuth code is the only runtime caller.
 """
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import json
 import os
-import secrets
 import sqlite3
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 try:
     import fcntl as _fcntl
@@ -36,232 +21,53 @@ except ImportError:  # Windows
 else:
     _msvcrt = None
 
-ENVELOPE_VERSION = 1
-ENVELOPE_FILENAME = "hermes_gpt_tokens.json"
-KEY_FILENAME = "hermes_gpt_token_key"
-SECRETS_DIR = "secrets"
-MASTER_KEY_ENV = "HERMES_GPT_TOKEN_MASTER_KEY"
-SERVICE_NAME = "hermes-gpt"
-USERNAME = "oauth-tokens"
+import token_store_crypto as _crypto
+import token_store_legacy as _legacy
 
-
-class TokenStoreError(RuntimeError):
-    pass
-
-
-def _secrets_dir(hermes_root: Path) -> Path:
-    return hermes_root / SECRETS_DIR
-
-
-def envelope_path(hermes_root: Path) -> Path:
-    return _secrets_dir(hermes_root) / ENVELOPE_FILENAME
-
-
-def key_file_path(hermes_root: Path) -> Path:
-    return _secrets_dir(hermes_root) / KEY_FILENAME
-
-
-def _b64(data: bytes) -> str:
-    return base64.b64encode(data).decode("ascii")
-
-
-def _unb64(value: str) -> bytes:
-    return base64.b64decode(value.encode("ascii"))
-
-
-def _key_from_env() -> bytes | None:
-    raw = os.environ.get(MASTER_KEY_ENV)
-    if not raw:
-        return None
-    # Derive a 32-byte key from any env material (documented weakest path).
-    import hashlib
-
-    return hashlib.sha256(raw.encode("utf-8")).digest()
-
-
-def _key_from_keyring() -> bytes | None:
-    try:
-        import keyring  # optional dependency
-
-        raw = keyring.get_password(SERVICE_NAME, USERNAME)
-    except Exception:
-        return None
-    if not raw:
-        return None
-    try:
-        return _unb64(raw)
-    except Exception:
-        return None
-
-
-def _store_key_in_keyring(key: bytes) -> bool:
-    try:
-        import keyring
-
-        keyring.set_password(SERVICE_NAME, USERNAME, _b64(key))
-        return True
-    except Exception:
-        return False
-
-
-def _key_from_file(hermes_root: Path) -> bytes | None:
-    path = key_file_path(hermes_root)
-    if not path.exists():
-        return None
-    try:
-        raw = path.read_bytes()
-    except OSError:
-        return None
-    if len(raw) == 32:
-        return raw
-    try:
-        return _unb64(raw.decode("ascii").strip())
-    except Exception:
-        return None
-
-
-def _write_key_file(hermes_root: Path, key: bytes) -> None:
-    d = _secrets_dir(hermes_root)
-    d.mkdir(parents=True, exist_ok=True)
-    path = key_file_path(hermes_root)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(key)
-    os.chmod(tmp, 0o600)
-    tmp.replace(path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-
-
-def _rotate_active_key(hermes_root: Path) -> dict[str, Any]:
-    """Rotate whichever key source is ACTIVE. Returns a structured result:
-    ``{"outcome": "rotated"|"env_managed"|"failed", "source": str}``.
-
-    - env key (HERMES_GPT_TOKEN_MASTER_KEY): cannot be rotated from here
-      (operator-managed); outcome ``env_managed``.
-    - keyring: overwrite the stored key with a fresh random key.
-    - key file: delete it; the next _resolve_key generates a new one.
-    Failures are reported as ``failed`` with the source, never silently
-    conflated with intentional external key management.
-    """
-    env_key = _key_from_env()
-    if env_key is not None:
-        return {"outcome": "env_managed", "source": "env"}
-    keyring_key = _key_from_keyring()
-    if keyring_key is not None:
-        fresh = secrets.token_bytes(32)
-        if _store_key_in_keyring(fresh):
-            return {"outcome": "rotated", "source": "keyring"}
-        return {"outcome": "failed", "source": "keyring"}
-    # key file (or nothing yet): rotate ATOMICALLY — generate and write the
-    # new key to a temp file, then rename over the old one. A failure at any
-    # point leaves the old key intact, so a reported rotation failure can
-    # truthfully say the old key remains active.
-    try:
-        fresh = secrets.token_bytes(32)
-        path = key_file_path(hermes_root)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".new")
-        tmp.write_bytes(fresh)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, path)
-    except Exception:
-        return {"outcome": "failed", "source": "keyfile"}
-    return {"outcome": "rotated", "source": "keyfile"}
-
-
-def _resolve_key(hermes_root: Path) -> tuple[bytes, str, str]:
-    """Return (key, kid, source). Key precedence env → keyring → key file."""
-    env_key = _key_from_env()
-    if env_key is not None:
-        return env_key, "env", "env"
-    keyring_key = _key_from_keyring()
-    if keyring_key is not None:
-        return keyring_key, "keyring", "keyring"
-    file_key = _key_from_file(hermes_root)
-    if file_key is not None:
-        return file_key, "keyfile", "keyfile"
-    # First use: generate a key, prefer keyring, else key file (0600).
-    generated = secrets.token_bytes(32)
-    if _store_key_in_keyring(generated):
-        return generated, "keyring", "keyring"
-    _write_key_file(hermes_root, generated)
-    return generated, "keyfile", "keyfile"
-
-
-def load_envelope(hermes_root: Path) -> dict[str, Any] | None:
-    """Read the envelope file if present. Returns None when absent."""
-    path = envelope_path(hermes_root)
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raise TokenStoreError("token envelope is corrupt or unreadable")
-    if data.get("version") != ENVELOPE_VERSION:
-        raise TokenStoreError("unsupported token envelope version")
-    for field in ("kid", "ciphertext", "nonce"):
-        if not isinstance(data.get(field), str) or not data[field]:
-            raise TokenStoreError(f"token envelope missing {field!r}")
-    return data
-
-
-def decrypt_envelope(envelope: dict[str, Any], hermes_root: Path) -> dict[str, Any]:
-    """Decrypt an envelope to its plaintext token bundle."""
-    key, _, _ = _resolve_key(hermes_root)
-    try:
-        nonce = _unb64(envelope["nonce"])
-        ciphertext = _unb64(envelope["ciphertext"])
-        if len(nonce) != 12:
-            raise TokenStoreError("token envelope nonce must be 12 bytes")
-        plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
-        return json.loads(plaintext.decode("utf-8"))
-    except TokenStoreError:
-        raise
-    except Exception as exc:
-        raise TokenStoreError(f"could not decrypt token envelope: {exc.__class__.__name__}") from exc
-
-
-def _write_envelope(hermes_root: Path, kid: str, plaintext: dict[str, Any], key: bytes) -> None:
-    nonce = secrets.token_bytes(12)
-    ciphertext = AESGCM(key).encrypt(
-        nonce,
-        json.dumps(plaintext, ensure_ascii=False, sort_keys=True).encode("utf-8"),
-        None,
-    )
-    envelope = {
-        "version": ENVELOPE_VERSION,
-        "kid": kid,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "ciphertext": _b64(ciphertext),
-        "nonce": _b64(nonce),
-    }
-    d = _secrets_dir(hermes_root)
-    d.mkdir(parents=True, exist_ok=True)
-    path = envelope_path(hermes_root)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(envelope, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    tmp.replace(path)
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
-
-
-def save_tokens(hermes_root: Path, tokens: dict[str, Any]) -> dict[str, Any]:
-    """Encrypt and persist a token bundle. Returns {kid, source, path}."""
-    key, kid, source = _resolve_key(hermes_root)
-    _write_envelope(hermes_root, kid, tokens, key)
-    return {"kid": kid, "source": source, "path": str(envelope_path(hermes_root))}
+# Keep the established token_store helper surface for callers and fixtures.
+ENVELOPE_VERSION = _crypto.ENVELOPE_VERSION
+ENVELOPE_FILENAME = _crypto.ENVELOPE_FILENAME
+KEY_FILENAME = _crypto.KEY_FILENAME
+SECRETS_DIR = _crypto.SECRETS_DIR
+MASTER_KEY_ENV = _crypto.MASTER_KEY_ENV
+SERVICE_NAME = _crypto.SERVICE_NAME
+USERNAME = _crypto.USERNAME
+TokenStoreError = _crypto.TokenStoreError
+_secrets_dir = _crypto._secrets_dir
+envelope_path = _crypto.envelope_path
+key_file_path = _crypto.key_file_path
+_b64 = _crypto._b64
+_unb64 = _crypto._unb64
+_key_from_env = _crypto._key_from_env
+_key_from_keyring = _crypto._key_from_keyring
+_store_key_in_keyring = _crypto._store_key_in_keyring
+_key_from_file = _crypto._key_from_file
+_write_key_file = _crypto._write_key_file
+_rotate_active_key = _crypto._rotate_active_key
+_resolve_key = _crypto._resolve_key
+load_envelope = _crypto.load_envelope
+decrypt_envelope = _crypto.decrypt_envelope
+_write_envelope = _crypto._write_envelope
+save_tokens = _crypto.save_tokens
+_token_key = _crypto._token_key
+issue_key = _crypto.issue_key
+_encrypt_record = _crypto._encrypt_record
+_decrypt_record = _crypto._decrypt_record
+LEGACY_ENVELOPE_FILENAME = _legacy.LEGACY_ENVELOPE_FILENAME
+LEGACY_EPOCH_FILENAME = _legacy.LEGACY_EPOCH_FILENAME
+LEGACY_LEDGER_FILENAME = _legacy.LEGACY_LEDGER_FILENAME
+_SQLITE_MAX_INT = _legacy._SQLITE_MAX_INT
+_legacy_envelope_path = _legacy._legacy_envelope_path
+_close_legacy_migration_locked = _legacy._close_legacy_migration_locked
+_legacy_epoch_from_ledger_or_file = _legacy._legacy_epoch_from_ledger_or_file
+_parse_legacy_retired = _legacy._parse_legacy_retired
+_read_legacy_epoch_locked = _legacy._read_legacy_epoch_locked
+_migrate_legacy_locked = _legacy._migrate_legacy_locked
+_cleanup_legacy_artifacts = _legacy._cleanup_legacy_artifacts
+_legacy_flat_records = _legacy._legacy_flat_records
 
 
 DB_FILENAME = "hermes_gpt_tokens.db"
-LEGACY_ENVELOPE_FILENAME = "hermes_gpt_tokens.json"
-LEGACY_EPOCH_FILENAME = "hermes_gpt_token_epoch"
-LEGACY_LEDGER_FILENAME = "hermes_gpt_token_ledger"
-_SQLITE_MAX_INT = 2**63 - 1
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS token_meta (
     name TEXT PRIMARY KEY,
@@ -341,23 +147,8 @@ class _StoreLock:
                 self.fd = None
 
 
-def _token_key(kind: str, token_value: str) -> str:
-    """Stable row key: opaque hash of the token value (never the value)."""
-    digest = hashlib.sha256(f"{kind}\0{token_value}".encode("utf-8")).hexdigest()
-    return "sha256:" + digest
-
-
-def issue_key(kind: str, token_value: str) -> str:
-    """Row key for an access/refresh token value."""
-    return _token_key(kind, token_value)
-
-
 def _db_path(hermes_root: Path) -> Path:
     return _secrets_dir(hermes_root) / DB_FILENAME
-
-
-def _legacy_envelope_path(hermes_root: Path) -> Path:
-    return _secrets_dir(hermes_root) / LEGACY_ENVELOPE_FILENAME
 
 
 def _connect(hermes_root: Path) -> sqlite3.Connection:
@@ -382,279 +173,6 @@ def _connect(hermes_root: Path) -> sqlite3.Connection:
         return db
     except sqlite3.Error as exc:
         raise TokenStoreError(f"token database unavailable: {exc}") from exc
-
-
-def _encrypt_record(key: bytes, record: dict[str, Any]) -> tuple[bytes, bytes]:
-    nonce = secrets.token_bytes(12)
-    ct = AESGCM(key).encrypt(
-        nonce,
-        json.dumps(record, ensure_ascii=False, sort_keys=True).encode("utf-8"),
-        None,
-    )
-    return nonce, ct
-
-
-def _decrypt_record(key: bytes, nonce: bytes, ciphertext: bytes) -> dict[str, Any]:
-    plaintext = AESGCM(key).decrypt(nonce, ciphertext, None)
-    data = json.loads(plaintext.decode("utf-8"))
-    if not isinstance(data, dict):
-        raise TokenStoreError("token record plaintext is not an object")
-    return data
-
-
-def _close_legacy_migration_locked(
-    db: sqlite3.Connection, hermes_root: Path, ledger_path: Path, epoch_path: Path, now: float, reason: str
-) -> None:
-    """Close legacy migration while preserving every durable fence.
-
-    Imports retirement tombstones from the ledger and preserves the
-    revocation epoch (ledger-authoritative, fail-closed) before writing the
-    close marker — used by the envelope-absent and envelope-corrupt paths
-    alike, so no close branch can erase retirement history.
-    """
-    tombstones = _parse_legacy_retired(hermes_root, ledger_path)
-    for ledger_key in tombstones:
-        exists = db.execute(
-            "SELECT 1 FROM tokens WHERE token_key=?", (ledger_key,)
-        ).fetchone()
-        if not exists:
-            db.execute(
-                "INSERT INTO tokens(token_key,kind,nonce,ciphertext,expires_at,retired,retired_at) VALUES(?,?,?,?,?,1,?)",
-                (ledger_key, "retired", b"", b"", 0.0, now),
-            )
-    legacy_epoch = _legacy_epoch_from_ledger_or_file(hermes_root, ledger_path, epoch_path)
-    have_epoch = db.execute(
-        "SELECT 1 FROM token_meta WHERE name='revocation_epoch'"
-    ).fetchone()
-    if not have_epoch and legacy_epoch > 0:
-        db.execute(
-            "INSERT OR REPLACE INTO token_meta(name,value) VALUES('revocation_epoch',?)",
-            (str(legacy_epoch),),
-        )
-    db.execute(
-        "INSERT OR REPLACE INTO token_meta(name,value) VALUES('legacy_migration',?)",
-        (f"closed:{reason}",),
-    )
-
-
-def _legacy_epoch_from_ledger_or_file(
-    hermes_root: Path, ledger_path: Path, epoch_path: Path
-) -> int:
-    """Revocation epoch from the legacy ledger (validated) or epoch file.
-
-    The ledger's value is authoritative when present and well-formed
-    (including negatives/booleans being fail-closed to 1)."""
-    if ledger_path.exists():
-        try:
-            data = json.loads(ledger_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise TokenStoreError("legacy retirement ledger is corrupt") from exc
-        if isinstance(data, dict):
-            raw = data.get("revocation_epoch")
-            if raw is None:
-                return _read_legacy_epoch_locked(hermes_root, epoch_path)
-            if isinstance(raw, bool) or not isinstance(raw, int):
-                return 1  # malformed -> fail closed
-            if raw < 0 or raw > _SQLITE_MAX_INT:
-                return 1
-            return raw
-    return _read_legacy_epoch_locked(hermes_root, epoch_path)
-
-
-def _parse_legacy_retired(hermes_root: Path, ledger_path: Path) -> list[str]:
-    """Parse the legacy retirement ledger's tombstone keys (fail closed).
-
-    An absent ledger means no tombstones. A present-but-corrupt ledger is a
-    hard error (unknown retirement history must not silently import live).
-    """
-    if not ledger_path.exists():
-        return []
-    try:
-        data = json.loads(ledger_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise TokenStoreError("legacy retirement ledger is corrupt") from exc
-    if not isinstance(data, dict):
-        raise TokenStoreError("legacy retirement ledger is malformed")
-    retired = data.get("retired")
-    if retired is None:
-        return []
-    if not isinstance(retired, dict):
-        raise TokenStoreError("legacy retirement ledger is malformed")
-    return [str(k) for k in retired.keys()]
-
-
-def _read_legacy_epoch_locked(hermes_root: Path, epoch_path: Path) -> int:
-    """Read the legacy epoch file inside the migration transaction.
-
-    Fail-closed on malformed data: an unparseable epoch means unknown
-    revocation history, which is treated as at-least-once revoked (epoch 1)
-    rather than never-revoked (epoch 0).
-    """
-    if not epoch_path.exists():
-        return 0
-    try:
-        value = int(epoch_path.read_text(encoding="ascii").strip())
-    except (OSError, ValueError):
-        return 1
-    if value < 0 or value > _SQLITE_MAX_INT:
-        return 1
-    return value
-
-
-def _migrate_legacy_locked(db: sqlite3.Connection, hermes_root: Path, key: bytes, kid: str, now: float) -> int:
-    """One-time import of the legacy JSON envelope (and hash ledger) into the DB.
-
-    Runs inside the caller's write transaction. Rules:
-
-    - A durable ``legacy_migration`` marker closes migration permanently once
-      set; revocation sets it too, so leftover legacy files can never
-      re-import revoked credentials (fail closed).
-    - A corrupt/unparseable legacy ledger is a hard error: the transaction
-      aborts rather than importing credentials whose retirement history
-      cannot be established.
-    - Legacy artifacts are NOT deleted inside this transaction; cleanup
-      happens only after the enclosing transaction commits (the caller
-      schedules it), so a rollback never loses the recovery source.
-    - Imported records carry the internal markers needed to reconstruct
-      caches (``_kind``/``_token_value``) exactly like fresh records.
-    """
-    marker = db.execute(
-        "SELECT value FROM token_meta WHERE name='legacy_migration'"
-    ).fetchone()
-    if marker is not None:
-        return 0  # already migrated (or closed by revocation)
-    env_path = _legacy_envelope_path(hermes_root)
-    ledger_path = _secrets_dir(hermes_root) / LEGACY_LEDGER_FILENAME
-    epoch_path = _secrets_dir(hermes_root) / LEGACY_EPOCH_FILENAME
-    if not env_path.exists():
-        # No envelope anywhere: close migration so later stray files cannot
-        # be imported after revocation has happened. But FIRST import any
-        # retirement tombstones from the ledger (a rotated token's hash may
-        # exist ONLY there) and preserve the legacy revocation epoch — a
-        # prior revocation deleted the envelope, yet both fences must
-        # survive, or a stale peer could repersist pre-revocation
-        # credentials.
-        _close_legacy_migration_locked(db, hermes_root, ledger_path, epoch_path, now, "empty")
-        return 0
-    try:
-        envelope = load_envelope(hermes_root)
-        bundle = decrypt_envelope(envelope, hermes_root) if envelope else {}
-    except TokenStoreError:
-        # Corrupt/undecryptable legacy store: close migration, keep files,
-        # but still preserve tombstones + the revocation epoch.
-        _close_legacy_migration_locked(db, hermes_root, ledger_path, epoch_path, now, "corrupt")
-        return 0
-    if not isinstance(bundle, dict):
-        _close_legacy_migration_locked(db, hermes_root, ledger_path, epoch_path, now, "corrupt")
-        return 0
-    legacy_ledger: dict[str, Any] = {}
-    ledger_corrupt = False
-    if ledger_path.exists():
-        try:
-            data = json.loads(ledger_path.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                legacy_ledger = data
-            else:
-                ledger_corrupt = True
-        except (OSError, ValueError):
-            ledger_corrupt = True
-    if ledger_corrupt:
-        # Fail closed: retirement history cannot be established.
-        raise TokenStoreError("legacy retirement ledger is corrupt; refusing to import")
-    retired_keys = legacy_ledger.get("retired")
-    if retired_keys is None:
-        retired = {}
-    elif not isinstance(retired_keys, dict):
-        # Parsed but structurally invalid: retirement history cannot be
-        # established. Fail closed instead of importing everything live.
-        raise TokenStoreError("legacy retirement ledger is malformed; refusing to import")
-    else:
-        retired = retired_keys
-    legacy_epoch_raw = legacy_ledger.get("revocation_epoch")
-    if legacy_epoch_raw is not None and (
-        isinstance(legacy_epoch_raw, bool) or not isinstance(legacy_epoch_raw, int)
-    ):
-        raise TokenStoreError("legacy retirement ledger is malformed; refusing to import")
-    migrated = 0
-    # Import EVERY legacy retired hash as a permanent tombstone FIRST — a
-    # rotated/revoked token normally no longer appears in the live envelope,
-    # so its hash may exist ONLY in the ledger. Dropping those would erase
-    # retirement history and let a stale peer re-persist the token.
-    for ledger_key in retired:
-        exists = db.execute(
-            "SELECT 1 FROM tokens WHERE token_key=?", (ledger_key,)
-        ).fetchone()
-        if exists:
-            continue
-        db.execute(
-            "INSERT INTO tokens(token_key,kind,nonce,ciphertext,expires_at,retired,retired_at) VALUES(?,?,?,?,?,1,?)",
-            (ledger_key, "retired", b"", b"", 0.0, now),
-        )
-    for kind in ("access", "refresh"):
-        section = bundle.get(f"{kind}_tokens")
-        if not isinstance(section, dict):
-            continue
-        for value, item in section.items():
-            if not (isinstance(item, dict) and item.get("expires_at", 0) > now):
-                continue
-            row_key = _token_key(kind, value)
-            if row_key in retired:
-                # Preserve the tombstone so rotated/revoked stay dead.
-                db.execute(
-                    "INSERT OR REPLACE INTO tokens(token_key,kind,nonce,ciphertext,expires_at,retired,retired_at) VALUES(?,?,?,?,?,1,?)",
-                    (row_key, kind, b"", b"", item.get("expires_at", 0), now),
-                )
-                continue
-            record = dict(item)
-            record["_kind"] = kind
-            record["_token_value"] = value
-            nonce, ct = _encrypt_record(key, record)
-            db.execute(
-                "INSERT OR REPLACE INTO tokens(token_key,kind,nonce,ciphertext,expires_at,retired,retired_at) VALUES(?,?,?,?,?,0,NULL)",
-                (row_key, kind, nonce, ct, item.get("expires_at", 0)),
-            )
-            migrated += 1
-    # Preserve the legacy revocation epoch. Out-of-range or negative values
-    # are unknown history: fail closed (epoch >= 1) rather than normalizing
-    # to zero, which would erase the revocation fence.
-    legacy_epoch = 0
-    if isinstance(legacy_ledger.get("revocation_epoch"), int) and not isinstance(
-        legacy_ledger.get("revocation_epoch"), bool
-    ):
-        legacy_epoch = int(legacy_ledger["revocation_epoch"])
-    elif epoch_path.exists():
-        try:
-            legacy_epoch = int(epoch_path.read_text(encoding="ascii").strip())
-        except (OSError, ValueError):
-            legacy_epoch = 1  # unknown history -> treat as revoked once
-    if legacy_epoch < 0 or legacy_epoch > _SQLITE_MAX_INT:
-        legacy_epoch = 1  # out-of-range history -> fail closed
-    have_epoch = db.execute(
-        "SELECT 1 FROM token_meta WHERE name='revocation_epoch'"
-    ).fetchone()
-    if not have_epoch:
-        db.execute(
-            "INSERT OR REPLACE INTO token_meta(name,value) VALUES('revocation_epoch',?)",
-            (str(legacy_epoch),),
-        )
-    db.execute(
-        "INSERT OR REPLACE INTO token_meta(name,value) VALUES('legacy_migration','done')"
-    )
-    return migrated
-
-
-def _cleanup_legacy_artifacts(hermes_root: Path) -> None:
-    """Remove legacy artifacts AFTER the enclosing transaction committed.
-
-    Safe to retry: each unlink is missing_ok. If cleanup fails the worst case
-    is leftover files that the closed migration marker ignores.
-    """
-    try:
-        _legacy_envelope_path(hermes_root).unlink(missing_ok=True)
-        (_secrets_dir(hermes_root) / LEGACY_LEDGER_FILENAME).unlink(missing_ok=True)
-        (_secrets_dir(hermes_root) / LEGACY_EPOCH_FILENAME).unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def read_revocation_epoch(hermes_root: Path) -> int:
@@ -1081,61 +599,6 @@ def status(hermes_root: Path) -> dict[str, Any]:
         "expires_at": max(expiries) if expiries else None,
         "revocation_epoch": int(meta["value"]) if meta else 0,
         "kid": "",
-        "client_count": len(live),
-    }
-
-
-def _legacy_flat_records(bundle: dict[str, Any]) -> list[dict[str, Any]]:
-    flat: list[dict[str, Any]] = []
-    sections = [v for v in bundle.values() if isinstance(v, dict)]
-    for section in sections:
-        flat.extend(i for i in section.values() if isinstance(i, dict))
-    for item in bundle.values():
-        if isinstance(item, dict) and "expires_at" in item and item not in flat:
-            flat.append(item)
-    return flat
-    envelope = load_envelope(hermes_root)
-    if envelope is None:
-        return {
-            "available": False,
-            "presence": "absent",
-            "expires_at": None,
-            "revocation_epoch": read_revocation_epoch(hermes_root),
-            "kid": "",
-        }
-    try:
-        bundle = load_tokens(hermes_root)
-    except TokenStoreError:
-        return {
-            "available": True,
-            "presence": "corrupt",
-            "expires_at": None,
-            "revocation_epoch": read_revocation_epoch(hermes_root),
-            "kid": envelope.get("kid", ""),
-        }
-    flat: list[dict[str, Any]] = []
-    if isinstance(bundle, dict):
-        # Sectioned shape (current writer) and flat legacy shape both count.
-        # Expiry reflects ALL entries (an expired max is how the UI derives
-        # the 'expired' state); liveness only gates the count.
-        sections = [v for v in bundle.values() if isinstance(v, dict)]
-        for section in sections:
-            for item in section.values():
-                if isinstance(item, dict):
-                    flat.append(item)
-        for item in bundle.values():
-            if isinstance(item, dict) and "expires_at" in item and item not in flat:
-                flat.append(item)
-    now = time.time()
-    live = [i for i in flat if i.get("expires_at", 0) > now]
-    expiries = [v.get("expires_at") for v in flat if v.get("expires_at")]
-    expires_at = max(expiries) if expiries else None  # type: ignore[type-var]
-    return {
-        "available": True,
-        "presence": "present",
-        "expires_at": expires_at,
-        "revocation_epoch": read_revocation_epoch(hermes_root),
-        "kid": envelope.get("kid", ""),
         "client_count": len(live),
     }
 
