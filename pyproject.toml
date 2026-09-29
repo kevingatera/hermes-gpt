@@ -74,6 +74,7 @@ py-modules = [
   "operator_export",
   "operator_fleet",
   "operator_fleet_a2a",
+  "operator_fleet_results",
   "operator_fleet_authority",
   "operator_fleet_work_orders",
   "fabric_artifacts",
