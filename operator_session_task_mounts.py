@@ -39,16 +39,25 @@ _SAFE_RUNTIME_DATA_FILE_NAMES = frozenset({"secrets_introspect.xml"})
 
 
 def _path_has_protected_component(path: Path) -> bool:
+    # The shared path policy resolves symlinks. Preserve the configured alias's
+    # name too, so `.env -> settings.dat` cannot hide a protected filename.
     path_parts = tuple(part.lower() for part in path.parts)
-    return any(
-        part in policy_paths.DEFAULT_DENIED_DIR_NAMES for part in path_parts
-    ) or policy.is_denied_path(path)
+    if any(part in policy_paths.DEFAULT_DENIED_DIR_NAMES for part in path_parts):
+        return True
+    name = path.name.lower()
+    if name in policy_paths.DEFAULT_DENIED_BASENAMES or name.startswith(".env."):
+        return True
+    if any(fragment in name for fragment in policy_paths.SECRET_PATH_SUBSTRINGS):
+        return True
+    return policy.is_denied_path(path)
 
 
 def _runtime_entry_is_protected(entry: Path, runtime_path: Path) -> bool:
     """Check secrets without treating standard-library modules as credentials."""
     if entry.is_symlink():
-        return _path_has_protected_component(entry.resolve(strict=False))
+        return _path_has_protected_component(entry) or _path_has_protected_component(
+            entry.resolve(strict=False)
+        )
 
     relative_parts = entry.relative_to(runtime_path).parts
     if any(
@@ -102,7 +111,12 @@ def _validated_profile_runtime_mount(
     candidate: Path, task_home: Path, hermes_data_root: Path
 ) -> Path | None:
     """Reject secrets and skip host/profile trees that are mounted separately."""
-    resolved = Path(candidate).resolve(strict=True)
+    candidate = Path(candidate).expanduser()
+    if _path_has_protected_component(candidate):
+        raise PermissionError(
+            "Selected Hermes profile references a protected runtime path"
+        )
+    resolved = candidate.resolve(strict=True)
     if _path_has_protected_component(resolved):
         raise PermissionError(
             "Selected Hermes profile references a protected runtime path"
@@ -119,6 +133,7 @@ def _validated_profile_runtime_mount(
     if (
         resolved in {Path("/"), home, resolved_data_root, profiles_root}
         or resolved in home.parents
+        or resolved in resolved_data_root.parents
         or resolved_data_root in resolved.parents
         or (in_profile_tree and not in_task_home)
     ):

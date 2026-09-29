@@ -87,6 +87,41 @@ def test_profile_runtime_mount_keeps_explicit_nonsecret_mcp_runtime(tmp_path):
     ) == (runtime,)
 
 
+@pytest.mark.parametrize("name", [".env", "auth.json", "provider-token.json"])
+def test_profile_runtime_mount_rejects_secret_named_symlink(tmp_path, name):
+    home = tmp_path / "home"
+    task_home = home / ".hermes" / "profiles" / ("e" * 32)
+    task_home.mkdir(parents=True)
+    runtime = home / "runtime"
+    runtime.mkdir()
+    target = runtime / "settings.dat"
+    target.write_text("fixture", encoding="utf-8")
+    alias = runtime / name
+    alias.symlink_to(target)
+
+    # Both a containing directory and a directly configured alias must refuse
+    # the secret-looking name, regardless of the target's ordinary basename.
+    for candidate in (runtime, alias):
+        with pytest.raises(PermissionError, match="protected runtime path"):
+            _mount_paths(candidate, home, task_home)
+
+
+def test_profile_runtime_mount_skips_external_hermes_ancestor(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    data_root = tmp_path / "storage" / "hermes"
+    task_home = data_root / "profiles" / ("f" * 32)
+    task_home.mkdir(parents=True)
+    (data_root / ".env").write_text("fixture", encoding="utf-8")
+    workspace = home / "workspace"
+    workspace.mkdir()
+
+    assert task_mounts.readonly_profile_runtime_paths(
+        (data_root.parent,), workspace, task_home, data_root
+    ) == ()
+
+
 def test_profile_runtime_mount_allows_standard_library_secret_named_modules(
     tmp_path,
 ):

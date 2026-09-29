@@ -13,6 +13,7 @@
 - Redact browser URL credentials and common secret-bearing query or fragment parameters from browser status and command output.
 - Run managed turns through Hermes' supported `chat` interface, recover session IDs from quiet-mode stderr, and keep the task's browser MCP active inside the confined process. Browser descriptors use private per-task mount directories, and both an installed CLI symlink and its target are exposed read-only.
 - Validate profile-configured MCP runtime mounts and refuse protected secret paths or runtime trees that cannot be checked safely.
+- Preserve protected symlink aliases during runtime-path validation and skip ancestors of external Hermes data directories before scanning them.
 - Require session-control requests to use a profile explicitly named by `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` and authorized by the Operator profile allowlist. This prevents session execution from bypassing profile restrictions through the default-profile path.
 - Add `hermes_session_job_cancel`, which signals only a process owned by the current server instance and records cancellation in the durable job status. POSIX cancellation targets the dedicated process group and escalates to `SIGKILL` when members remain.
 - Publish redacted session-job lifecycle and elapsed-time progress events on the durable `session-job` topic; task records remain authoritative and progress events contain no prompts or captured output.
