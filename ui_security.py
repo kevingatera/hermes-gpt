@@ -445,9 +445,9 @@ def allowed_surfaces() -> set[str]:
     Unset env = all surfaces; comma list = only listed; empty string = none.
     The unset state is NOT "deny by default" (AGENTS.md).
     """
-    import operator_mission as op_mission
+    import operator_mission_common as mission_common
 
-    return set(op_mission._allowed_surfaces())
+    return set(mission_common._allowed_surfaces())
 
 
 def ui_capabilities(level: str, surfaces: set[str], *, account_ok: bool) -> list[str]:

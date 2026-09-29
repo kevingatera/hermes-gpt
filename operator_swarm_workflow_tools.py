@@ -9,7 +9,8 @@ from pathlib import Path
 from typing import Any
 
 import operator_contract as contract_mod
-import operator_mission as mission
+import operator_mission_common as mission_common
+import operator_mission_work as mission_work
 import operator_policy as op
 import operator_swarm_common as common
 import operator_swarm_model as swarm_model
@@ -354,7 +355,7 @@ def hermes_swarm_workflow_list(hermes_root: Path | None = None) -> str:
         changed=False,
         summary=f"list workflows count={len(workflows)}",
     )
-    return mission._bounded_json(payload)
+    return mission_common._bounded_json(payload)
 
 
 def hermes_swarm_workflow_status(
@@ -401,7 +402,7 @@ def hermes_swarm_workflow_status(
     observed_by_task: dict[str, list[dict[str, Any]]] = {}
     try:
         warnings: list[str] = []
-        runs = mission._kanban_runs_for(root, warnings)
+        runs = mission_work._kanban_runs_for(root, warnings)
         for r in runs:
             observed_by_task.setdefault(str(r.get("task_id") or ""), []).append(
                 {
@@ -458,4 +459,4 @@ def hermes_swarm_workflow_status(
         changed=False,
         summary=f"status stages={len(stages)} status={record.get('status')}",
     )
-    return mission._bounded_json(payload)
+    return mission_common._bounded_json(payload)

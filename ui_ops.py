@@ -34,17 +34,17 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-import operator_policy as op
-import operator_mission as op_mission
-import operator_events as op_events
-import operator_swarm as op_swarm
 import operator_codex as op_codex
 import operator_cron as op_cron
-import operator_fleet as op_fleet
-import operator_review as op_review
 import operator_diagnostics as op_diagnostics
-import operator_recovery as op_recovery
+import operator_events as op_events
+import operator_mission as op_mission
+import operator_mission_common as mission_common
 import operator_oauth as op_oauth
+import operator_policy as op
+import operator_recovery as op_recovery
+import operator_review as op_review
+import operator_swarm as op_swarm
 from versioning import VERSION
 
 # The 12 Mission Control surfaces (must match operator_mission.MISSION_SURFACES).
@@ -106,7 +106,7 @@ def _clamp_int(value: Any, default: int, lo: int, hi: int) -> int:
 
 def _resolve_root() -> Any:
     """Resolve the active Hermes data root (mirrors server.py defaults)."""
-    return op_mission._resolve_root(None)  # noqa: SLF001 - same-package reuse
+    return mission_common._resolve_root(None)
 
 
 def _parse_payload(result: Any) -> dict[str, Any]:
@@ -157,8 +157,8 @@ def _surface_payload(surface: str, force_refresh: bool) -> dict[str, Any]:
     """
     root = _resolve_root()
     tid = op.new_trace_id()
-    if not op_mission._surface_allowed(surface):  # noqa: SLF001
-        denied = op_mission._mission_denied(tool=f"hermes_mission_{surface}", surface=surface)  # noqa: SLF001
+    if not mission_common._surface_allowed(surface):
+        denied = mission_common._mission_denied(tool=f"hermes_mission_{surface}", surface=surface)
         _audit(f"hermes_mission_{surface}", success=False, summary=f"denied:{surface}", extra={"trace_id": tid})
         return denied
     try:
@@ -170,7 +170,7 @@ def _surface_payload(surface: str, force_refresh: bool) -> dict[str, Any]:
         else:
             payload = _SURFACE_DICT_FNS[surface](hermes_root=root, trace_id=tid)
     except Exception as exc:  # noqa: BLE001 - surfaces degrade gracefully
-        payload = op_mission._mission_error(  # noqa: SLF001
+        payload = mission_common._mission_error(
             tool=f"hermes_mission_{surface}",
             surface=surface,
             code="MISSION_SURFACE_ERROR",

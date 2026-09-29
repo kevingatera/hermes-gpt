@@ -53,7 +53,7 @@ from typing import Any, Callable
 
 import operator_command_utils as op_command
 import operator_fleet as op_fleet
-import operator_mission as mission
+import operator_mission_work as mission_work
 import operator_policy as op
 import operator_runners as op_runners
 import operator_workspace as op_workspace
@@ -586,7 +586,7 @@ def _surface_contract(contract: dict[str, Any]) -> dict[str, Any]:
 def _observed_kanban_runs(task_id: str, hermes_root: Path) -> list[dict[str, Any]]:
     warnings: list[str] = []
     try:
-        runs = mission._kanban_runs_for(hermes_root, warnings)
+        runs = mission_work._kanban_runs_for(hermes_root, warnings)
     except Exception:
         return []
     return [
@@ -611,7 +611,7 @@ def _observed_delegations(task_id: str, hermes_root: Path) -> list[dict[str, Any
     for profile in op.list_existing_profiles(hermes_root):
         try:
             home = op.resolve_profile_home(profile, hermes_root)
-            for d in mission._async_delegations_for(home, warnings, profile):
+            for d in mission_work._async_delegations_for(home, warnings, profile):
                 if d.get("delegation_id") == task_id:
                     out.append(
                         {

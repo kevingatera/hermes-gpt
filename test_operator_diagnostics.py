@@ -5,14 +5,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 import operator_diagnostics as od
 import operator_policy as op
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -551,6 +549,7 @@ def test_recover_writes_audit_record(hermes_root, clean_env, audit_override):
 
 def test_new_tools_registered():
     import asyncio
+
     import server
 
     built = server.build_server()
@@ -582,7 +581,7 @@ def test_gateway_state_with_invalid_utf8_reports_not_running(hermes_root):
 def test_mission_profile_summary_uses_state_pid_for_json_pid_file(hermes_root):
     """_profile_summary detects a running gateway from gateway_state.json
     when gateway.pid is JSON (the PR #62 scenario)."""
-    import operator_mission as om
+    import operator_mission_operational as mission_operational
 
     (hermes_root / "gateway.pid").write_text(
         json.dumps({"pid": os.getpid(), "kind": "hermes-gateway"}),
@@ -598,5 +597,5 @@ def test_mission_profile_summary_uses_state_pid_for_json_pid_file(hermes_root):
         ),
         encoding="utf-8",
     )
-    summary = om._profile_summary("default", hermes_root, [])
+    summary = mission_operational._profile_summary("default", hermes_root, [])
     assert summary.get("gateway_running") is True

@@ -20,8 +20,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
 import operator_contract as contract_mod
+import operator_mission_common as mission_common
+import operator_policy as op
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -90,7 +91,7 @@ def _make_kanban_board(boards_dir: Path, slug: str, runs: list[dict]) -> None:
 def hermes_root(tmp_path: Path, monkeypatch) -> Path:
     """Build a hermetic Hermes root + workspace with observed run sources."""
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    contract_mod.mission._cache_clear()
+    mission_common._cache_clear()
 
     root = tmp_path / "hermes"
     root.mkdir(parents=True, exist_ok=True)
@@ -1079,7 +1080,7 @@ def test_all_sqlite_opens_are_mode_ro(hermes_root, monkeypatch):
             uris.append(database)
         return real_connect(database, *args, **kwargs)
 
-    monkeypatch.setattr("operator_mission.sqlite3.connect", capturing_connect)
+    monkeypatch.setattr("operator_mission_sources.sqlite3.connect", capturing_connect)
     ws = hermes_root.parent / "ws"
     c = _contract_for_ws(ws, task_id="t-done")
     _run_validate(c, hermes_root)

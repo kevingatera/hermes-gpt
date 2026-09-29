@@ -15,6 +15,7 @@ from starlette.testclient import TestClient
 
 import oauth_auth
 import operator_mission as op_mission
+import operator_mission_common as mission_common
 import operator_policy as op
 import server
 import ui_api
@@ -29,7 +30,7 @@ def ui_root(tmp_path: Path, monkeypatch):
     monkeypatch.delenv(oauth_auth.OAUTH_ENABLE_ENV, raising=False)
     monkeypatch.delenv(oauth_auth.AUTH_TOKEN_ENV, raising=False)
     op.set_audit_log_override(tmp_path / "audit.jsonl")
-    op_mission._cache_clear()
+    mission_common._cache_clear()
     root = tmp_path / ".hermes"
     root.mkdir(parents=True, exist_ok=True)
     (root / "config.yaml").write_text(

@@ -17,12 +17,12 @@ from starlette.routing import Route
 
 import operator_fabric as fabric
 import operator_fabric_view as view
-import operator_mission as op_mission
+import operator_mission_common as mission_common
 import ui_security
 
 
 def _root() -> Any:
-    return op_mission._resolve_root(None)
+    return mission_common._resolve_root(None)
 
 
 def _response(data: Any, status: int = 200) -> JSONResponse:

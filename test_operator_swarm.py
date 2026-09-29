@@ -41,6 +41,7 @@ from pathlib import Path
 import pytest
 
 import operator_contract as contract_mod
+import operator_mission_common as mission_common
 import operator_policy as op
 import operator_swarm as swarm
 import operator_swarm_advance_tools as swarm_advance
@@ -88,7 +89,7 @@ def hermes_root(tmp_path: Path, monkeypatch) -> Path:
     """Build a hermetic Hermes root + workspace with observed run sources."""
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     op.set_audit_log_override(tmp_path / "audit.jsonl")
-    contract_mod.mission._cache_clear()
+    mission_common._cache_clear()
 
     root = tmp_path / "hermes"
     root.mkdir(parents=True, exist_ok=True)

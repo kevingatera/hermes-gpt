@@ -15,9 +15,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
 import operator_fleet as op_fleet
 import operator_mission as mission
+import operator_mission_common as mission_common
+import operator_policy as op
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -235,7 +236,7 @@ def hermes_root(tmp_path: Path, monkeypatch) -> Path:
         lambda **kw: json.dumps({"success": True, "count": 1, "agents": [{"name": "rza", "has_token": True}]}),
     )
     _audit_override(tmp_path)
-    mission._cache_clear()
+    mission_common._cache_clear()
     root = tmp_path / "hermes"
     root.mkdir(parents=True, exist_ok=True)
 
@@ -482,7 +483,7 @@ def test_all_sqlite_opens_are_mode_ro(hermes_root, monkeypatch):
             uris.append(database)
         return real_connect(database, *args, **kwargs)
 
-    monkeypatch.setattr("operator_mission.sqlite3.connect", capturing_connect)
+    monkeypatch.setattr("operator_mission_sources.sqlite3.connect", capturing_connect)
     # Exercise surfaces that open SQLite.
     _run("hermes_mission_profiles_tool", hermes_root)
     _run("hermes_mission_delegations_tool", hermes_root)
@@ -659,7 +660,7 @@ def test_failures_bounded_and_sanitized(hermes_root):
 
 def test_free_text_pii_strip_removes_contact_handles_and_name_patterns():
     raw = "Name: Jane Doe email jane.doe@example.com phone +1 (555) 123-4567 @janedoe"
-    safe = mission._sanitize_error(raw)
+    safe = mission_common._sanitize_error(raw)
     assert "Jane Doe" not in safe
     assert "jane.doe@example.com" not in safe
     assert "555" not in safe
@@ -711,7 +712,7 @@ def test_pii_strip_applied_across_cron_audit_failures_surfaces(hermes_root):
         [{"task_id": "t-pii", "assignee": "hermes-dev", "status": "failed", "outcome": "failed",
           "error": "email jane.doe@example.com user @janedoe"}],
     )
-    mission._cache_clear()
+    mission_common._cache_clear()
 
     cron = _run("hermes_mission_cron_tool", hermes_root)
     audit = _run("hermes_mission_audit_tool", hermes_root)
