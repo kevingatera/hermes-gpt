@@ -109,6 +109,7 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     assert {"model", "reasoning_effort", "browser_profile"} <= set(
         start_schema["properties"]
     )
+    assert not {"model", "reasoning_effort"} & set(start_schema.get("required", []))
     continue_schema = by_name["hermes_session_continue"].model_dump(by_alias=True)["inputSchema"]
     assert {"model", "reasoning_effort"} <= set(continue_schema["properties"])
     start_schema = by_name["hermes_session_start"].model_dump(by_alias=True)["inputSchema"]

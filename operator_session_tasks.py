@@ -26,7 +26,6 @@ import operator_session_task_profile as task_profile
 import operator_session_task_runtime as runtime
 import runner_confinement as confinement
 from operator_session_task_runtime import (
-    MODEL_ID,
     PROFILE_DEFAULT_TOOLSETS,
     REASONING_EFFORTS,
     TOOLSETS,
@@ -41,6 +40,7 @@ from operator_session_task_store import (
     _save_task_record,
     _task_path,
     _task_root,
+    _task_setting,
     _write_json,
 )
 
@@ -88,7 +88,7 @@ def hermes_task_workspaces(hermes_root: Path | None = None) -> dict[str, Any]:
                 {"id": alias, "label": path.name or alias}
                 for alias, path in sorted(entries.items())
             ],
-            "model": MODEL_ID,
+            "model_selection": "selected Hermes profile default unless model is overridden",
             "toolsets": TOOLSETS,
             "reasoning_efforts": sorted(REASONING_EFFORTS),
             "browser_available": browser.browser_available(hermes_root),
@@ -155,8 +155,8 @@ def hermes_task_start(
     dry_run: bool = True,
     timeout: int = 900,
     *,
-    model: str = MODEL_ID,
-    reasoning_effort: str = "high",
+    model: str | None = None,
+    reasoning_effort: str | None = None,
     browser_enabled: bool = True,
     headed_browser: bool = False,
     browser_profile: str | None = None,
@@ -330,8 +330,7 @@ def hermes_task_continue(
         if not task or task.get("task_id") != task_id:
             return {"success": False, "code": "TASK_NOT_FOUND", "safe_message": "Hermes task was not found."}
         selected_model, selected_effort = runtime._validate_model_and_effort(
-            model or str(task.get("model") or MODEL_ID),
-            reasoning_effort or str(task.get("reasoning_effort") or "high"),
+            model, reasoning_effort
         )
         task["model"] = selected_model
         task["reasoning_effort"] = selected_effort
@@ -395,8 +394,8 @@ def hermes_task_status(task_id: str, hermes_root: Path | None = None) -> dict[st
                 "task_id": task_id,
                 "workspace_id": task.get("workspace_id"),
                 "status": task.get("status"),
-                "model": str(task.get("model") or MODEL_ID),
-                "reasoning_effort": str(task.get("reasoning_effort") or "high"),
+                "model": _task_setting(task, "model", 128),
+                "reasoning_effort": _task_setting(task, "reasoning_effort", 32),
                 "toolsets": str(task.get("toolsets") or PROFILE_DEFAULT_TOOLSETS),
                 "browser_enabled": bool(task.get("browser_enabled")),
                 "headed_browser": bool(task.get("headed_browser")),
@@ -427,7 +426,6 @@ def hermes_task_result(task_id: str, max_chars: int = sessions.MAX_RESULT_CHARS,
 
 __all__ = [
     "ENABLE_SCOPED_TASKS_ENV",
-    "MODEL_ID",
     "TASK_WORKSPACES_ENV",
     "TOOLSETS",
     "hermes_task_continue",

@@ -131,8 +131,10 @@ builder does not create the tunnel or the ChatGPT connection.
 - Use `hermes_task_start` when the user asks for a confined workspace session
   with an isolated or profile-attached browser. It clones the selected Hermes
   profile's configuration and enabled resources into its private home while
-  keeping session state separate. Use `hermes_task_continue` with its task ID
-  to resume that same Hermes session and workspace.
+  keeping session state separate. Omit `model` and `reasoning_effort` to use
+  the cloned profile's defaults; pass either only for a requested per-turn
+  override. Use `hermes_task_continue` with its task ID to resume that same
+  Hermes session and workspace.
 - Use `hermes_browser_profile_*` to operate an authorized profile browser
   without starting a Hermes model turn. Use `hermes_task_browser_*` for the
   browser owned by a managed task.

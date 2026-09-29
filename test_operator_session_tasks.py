@@ -68,9 +68,9 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     )
 
     assert result["success"] is True
-    assert result["model"] == "deepseek/deepseek-v4.1-flash"
+    assert result["model"] is None
     assert result["toolsets"] == "profile-configured"
-    assert result["reasoning_effort"] == "high"
+    assert result["reasoning_effort"] is None
     task_record = tasks._read_json(tasks._task_path(result["task_id"], root))
     assert task_record["browser_source"] == "disabled"
     assert wrapped["workspace"] == workspace.resolve()
@@ -80,6 +80,8 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert wrapped["writable_paths"] == (root / "profiles" / result["task_id"],)
     assert "--toolsets" not in wrapped["argv"]
     assert "--ignore-rules" not in wrapped["argv"]
+    assert "--model" not in wrapped["argv"]
+    assert "--reasoning" not in wrapped["argv"]
     assert wrapped["argv"][1] == "chat"
     assert "--usage-file" not in wrapped["argv"]
     assert "--safe-mode" not in wrapped["argv"]
@@ -132,6 +134,7 @@ def test_task_start_accepts_a_custom_configured_provider_model(monkeypatch, tmp_
     assert result["success"] is True
     assert result["dry_run"] is True
     assert result["model"] == "custom-provider/model-name"
+    assert result["reasoning_effort"] is None
     assert not tasks._task_root(root).exists()
 
 
@@ -147,15 +150,22 @@ def test_task_start_does_not_require_a_separate_provider_key(
     monkeypatch.setattr(tasks.job_runtime, "_hermes_executable", lambda _root: "/opt/hermes/bin/hermes")
     monkeypatch.setattr(tasks.runtime, "_source_root", lambda _executable, _root: source_root)
     monkeypatch.setattr(tasks.confinement, "confinement_available", lambda *, writable: True)
-    monkeypatch.setattr(
-        tasks.job_runtime,
-        "start_managed_session_job",
-        lambda **kwargs: {
+
+    launched = {}
+
+    def start_managed(**kwargs):
+        launched.update(kwargs)
+        return {
             "success": True,
             "job_id": "9" * 32,
             "task_id": kwargs["metadata"]["task_id"],
             "status": "running",
-        },
+        }
+
+    monkeypatch.setattr(
+        tasks.job_runtime,
+        "start_managed_session_job",
+        start_managed,
     )
 
     result = tasks.hermes_task_start(
@@ -172,6 +182,8 @@ def test_task_start_does_not_require_a_separate_provider_key(
     )
 
     assert result["success"] is True
+    assert launched["argv"][launched["argv"].index("--model") + 1] == "deepseek/deepseek-v4.1-flash"
+    assert launched["argv"][launched["argv"].index("--reasoning") + 1] == "high"
     assert "DEEPSEEK_API_KEY" not in json.dumps(result)
     assert "test-deepseek-key" not in json.dumps(tasks._read_json(tasks._task_path(result["task_id"], root)))
 
@@ -284,6 +296,17 @@ def test_task_summary_reports_browser_source_without_profile_name():
     assert "private-browser-profile" not in serialized
 
 
+def test_task_summary_keeps_profile_defaults_unresolved():
+    summary = tasks._public_task_summary({
+        "task_id": "e" * 32,
+        "model": None,
+        "reasoning_effort": None,
+    })
+
+    assert summary["model"] is None
+    assert summary["reasoning_effort"] is None
+
+
 def test_task_list_validates_pagination_and_scoped_task_gate(monkeypatch, tmp_path):
     workspace = tmp_path / "authorized" / "demo"
     workspace.mkdir(parents=True)
@@ -357,8 +380,8 @@ def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, 
         "task_home": str(task_home),
         "profile": "default",
         "allow_workspace_write": False,
-        "model": tasks.MODEL_ID,
-        "reasoning_effort": "high",
+        "model": None,
+        "reasoning_effort": None,
         "browser_enabled": True,
         "session_id": "",
         "turn_count": 0,
@@ -433,6 +456,8 @@ def test_task_continue_resumes_recorded_session(monkeypatch, tmp_path):
     assert captured["argv"][captured["argv"].index("--resume") + 1] == "20260927_203010_ab12cd"
     assert "--toolsets" not in captured["argv"]
     assert "--ignore-rules" not in captured["argv"]
+    assert "--model" not in captured["argv"]
+    assert "--reasoning" not in captured["argv"]
 
 
 def test_task_continue_dry_run_reports_selected_model_and_effort(monkeypatch, tmp_path):
@@ -450,7 +475,7 @@ def test_task_continue_dry_run_reports_selected_model_and_effort(monkeypatch, tm
         "hermes_root": str(root),
         "profile": "default",
         "allow_workspace_write": False,
-        "model": tasks.MODEL_ID,
+        "model": "deepseek/deepseek-v4.1-flash",
         "reasoning_effort": "high",
         "browser_enabled": False,
         "toolsets": "profile-configured",
@@ -481,6 +506,10 @@ def test_task_model_validation_allows_any_hermes_provider_name():
         "my-provider/model-v3",
         "high",
     )
+
+
+def test_task_model_and_effort_validation_allows_profile_defaults():
+    assert tasks.runtime._validate_model_and_effort(None, None) == (None, None)
 
 
 def test_task_start_attaches_an_explicitly_allowed_hermes_browser(

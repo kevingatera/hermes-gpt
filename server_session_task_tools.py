@@ -8,7 +8,6 @@ from typing import Any
 from mcp.types import ToolAnnotations
 
 import operator_session as op_session
-import operator_session_tasks as op_session_tasks
 from server_session_tools import SessionToolContext
 
 DEFAULT_SESSION_TIMEOUT = 900
@@ -84,8 +83,8 @@ class ManagedSessionTaskTools:
         confirm: bool = False,
         dry_run: bool = True,
         timeout: int = DEFAULT_SESSION_TIMEOUT,
-        model: str = op_session_tasks.MODEL_ID,
-        reasoning_effort: str = "high",
+        model: str | None = None,
+        reasoning_effort: str | None = None,
         browser_enabled: bool = True,
         headed_browser: bool = False,
         browser_profile: str | None = None,

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import operator_session_job_store as session_store
-from operator_session_task_runtime import MODEL_ID
 
 _TASK_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 MAX_TASK_LIST_LIMIT = 100
@@ -65,6 +64,12 @@ def _save_task_record(task: dict[str, Any], hermes_root: Path | None) -> None:
     _write_json(_task_path(str(task["task_id"]), hermes_root), task)
 
 
+def _task_setting(task: dict[str, Any], name: str, maximum: int) -> str | None:
+    """Return explicit settings and keep profile defaults unresolved."""
+    value = task.get(name)
+    return value[:maximum] if isinstance(value, str) else None
+
+
 def _public_task_summary(task: dict[str, Any]) -> dict[str, Any] | None:
     """Project a task record onto fields needed to choose a session to resume."""
     task_id = task.get("task_id")
@@ -92,8 +97,8 @@ def _public_task_summary(task: dict[str, Any]) -> dict[str, Any] | None:
         "task_id": task_id,
         "workspace_id": text_field("workspace_id", 64),
         "status": text_field("status", 32, "unknown"),
-        "model": text_field("model", 128, MODEL_ID),
-        "reasoning_effort": text_field("reasoning_effort", 32, "high"),
+        "model": _task_setting(task, "model", 128),
+        "reasoning_effort": _task_setting(task, "reasoning_effort", 32),
         "browser_enabled": browser_enabled,
         "browser_source": browser_source,
         "headed_browser": (

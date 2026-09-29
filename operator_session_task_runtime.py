@@ -21,7 +21,6 @@ import operator_session_task_mcp as task_mcp
 import operator_session_task_profile as task_profile
 import runner_confinement as confinement
 
-MODEL_ID = "deepseek/deepseek-v4.1-flash"
 TOOLSETS = "profile-configured+task-browser"
 PROFILE_DEFAULT_TOOLSETS = "profile-configured"
 MAX_TIMEOUT = 3600
@@ -117,13 +116,17 @@ def _installed_source_root(executable: str) -> Path | None:
     return None
 
 
-def _validate_model_and_effort(model: str, effort: str) -> tuple[str, str]:
-    if not isinstance(model, str) or len(model) > 256 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+/-]*", model):
-        raise ValueError("model must be a valid provider/model ID")
-    provider, separator, model_name = model.partition("/")
-    if not separator or not provider or not model_name:
-        raise ValueError("model must use provider/model syntax")
-    if not isinstance(effort, str) or effort not in REASONING_EFFORTS:
+def _validate_model_and_effort(
+    model: str | None, effort: str | None
+) -> tuple[str | None, str | None]:
+    """Validate explicit per-turn overrides while leaving profile defaults unset."""
+    if model is not None:
+        if not isinstance(model, str) or len(model) > 256 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+/-]*", model):
+            raise ValueError("model must be a valid provider/model ID")
+        provider, separator, model_name = model.partition("/")
+        if not separator or not provider or not model_name:
+            raise ValueError("model must use provider/model syntax")
+    if effort is not None and (not isinstance(effort, str) or effort not in REASONING_EFFORTS):
         choices = ", ".join(sorted(REASONING_EFFORTS))
         raise ValueError(f"reasoning_effort must be one of: {choices}")
     return model, effort
@@ -198,8 +201,9 @@ def start_turn(
     policy.require_level("workspace")
     policy.require_mutation(dry_run)
     if policy.effective_dry_run(dry_run):
-        model = str(task.get("model") or MODEL_ID)
-        reasoning_effort = str(task.get("reasoning_effort") or "high")
+        model, reasoning_effort = _validate_model_and_effort(
+            task.get("model"), task.get("reasoning_effort")
+        )
         browser_enabled = bool(task.get("browser_enabled"))
         return {
             "success": True,
@@ -221,7 +225,7 @@ def start_turn(
         hermes_root,
     )
     model, reasoning_effort = _validate_model_and_effort(
-        str(task.get("model") or MODEL_ID), str(task.get("reasoning_effort") or "high")
+        task.get("model"), task.get("reasoning_effort")
     )
     workspace = Path(str(task["workspace"])).expanduser().resolve(strict=True)
     policy.require_workspace_path(workspace)
@@ -259,13 +263,12 @@ def start_turn(
     browser_enabled = bool(task.get("browser_enabled"))
     toolsets = TOOLSETS if browser_enabled else PROFILE_DEFAULT_TOOLSETS
     writable_task_paths = [task_home]
-    argv = [
-        executable,
-        "chat",
-        "--model", model,
-        "--reasoning", reasoning_effort,
-        "--in", str(workspace),
-    ]
+    argv = [executable, "chat"]
+    if model is not None:
+        argv.extend(("--model", model))
+    if reasoning_effort is not None:
+        argv.extend(("--reasoning", reasoning_effort))
+    argv.extend(("--in", str(workspace)))
     if session_id:
         argv += ["--resume", session_id]
     argv += ["--query-file", "-", "--oneshot", "-Q"]
