@@ -11,47 +11,60 @@ fallback for registry listing only.
 
 from __future__ import annotations
 
-import concurrent.futures
 import hashlib
 import json
 import os
 import re
 import shutil
-import urllib.error
-import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
+import operator_fleet_a2a as fleet_a2a
 import operator_policy as op
+
+# Keep the existing internal imports used by server and Fabric callers.
+# Fleet policy and response shaping stay here; A2A configuration and transport
+# live in operator_fleet_a2a so transport details do not grow this file again.
+AUTHORITY_MANIFEST_ENV = "HERMES_GPT_FLEET_AUTHORITY_MANIFEST"
+A2A_REGISTRY_MODE_ENV = fleet_a2a.A2A_REGISTRY_MODE_ENV
+_A2A_DEFAULT_TIMEOUT = fleet_a2a._A2A_DEFAULT_TIMEOUT
+_A2A_DEFAULT_REGISTRY_TIMEOUT = fleet_a2a._A2A_DEFAULT_REGISTRY_TIMEOUT
+_AGENT_RE = fleet_a2a._AGENT_RE
+_TASK_ID_RE = fleet_a2a._TASK_ID_RE
+_MAX_REMOTE_BYTES = fleet_a2a._MAX_REMOTE_BYTES
+_LOCAL_AGENT_CARDS = fleet_a2a._LOCAL_AGENT_CARDS
+FleetDispatchTimeout = fleet_a2a.FleetDispatchTimeout
+register_local_agent_card = fleet_a2a.register_local_agent_card
+
+# Preserve helpers imported by Fabric and test isolation while delegating the
+# actual configuration and network work to the A2A module.
+_a2a_mode = fleet_a2a._a2a_mode
+_load_hermes_config = fleet_a2a._load_hermes_config
+_a2a_peers = fleet_a2a._a2a_peers
+_auth_header = fleet_a2a._auth_header
+_resolve_env_token = fleet_a2a._resolve_env_token
+_a2a_peers_with_resolved_tokens = fleet_a2a._a2a_peers_with_resolved_tokens
+_http_get_json = fleet_a2a._http_get_json
+_http_get_json_threaded = fleet_a2a._http_get_json_threaded
+_http_post_json = fleet_a2a._http_post_json
+_card_url = fleet_a2a._card_url
+_fetch_card = fleet_a2a._fetch_card
+_jsonrpc_interface = fleet_a2a._jsonrpc_interface
+_rpc_url = fleet_a2a._rpc_url
+_interface_tenant = fleet_a2a._interface_tenant
+_send_message = fleet_a2a._send_message
+_get_task = fleet_a2a._get_task
+_registry_official = fleet_a2a._registry_official
 
 Runner = Callable[..., tuple[int, str, str]]
 
-# In-process Agent Card cache. When a fleet tool runs inside the same
-# hermes-gpt process that serves a peer's card on loopback, an HTTP fetch
-# back to that loopback would deadlock the single event loop. Peers may
-# register their own card here so loopback verification reads it directly
-# instead of round-tripping through the blocked loop.
-_LOCAL_AGENT_CARDS: dict[str, dict[str, Any]] = {}
-
-
-def register_local_agent_card(url: str, card: dict[str, Any]) -> None:
-    """Publish this process's own Agent Card for loopback fleet verification."""
-    _LOCAL_AGENT_CARDS[url.rstrip("/")] = card
-
-
-AUTHORITY_MANIFEST_ENV = "HERMES_GPT_FLEET_AUTHORITY_MANIFEST"
-A2A_REGISTRY_MODE_ENV = "HERMES_GPT_FLEET_A2A_MODE"
-_A2A_DEFAULT_TIMEOUT = 30
-_A2A_DEFAULT_REGISTRY_TIMEOUT = 10
-_AGENT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 _CARD_IDENTITY_RE = re.compile(r"^[^\x00-\x1f\x7f]{1,128}$")
 _PROFILE_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
-_TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 _ROLE_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]|\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
 _AUTH_CLASSES = frozenset({"none", "read_only", "reversible_write", "high_impact"})
-_MAX_REMOTE_BYTES = 1_048_576
 _MAX_MANIFEST_BYTES = 64_000
 _MAX_TEXT = 4_000
 _MAX_ITEMS = 64
@@ -109,26 +122,6 @@ class PeerVerificationError(RuntimeError):
     """A live Agent Card could not be safely matched to local authority."""
 
 
-class FleetDispatchTimeout(TimeoutError):
-    """A peer may have accepted a task even though the reply timed out.
-
-    ``task_id`` is the peer-assigned A2A task id recovered by context lookup,
-    not the local JSON-RPC request id.
-    """
-
-    def __init__(self, task_id: str):
-        super().__init__("timed out awaiting A2A peer reply")
-        self.task_id = task_id
-
-
-def _a2a_mode() -> str:
-    """Return the configured A2A backend mode: 'official', 'bridge', or 'auto'."""
-    value = os.environ.get(A2A_REGISTRY_MODE_ENV, "auto").strip().lower()
-    if value in {"official", "bridge", "auto"}:
-        return value
-    return "auto"
-
-
 def _hermes_bin(hermes_root: Path | None = None) -> str | None:
     configured = os.environ.get("HERMES_CLI", "").strip()
     if configured:
@@ -168,249 +161,6 @@ def _run(argv: list[str], *, timeout: int, runner: Runner | None) -> tuple[int, 
         if runner is not None
         else op.run_argv(argv, timeout=timeout, max_output_chars=_MAX_REMOTE_BYTES)
     )
-
-
-# ---------------------------------------------------------------------------
-# Official A2A surface (urllib, stdlib only, no hermes-a2a-bridge dependency)
-# ---------------------------------------------------------------------------
-
-def _load_hermes_config() -> dict[str, Any]:
-    """Load Hermes config.yaml, best-effort, without importing heavy internals."""
-    try:
-        from hermes_cli.config import load_config
-        return load_config() or {}
-    except Exception:
-        return {}
-
-
-def _a2a_peers() -> dict[str, dict[str, Any]]:
-    """Return the configured a2a_agents mapping from Hermes config.yaml."""
-    return _load_hermes_config().get("a2a_agents") or {}
-
-
-def _auth_header(peer: dict[str, Any]) -> dict[str, str]:
-    auth = peer.get("auth") or {}
-    if auth.get("type") == "bearer" and auth.get("token"):
-        token = _resolve_env_token(auth["token"])
-        if token:
-            return {"Authorization": f"Bearer {token}"}
-    return {}
-
-
-def _resolve_env_token(token: str) -> str:
-    if token.startswith("${env:") and token.endswith("}"):
-        name = token[6:-1].strip()
-        return os.environ.get(name, "")
-    return token
-
-
-def _a2a_peers_with_resolved_tokens() -> dict[str, dict[str, Any]]:
-    """Return a2a_agents with any ${env:NAME} bearer tokens resolved."""
-    peers = _a2a_peers()
-    out: dict[str, dict[str, Any]] = {}
-    for name, entry in peers.items():
-        entry = dict(entry)
-        auth = entry.get("auth") or {}
-        if auth.get("type") == "bearer" and isinstance(auth.get("token"), str):
-            auth = dict(auth)
-            auth["token"] = _resolve_env_token(auth["token"])
-            entry["auth"] = auth
-        out[name] = entry
-    return out
-
-
-def _http_get_json(url: str, headers: dict[str, str], timeout: int) -> dict[str, Any]:
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-        data = resp.read()
-        if len(data) > _MAX_REMOTE_BYTES:
-            raise ValueError("A2A discovery response exceeded the bounded response limit")
-        return json.loads(data.decode("utf-8"))
-
-
-def _http_get_json_threaded(url: str, headers: dict[str, str], timeout: int) -> dict[str, Any]:
-    """Run the blocking GET off the caller's event loop.
-
-    When the fleet tool runs inside the same hermes-gpt process that also
-    serves the peer's Agent Card, a blocking same-loopback fetch would
-    deadlock (the inbound request can never be accepted while the loop is
-    blocked). Offloading to a worker thread lets the inbound request through.
-    """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        return ex.submit(_http_get_json, url, headers, timeout).result()
-
-
-def _http_post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: int) -> dict[str, Any]:
-    data = json.dumps(body).encode("utf-8")
-    hdrs = {"Content-Type": "application/json", "A2A-Version": "1.0", **headers}
-    req = urllib.request.Request(url, data=data, headers=hdrs, method="POST")
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def _card_url(base_url: str) -> str:
-    return base_url.rstrip("/") + "/.well-known/agent-card.json"
-
-
-def _fetch_card(base_url: str, headers: dict[str, str], timeout: int) -> dict[str, Any]:
-    # Short-circuit loopback fetches to avoid the same-process event-loop
-    # deadlock: the card is served by this very process, so read it directly.
-    key = base_url.rstrip("/")
-    if key in _LOCAL_AGENT_CARDS:
-        return _LOCAL_AGENT_CARDS[key]
-    try:
-        return _http_get_json_threaded(_card_url(base_url), headers, timeout)
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise
-    return _http_get_json_threaded(base_url.rstrip("/") + "/.well-known/agent.json", headers, timeout)
-
-
-def _jsonrpc_interface(card: dict[str, Any] | None) -> dict[str, Any] | None:
-    if isinstance(card, dict):
-        for iface in card.get("supportedInterfaces", []) or []:
-            if isinstance(iface, dict) and iface.get("protocolBinding") == "JSONRPC" and isinstance(iface.get("url"), str):
-                return iface
-    return None
-
-
-def _rpc_url(base_url: str, card: dict[str, Any] | None) -> str:
-    iface = _jsonrpc_interface(card)
-    if iface is not None:
-        return str(iface["url"])
-    if isinstance(card, dict) and isinstance(card.get("url"), str) and card["url"]:
-        return card["url"]
-    return base_url.rstrip("/")
-
-
-def _interface_tenant(card: dict[str, Any] | None, peer: dict[str, Any]) -> str:
-    iface = _jsonrpc_interface(card)
-    if iface is not None and iface.get("tenant"):
-        return str(iface["tenant"])
-    return str(peer.get("tenant") or "")
-
-
-def _send_message(agent: str, peer: dict[str, Any], text: str, timeout: int) -> dict[str, Any]:
-    base_url = peer.get("url", "")
-    if not isinstance(base_url, str) or not base_url.startswith(("http://", "https://")):
-        raise ValueError(f"peer '{agent}' has no valid URL")
-
-    headers = _auth_header(peer)
-    cap = max(5, min(int(timeout), 120))
-    card: dict[str, Any] | None = None
-    try:
-        card = _fetch_card(base_url, headers, min(cap, 30))
-    except Exception as exc:
-        # Non-fatal: fall back to configured base URL / legacy path if card is unreachable.
-        pass
-
-    rpc_url = _rpc_url(base_url, card)
-    request_id = f"req-{hashlib.sha256((agent + text + str(os.urandom(8))).encode()).hexdigest()[:16]}"
-    context_id = f"ctx-{hashlib.sha256((request_id + str(os.urandom(8))).encode()).hexdigest()[:16]}"
-    body = {
-        "jsonrpc": "2.0",
-        "id": request_id,
-        "method": "SendMessage",
-        "params": {
-            "message": {
-                "role": "ROLE_USER",
-                "parts": [{"text": text, "mediaType": "text/plain"}],
-                "messageId": request_id.replace("req-", "msg-"),
-                "contextId": context_id,
-            },
-        },
-    }
-    tenant = _interface_tenant(card, peer)
-    if tenant:
-        body["params"]["tenant"] = tenant
-
-    def recover_task_id() -> str:
-        lookup = {
-            "jsonrpc": "2.0",
-            "id": f"lookup-{request_id}",
-            "method": "ListTasks",
-            "params": {
-                "contextId": context_id,
-                "pageSize": 5,
-                "includeArtifacts": False,
-                "historyLength": 0,
-            },
-        }
-        if tenant:
-            lookup["params"]["tenant"] = tenant
-        recovered = _http_post_json(rpc_url, lookup, headers, min(max(cap, 5), 15))
-        result = recovered.get("result", {}) if isinstance(recovered, dict) else {}
-        tasks = result.get("tasks", []) if isinstance(result, dict) else []
-        matches = [
-            item.get("id") for item in tasks
-            if isinstance(item, dict) and isinstance(item.get("id"), str) and _TASK_ID_RE.fullmatch(item["id"])
-        ]
-        if len(matches) != 1:
-            raise RuntimeError("could not uniquely recover peer task after timeout")
-        return matches[0]
-
-    try:
-        resp = _http_post_json(rpc_url, body, headers, cap)
-    except TimeoutError as exc:
-        raise FleetDispatchTimeout(recover_task_id()) from exc
-    except urllib.error.URLError as exc:
-        if isinstance(getattr(exc, "reason", None), TimeoutError):
-            raise FleetDispatchTimeout(recover_task_id()) from exc
-        raise
-    if not isinstance(resp, dict):
-        raise ValueError("A2A peer returned a non-JSON-RPC response")
-    if "error" in resp:
-        err = resp["error"]
-        raise RuntimeError(f"A2A peer returned error: {err.get('message', err)}")
-    return resp.get("result", {})
-
-
-def _get_task(agent: str, peer: dict[str, Any], task_id: str, timeout: int) -> dict[str, Any]:
-    base_url = peer.get("url", "")
-    headers = _auth_header(peer)
-    cap = max(1, min(int(timeout), 60))
-    card: dict[str, Any] | None = None
-    try:
-        card = _fetch_card(base_url, headers, min(cap, 30))
-    except Exception:
-        pass
-    rpc_url = _rpc_url(base_url, card)
-    body = {
-        "jsonrpc": "2.0",
-        "id": task_id,
-        "method": "GetTask",
-        "params": {"id": task_id},
-    }
-    tenant = _interface_tenant(card, peer)
-    if tenant:
-        body["params"]["tenant"] = tenant
-    resp = _http_post_json(rpc_url, body, headers, cap)
-    if not isinstance(resp, dict):
-        raise ValueError("A2A peer returned a non-JSON-RPC response")
-    if "error" in resp:
-        err = resp["error"]
-        raise RuntimeError(f"A2A peer returned error: {err.get('message', err)}")
-    return resp.get("result", {})
-
-
-def _registry_official(*, timeout: int = _A2A_DEFAULT_REGISTRY_TIMEOUT) -> list[dict[str, Any]]:
-    """List configured A2A peers by reading config.yaml a2a_agents and probing cards."""
-    peers = _a2a_peers_with_resolved_tokens()
-    clean: list[dict[str, Any]] = []
-    cap = max(1, min(int(timeout), 30))
-    for name, entry in peers.items():
-        if not _AGENT_RE.fullmatch(name):
-            continue
-        url = entry.get("url", "")
-        if not isinstance(url, str) or not url.startswith(("http://", "https://")):
-            continue
-        has_token = bool((_auth_header(entry) or {}).get("Authorization"))
-        try:
-            _fetch_card(url, _auth_header(entry), cap)
-        except Exception:
-            pass
-        clean.append({"name": name, "has_token": has_token})
-    return clean
 
 
 def _registry_bridge(*, runner: Runner | None, hermes_bin: str | None) -> tuple[list[dict[str, Any]], str | None]:

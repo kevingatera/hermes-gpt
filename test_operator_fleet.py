@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
 import operator_fleet as fleet
-
+import operator_fleet_a2a as fleet_a2a
+import operator_policy as op
 
 HERMES = "/test/hermes"
 REGISTRY = {
@@ -254,7 +254,7 @@ def test_fleet_dispatch_sends_to_registered_agent_and_redacts_prompt_from_output
 
 
 def test_official_send_timeout_recovers_peer_task_id_by_context(monkeypatch):
-    monkeypatch.setattr(fleet, "_fetch_card", lambda *args, **kwargs: {})
+    monkeypatch.setattr(fleet_a2a, "_fetch_card", lambda *args, **kwargs: {})
     calls = []
 
     def fake_post(url, body, headers, timeout):
@@ -266,7 +266,7 @@ def test_official_send_timeout_recovers_peer_task_id_by_context(monkeypatch):
         assert context_id == calls[0]["params"]["message"]["contextId"]
         return {"result": {"tasks": [{"id": "task-peer123"}]}}
 
-    monkeypatch.setattr(fleet, "_http_post_json", fake_post)
+    monkeypatch.setattr(fleet_a2a, "_http_post_json", fake_post)
     peer = {"url": "http://rza.example:8765", "auth": {}, "timeout": 30}
 
     with pytest.raises(fleet.FleetDispatchTimeout) as excinfo:
@@ -367,6 +367,7 @@ def test_fleet_task_reads_the_a2a_cli_wrapped_task_shape(monkeypatch):
 
 def test_server_registers_the_bounded_fleet_control_tools():
     import asyncio
+
     import server
 
     names = {tool.name for tool in asyncio.run(server.build_server().list_tools())}
@@ -670,8 +671,8 @@ def test_official_fleet_task_then_result_lifecycle_forwards_peer_bearer(monkeypa
         assert body["params"]["id"] == "task-d2b6290bcf064baa"
         return {"result": remote_task}
 
-    monkeypatch.setattr(fleet, "_fetch_card", lambda *args, **kwargs: {})
-    monkeypatch.setattr(fleet, "_http_post_json", fake_post)
+    monkeypatch.setattr(fleet_a2a, "_fetch_card", lambda *args, **kwargs: {})
+    monkeypatch.setattr(fleet_a2a, "_http_post_json", fake_post)
 
     task = json.loads(fleet.hermes_fleet_task("macbook-m5", "task-d2b6290bcf064baa"))
     result = json.loads(fleet.hermes_fleet_result("macbook-m5", "task-d2b6290bcf064baa"))
@@ -738,8 +739,8 @@ def test_official_fleet_result_does_not_leak_peer_token_on_http_401(monkeypatch)
     def fake_post(url, body, headers, timeout):
         raise urllib.error.HTTPError(url, 401, "unauthorized", hdrs=None, fp=None)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(fleet, "_fetch_card", lambda *args, **kwargs: {})
-    monkeypatch.setattr(fleet, "_http_post_json", fake_post)
+    monkeypatch.setattr(fleet_a2a, "_fetch_card", lambda *args, **kwargs: {})
+    monkeypatch.setattr(fleet_a2a, "_http_post_json", fake_post)
     out = json.loads(fleet.hermes_fleet_result("macbook-m5", "task-d2b6290bcf064baa"))
     rendered = json.dumps(out)
     assert out["success"] is False
