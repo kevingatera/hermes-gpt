@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bound A2A discovery and RPC response reads to 1 MiB before decoding peer JSON.
+
 - Add read-only `hermes_session_profiles` discovery for explicitly authorized profiles and their non-secret configured model, provider, and reasoning-effort defaults.
 - Add profile-scoped `hermes_session_rename` and `hermes_session_pin` controls using Hermes' fixed session CLI commands.
 - Add `hermes_session_start` to the gated session-control MCP surface, using an allowlisted Hermes profile and optional model and reasoning-effort overrides; the returned job status exposes Hermes' new session ID.

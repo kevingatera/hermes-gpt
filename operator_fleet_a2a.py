@@ -97,7 +97,7 @@ def _a2a_peers_with_resolved_tokens() -> dict[str, dict[str, Any]]:
 def _http_get_json(url: str, headers: dict[str, str], timeout: int) -> dict[str, Any]:
     req = urllib.request.Request(url, headers=headers, method="GET")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        data = resp.read()
+        data = resp.read(_MAX_REMOTE_BYTES + 1)
         if len(data) > _MAX_REMOTE_BYTES:
             raise ValueError("A2A discovery response exceeded the bounded response limit")
         return json.loads(data.decode("utf-8"))
@@ -114,7 +114,10 @@ def _http_post_json(url: str, body: dict[str, Any], headers: dict[str, str], tim
     request_headers = {"Content-Type": "application/json", "A2A-Version": "1.0", **headers}
     req = urllib.request.Request(url, data=data, headers=request_headers, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        data = resp.read(_MAX_REMOTE_BYTES + 1)
+        if len(data) > _MAX_REMOTE_BYTES:
+            raise ValueError("A2A RPC response exceeded the bounded response limit")
+        return json.loads(data.decode("utf-8"))
 
 
 def _card_url(base_url: str) -> str:

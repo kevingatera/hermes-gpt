@@ -367,7 +367,7 @@ The separate [managed Hermes session tools](managed-hermes-sessions.md) start sc
 
 ## Fleet routing through the local A2A registry
 
-Fleet routing uses only peers already present in the authenticated local Hermes A2A registry.
+Fleet routing uses only peers already present in the authenticated local Hermes A2A registry. Official A2A discovery and RPC responses are limited to 1 MiB before JSON decoding; larger responses are refused.
 
 | Tool | Authority | Behavior |
 | --- | --- | --- |
