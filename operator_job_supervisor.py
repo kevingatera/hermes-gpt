@@ -9,19 +9,19 @@ backend-specific result metadata is interpreted.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import re
 import secrets
-import shutil
 import signal
 import subprocess
 import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
+import operator_job_process as _job_process
 import operator_policy as op
 
 SCHEMA_VERSION = "hermes.job/v1"
@@ -31,6 +31,12 @@ MAX_LOG_BYTES = 64 * 1024
 MAX_LOG_LINE_CHARS = 2_000
 TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "timed_out"})
 IS_WINDOWS = os.name == "nt"
+
+# Keep these helpers importable for existing diagnostics and tests.
+_cmdline_hash = _job_process._cmdline_hash
+_procfs_identity = _job_process._procfs_identity
+_ps_identity = _job_process._ps_identity
+_windows_identity = _job_process._windows_identity
 _JOB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
@@ -154,101 +160,6 @@ def _resolve_confined(relative: str | None, hermes_root: Path | None = None) -> 
     except ValueError as exc:
         raise PermissionError("job artifact path escapes the Hermes data root") from exc
     return resolved
-
-
-def _cmdline_hash(raw: bytes | str) -> str:
-    data = raw if isinstance(raw, bytes) else raw.encode("utf-8", errors="replace")
-    return hashlib.sha256(data).hexdigest()
-
-
-def _procfs_identity(pid: int) -> dict[str, str] | None:
-    stat_path = Path("/proc") / str(pid) / "stat"
-    cmd_path = Path("/proc") / str(pid) / "cmdline"
-    try:
-        stat = stat_path.read_text(encoding="utf-8", errors="replace")
-        right = stat.rfind(")")
-        if right < 0:
-            return None
-        tail = stat[right + 2 :].split()
-        if len(tail) <= 19:
-            return None
-        cmdline = cmd_path.read_bytes()
-    except OSError:
-        return None
-    return {
-        "platform": "procfs",
-        "start_token": tail[19],
-        "cmdline_sha256": _cmdline_hash(cmdline),
-    }
-
-
-def _ps_identity(pid: int) -> dict[str, str] | None:
-    try:
-        started = subprocess.run(
-            ["ps", "-o", "lstart=", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-        command = subprocess.run(
-            ["ps", "-o", "command=", "-p", str(pid)],
-            capture_output=True,
-            text=True,
-            timeout=2,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if started.returncode != 0 or command.returncode != 0:
-        return None
-    start_token = started.stdout.strip()
-    cmdline = command.stdout.strip()
-    if not start_token or not cmdline:
-        return None
-    return {
-        "platform": "ps",
-        "start_token": start_token,
-        "cmdline_sha256": _cmdline_hash(cmdline),
-    }
-
-
-def _windows_identity(pid: int) -> dict[str, str] | None:
-    shell = shutil.which("pwsh") or shutil.which("powershell")
-    if not shell:
-        return None
-    script = (
-        f"$p=Get-CimInstance Win32_Process -Filter \"ProcessId={pid}\";"
-        "if($null -eq $p){exit 3};"
-        "$p|Select-Object ProcessId,CreationDate,CommandLine|ConvertTo-Json -Compress"
-    )
-    try:
-        completed = subprocess.run(
-            [shell, "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if completed.returncode != 0:
-        return None
-    try:
-        data = json.loads(completed.stdout)
-    except ValueError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    creation = str(data.get("CreationDate") or "").strip()
-    command = str(data.get("CommandLine") or "").strip()
-    if not creation or not command:
-        return None
-    return {
-        "platform": "windows-cim",
-        "start_token": creation,
-        "cmdline_sha256": _cmdline_hash(command),
-    }
 
 
 def process_identity(pid: int) -> dict[str, str] | None:
@@ -660,8 +571,7 @@ def _tail_log(record: dict[str, Any], cursor: int, max_lines: int, hermes_root: 
         size = path.stat().st_size
     except OSError:
         return {"cursor": cursor, "next_cursor": cursor, "lines": [], "truncated": False}
-    if cursor > size:
-        cursor = size
+    cursor = min(cursor, size)
     try:
         with path.open("rb") as handle:
             handle.seek(cursor)
@@ -762,7 +672,7 @@ def _audit(tool: str, policy: op.OperatorPolicy, job_id: str, summary: str) -> N
             summary=summary,
             extra={"job_id": job_id},
         )
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 - A failed audit write must not alter job supervision.
         pass
 
 
