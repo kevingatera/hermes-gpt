@@ -123,6 +123,8 @@ def test_continue_accepts_model_and_reasoning_overrides(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
+    assert result["model"] == "deepseek/deepseek-v4.1-flash"
+    assert result["reasoning_effort"] == "xhigh"
     assert calls[0].argv[1:8] == [
         "chat", "--resume", "session-2", "--model", "deepseek/deepseek-v4.1-flash", "--reasoning", "xhigh"
     ]
@@ -168,6 +170,8 @@ def test_start_uses_authorized_profile_and_recovers_new_session_id(
     )
 
     assert started["success"] is True
+    assert started["model"] == "opencode-go/deepseek-v4.1-flash"
+    assert started["reasoning_effort"] == "high"
     assert len(calls) == 1
     assert calls[0].argv[1:] == [
         "chat",

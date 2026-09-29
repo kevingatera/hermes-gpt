@@ -277,6 +277,7 @@ def start_managed_session_job(
             "session_id": str(meta.get("session_id") or "") or None,
             "status": "running",
             "model": str(meta.get("model") or "") or None,
+            "reasoning_effort": str(meta.get("reasoning_effort") or "") or None,
         }
     )
 
