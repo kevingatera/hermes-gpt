@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+import operator_skill_loader as _skill_loader
+
 _ISOLATED_ENV_VARS = (
     "HERMES_GPT_OPERATOR_ENABLED",
     "HERMES_GPT_OPERATOR_LEVEL",
@@ -56,6 +58,32 @@ def _hermes_sandbox() -> Path:
             encoding="utf-8",
         )
     return _HERMES_SANDBOX
+
+
+def _test_skill_loader(profile: str, root: Path):
+    """Expose fixture skills without requiring a Hermes Agent checkout."""
+    home = root if profile == "default" else root / "profiles" / profile
+    skills_root = home / "skills"
+    if not skills_root.is_dir():
+        return []
+    entries = []
+    for skill_file in sorted(skills_root.rglob("SKILL.md")):
+        try:
+            text = skill_file.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        name = skill_file.parent.name
+        if text.startswith("---"):
+            _, separator, frontmatter = text.partition("---")
+            if separator:
+                header, _, _ = frontmatter.partition("---")
+                for line in header.splitlines():
+                    key, colon, value = line.partition(":")
+                    if colon and key.strip() == "name" and value.strip():
+                        name = value.strip().strip("'\"")
+                        break
+        entries.append({"name": name})
+    return entries
 
 
 # conftest.py is imported before test modules are collected. Clear live auth
@@ -121,6 +149,12 @@ def isolate_operator_environment(monkeypatch):
     for name in _ISOLATED_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("HERMES_HOME", str(_hermes_sandbox()))
+
+
+@pytest.fixture(autouse=True)
+def inject_hermes_skill_loader(monkeypatch):
+    """Keep ordinary tests hermetic while dedicated tests exercise the Agent loader."""
+    monkeypatch.setattr(_skill_loader, "_skill_loader_override", _test_skill_loader)
 
 
 @pytest.fixture(autouse=True)

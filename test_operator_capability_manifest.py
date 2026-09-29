@@ -125,6 +125,12 @@ def test_manifest_folds_all_source_kinds(seeded: Path):
     # Provider dimension derived from profile configs.
     providers = {e["name"] for e in out["entities"] if e["entity_kind"] == "provider"}
     assert {"openai", "anthropic"} <= providers
+    dev = next(
+        e
+        for e in out["entities"]
+        if e["entity_kind"] == "profile" and e["name"] == "dev"
+    )
+    assert set(dev["skills"]) == {"code-review", "compound-engineering"}
 
 
 def test_manifest_placement_cache_ttl_snapshot(seeded: Path):

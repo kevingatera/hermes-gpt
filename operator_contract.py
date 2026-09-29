@@ -53,6 +53,7 @@ import operator_contract_observations as _contract_observations
 import operator_contract_schema as _contract_schema
 import operator_policy as op
 import operator_runners as op_runners
+import operator_skill_resolution as skill_resolution
 
 # Preserve the established operator_contract import surface while the
 # implementation stays grouped by schema, evidence, and completion checks.
@@ -69,6 +70,8 @@ _MAX_TESTS = _contract_schema._MAX_TESTS
 _MAX_FORBIDDEN_ACTIONS = _contract_schema._MAX_FORBIDDEN_ACTIONS
 _MAX_SCOPE_WORKSPACES = _contract_schema._MAX_SCOPE_WORKSPACES
 _MAX_SCOPE_PROFILES = _contract_schema._MAX_SCOPE_PROFILES
+_MAX_CAPABILITY_SKILLS = _contract_schema._MAX_CAPABILITY_SKILLS
+_MAX_SKILL_NAME = _contract_schema._MAX_SKILL_NAME
 _MAX_REVIEW_EVIDENCE_SCAN = _contract_schema._MAX_REVIEW_EVIDENCE_SCAN
 _VERDICT_SATISFIED = _contract_schema._VERDICT_SATISFIED
 _VERDICT_NOT_SATISFIED = _contract_schema._VERDICT_NOT_SATISFIED
@@ -86,6 +89,7 @@ _clean_text = _contract_schema._clean_text
 _string_list = _contract_schema._string_list
 _workspace_list = _contract_schema._workspace_list
 _profile_list = _contract_schema._profile_list
+_capability_requirement = _contract_schema._capability_requirement
 _forbidden_list = _contract_schema._forbidden_list
 _resolve_artifact_paths = _contract_schema._resolve_artifact_paths
 _artifact_list = _contract_schema._artifact_list
@@ -335,6 +339,33 @@ def hermes_contract_dispatch(
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     task_id = contract["task_id"]
+    capability_req = contract.get("capability_req")
+    if isinstance(capability_req, dict):
+        try:
+            skill_resolution.require_required_skills(
+                capability_req["profile"], capability_req.get("skills", []), root
+            )
+        except skill_resolution.SkillRequirementsError as exc:
+            payload = _contract_error(
+                code="SKILL_REQUIREMENTS_REJECTED",
+                safe_message=str(exc),
+                suggested_action=(
+                    "Install the required skills in the assigned Hermes profile "
+                    "before dispatching the contract."
+                ),
+                trace_id=tid,
+                extra={"skill_validation": exc.rejection},
+            )
+            _audit_call(
+                tool=tool,
+                dry_run=dry_run,
+                success=False,
+                changed=False,
+                summary="skill requirements rejected",
+                task_id=task_id,
+            )
+            return json.dumps(payload, ensure_ascii=False, indent=2)
+
     # Uniqueness invariant (design §6.3): task_id must be unique for the dispatch.
     if _observed_runs(task_id, root):
         payload = _contract_error(

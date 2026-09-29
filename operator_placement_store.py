@@ -78,10 +78,20 @@ def _audit(
         return
 
 
-def _error(exc: Exception, code: str, action: str) -> str:
+def _error(
+    exc: Exception,
+    code: str,
+    action: str,
+    *,
+    extra: dict[str, Any] | None = None,
+) -> str:
     return json.dumps(
         op.error_from_exception(
-            exc, layer="operator", code=code, suggested_action=action
+            exc,
+            layer="operator",
+            code=code,
+            suggested_action=action,
+            extra=extra,
         )
     )
 

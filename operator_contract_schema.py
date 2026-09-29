@@ -41,6 +41,10 @@ _MAX_SCOPE_WORKSPACES = 8
 
 _MAX_SCOPE_PROFILES = 16
 
+_MAX_CAPABILITY_SKILLS = 32
+
+_MAX_SKILL_NAME = 128
+
 _MAX_REVIEW_EVIDENCE_SCAN = 500
 
 _VERDICT_SATISFIED = "SATISFIED"
@@ -196,6 +200,35 @@ def _profile_list(value: Any) -> list[str]:
             raise ValueError("profile must be a string")
         out.append(op.validate_profile_name(item))
     return out
+
+
+def _capability_requirement(
+    value: Any, *, assigned_profile: str
+) -> dict[str, Any] | None:
+    """Normalize optional profile-local skills carried through dispatch."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("capability_req must be an object")  # noqa: TRY004 -- contract schema failures use ValueError envelopes.
+    profile = op.validate_profile_name(
+        _clean_text(value.get("profile"), field="capability_req.profile", maximum=64)
+    )
+    if profile != assigned_profile:
+        raise ValueError("capability_req.profile must match assigned_profile")
+    skills = value.get("skills") or []
+    if not isinstance(skills, list) or len(skills) > _MAX_CAPABILITY_SKILLS:
+        raise ValueError(
+            f"capability_req.skills must be a list (<= {_MAX_CAPABILITY_SKILLS})"
+        )
+    normalized: list[str] = []
+    for item in skills:
+        name = _clean_text(item, field="capability skill", maximum=_MAX_SKILL_NAME)
+        if op.redact_output(name) != name:
+            raise PermissionError("capability skill name contains secret-like data")
+        if name in normalized:
+            raise ValueError(f"duplicate capability skill {name!r}")
+        normalized.append(name)
+    return {"profile": profile, "skills": normalized}
 
 
 def _forbidden_list(value: Any) -> list[dict[str, Any]]:
@@ -363,6 +396,9 @@ def _canonical_contract(raw: Any) -> tuple[str, dict[str, Any]]:
     )
     if not _PROFILE_RE.fullmatch(assigned_profile):
         raise ValueError("assigned_profile is invalid")
+    capability_req = _capability_requirement(
+        raw.get("capability_req"), assigned_profile=assigned_profile
+    )
     objective = _clean_text(
         raw.get("objective"), field="objective", maximum=_MAX_OBJECTIVE_BYTES
     )
@@ -405,6 +441,8 @@ def _canonical_contract(raw: Any) -> tuple[str, dict[str, Any]]:
         "constraints": _string_list(raw.get("constraints") or [], field="constraints"),
         "authorization": authorization,
     }
+    if capability_req is not None:
+        contract["capability_req"] = capability_req
     # Backward compatibility: omit the default fleet selector from canonical
     # contracts unless the caller explicitly supplied an execution block. This
     # preserves hashes for pre-runner work contracts.
@@ -466,6 +504,8 @@ def _validation_manifest(
         "completion_criteria": contract["completion_criteria"],
         "authorization": contract["authorization"],
     }
+    if "capability_req" in contract:
+        context["capability_req"] = contract["capability_req"]
     context["execution"] = None
     if isinstance(contract.get("execution"), dict):
         # Validation needs the canonical backend selector to distinguish local,
@@ -525,7 +565,8 @@ def _contract_from_validation_manifest(
         "authorization",
         "execution",
     }
-    if set(context) != required:
+    optional = {"capability_req"}
+    if set(context) not in (required, required | optional):
         raise ValueError("validation manifest context fields are invalid")
     contract = dict(context)
     execution = context["execution"]

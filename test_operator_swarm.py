@@ -594,6 +594,26 @@ def test_each_stage_emits_valid_m1_contract(hermes_root, monkeypatch):
         assert len(csha) == 64
 
 
+def test_stage_contract_carries_profile_skill_requirements(hermes_root):
+    ws = hermes_root.parent / "ws"
+    wf = _canonical_flow(ws)
+    implementation = next(s for s in wf["stages"] if s["id"] == "implementation")
+    implementation["capability_req"] = {
+        "profile": implementation["owner"],
+        "skills": ["code-review"],
+    }
+
+    _, workflow, _ = swarm_model.parse_workflow(json.dumps(wf))
+    stage = next(s for s in workflow["stages"] if s["id"] == "implementation")
+    contract = swarm_model.stage_contract(workflow, stage)
+    _, parsed, _ = contract_mod._parse_contract(json.dumps(contract))
+
+    assert parsed["capability_req"] == {
+        "profile": implementation["owner"],
+        "skills": ["code-review"],
+    }
+
+
 def test_auto_stage_contract_delegates_agent_choice_without_losing_owner_profile(hermes_root):
     ws = hermes_root.parent / "ws"
     execution = {

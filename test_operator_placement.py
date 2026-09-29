@@ -700,6 +700,21 @@ def test_placement_candidates_read_only_and_valid(seeded_root: Path, monkeypatch
     assert _placement_rows(seeded_root) == []
 
 
+def test_placement_candidates_rejects_missing_profile_skill(
+    seeded_root: Path, monkeypatch
+):
+    _enable(monkeypatch, "read_only")
+    out = json.loads(
+        pl.hermes_placement_candidates(
+            "dev", skills="not-installed", hermes_root=seeded_root
+        )
+    )
+
+    assert out["success"] is False
+    assert out["code"] == "PLACEMENT_SKILL_REQUIREMENTS_REJECTED"
+    assert out["skill_validation"]["skills_not_found"] == ["not-installed"]
+
+
 def test_placement_score_dry_run_no_write_and_auditable(seeded_root: Path, monkeypatch):
     _enable(monkeypatch, "workspace")
     before = _content_files(seeded_root)

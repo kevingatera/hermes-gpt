@@ -359,6 +359,36 @@ def test_define_canonicalizes_contract(hermes_root):
     assert out["contract"]["expected_artifacts"][0]["basename"] == "cache.py"
 
 
+def test_capability_requirement_is_canonical_and_survives_validation_manifest(
+    hermes_root,
+):
+    contract = _contract_for_ws(
+        hermes_root.parent / "ws",
+        capability_req={"profile": "hermes-dev", "skills": ["code-review"]},
+    )
+    canonical, parsed, sha = contract_mod._parse_contract(json.dumps(contract))
+    manifest = contract_mod._validation_manifest(parsed, sha)
+    reconstructed, reconstructed_sha = contract_mod._contract_from_validation_manifest(
+        manifest
+    )
+
+    assert json.loads(canonical)["capability_req"] == {
+        "profile": "hermes-dev",
+        "skills": ["code-review"],
+    }
+    assert reconstructed["capability_req"] == parsed["capability_req"]
+    assert reconstructed_sha == sha
+
+
+def test_capability_requirement_must_match_assigned_profile(hermes_root):
+    contract = _contract_for_ws(
+        hermes_root.parent / "ws",
+        capability_req={"profile": "other-profile", "skills": []},
+    )
+    with pytest.raises(ValueError, match="must match assigned_profile"):
+        contract_mod._parse_contract(json.dumps(contract))
+
+
 def test_define_sha_is_stable(hermes_root):
     ws = hermes_root.parent / "ws"
     c = _contract_for_ws(ws)
@@ -1261,6 +1291,40 @@ def test_dispatch_dry_run_plan(hermes_root, monkeypatch, tmp_path):
     assert out["contract_sha256"] == contract_mod._parse_contract(json.dumps(c))[2]
     # Dry-run must not dispatch.
     assert not any("a2a" in a and "send" in a for a in calls)
+
+
+def test_dispatch_revalidates_required_profile_skills_before_runner(
+    hermes_root, monkeypatch, tmp_path
+):
+    _enable_workspace_direct(monkeypatch)
+    contract = _contract(
+        task_id="wc-dispatch-missing-skill",
+        assigned_agent="rza",
+        assigned_profile="default",
+        allowed_scope={
+            "workspaces": ["/tmp/ws-does-not-exist"],
+            "profiles": ["default"],
+        },
+        capability_req={"profile": "default", "skills": ["not-installed"]},
+    )
+    calls: list[list[str]] = []
+    runner = _fleet_runner({}, calls)
+
+    out = json.loads(
+        contract_mod.hermes_contract_dispatch(
+            json.dumps(contract),
+            dry_run=True,
+            runner=runner,
+            hermes_bin=HERMES,
+            authority_manifest=_authority_manifest(tmp_path),
+            hermes_root=hermes_root,
+        )
+    )
+
+    assert out["success"] is False
+    assert out["code"] == "SKILL_REQUIREMENTS_REJECTED"
+    assert out["skill_validation"]["skills_not_found"] == ["not-installed"]
+    assert calls == []
 
 
 def test_dispatch_requires_confirm_for_real_dispatch(hermes_root, monkeypatch, tmp_path):

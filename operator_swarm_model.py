@@ -463,6 +463,11 @@ def stage_contract(
         ),
         "authorization": auth,
     }
+    capability_req = stage.get("capability_req")
+    if capability_req is not None:
+        if not isinstance(capability_req, dict):
+            raise TypeError("stage capability_req must be an object")
+        contract["capability_req"] = dict(capability_req)
     if execution is not None:
         contract["execution"] = execution
     return contract

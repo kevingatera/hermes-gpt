@@ -69,7 +69,7 @@ class MissionPlanTools:
 
     def hermes_plan_validate(self, plan_json: str) -> str:
         """Pure read-only validation of a MissionPlan document."""
-        return op_mission_plan.hermes_plan_validate(plan_json)
+        return op_mission_plan.hermes_plan_validate(plan_json, self.get_hermes_root())
 
     def hermes_plan_decompose(self, mission_id: str) -> str:
         """Deterministically decompose a MissionSpec into a bounded plan DAG (read-only)."""

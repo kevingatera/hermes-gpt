@@ -154,6 +154,36 @@ def test_create_get_list_persists_plan(hermes_root):
     assert listed["plans"][0]["mission_id"] == "msn-plan"
 
 
+def test_plan_creation_rejects_skill_missing_from_node_profile(hermes_root):
+    _make_mission(hermes_root)
+    raw = json.loads(_operator_plan_dag())
+    raw["nodes"][1]["capability_req"]["skills"] = ["not-installed"]
+
+    created = _j(
+        plan.hermes_plan_create(
+            "msn-plan",
+            json.dumps(raw),
+            confirm=True,
+            dry_run=False,
+            hermes_root=hermes_root,
+        )
+    )
+    validated = _j(plan.hermes_plan_validate(json.dumps(raw), hermes_root))
+
+    assert created["success"] is False
+    assert created["code"] == "PLAN_SKILL_REQUIREMENTS_REJECTED"
+    assert created["skill_validation"]["node_id"] == "b"
+    assert created["skill_validation"]["skills_not_found"] == ["not-installed"]
+    assert validated["valid"] is False
+    validation_error = json.loads(validated["error"])
+    assert validation_error["code"] == "PLAN_SKILL_REQUIREMENTS_REJECTED"
+    with sqlite3.connect(mission._db_path(hermes_root)) as db:
+        plan_table = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='mission_plans'"
+        ).fetchone()
+    assert plan_table is None
+
+
 def test_plan_create_replaces_version_on_update(hermes_root):
     _make_mission(hermes_root)
     d = _j(plan.hermes_plan_decompose("msn-plan", hermes_root=hermes_root))
