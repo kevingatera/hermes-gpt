@@ -7,6 +7,8 @@ from typing import Any
 
 import fabric_write_guard as write_guard
 import operator_fabric as base
+import operator_runner_common as runner_common
+import operator_runner_local as runner_local
 import operator_runners as runners
 from operator_fabric_g4c_protocol import (
     _bounded_peer_observation,
@@ -32,7 +34,7 @@ def write_backend_eligible(service, backend_name: str) -> None:
         raise FabricError(
             "FABRIC_RUNNER_UNAVAILABLE", "remote runner is not registered"
         ) from exc
-    if not isinstance(backend, runners._LocalProcessBackend):
+    if not isinstance(backend, runner_local._LocalProcessBackend):
         raise FabricError(
             "FABRIC_EXECUTION_UNIT_UNSUPPORTED",
             "remote backend does not support verified whole-tree write containment",
@@ -48,14 +50,14 @@ def dispatch_contained_write(
     timeout: int,
 ) -> dict[str, Any]:
     backend = runners.get_backend(backend_name)
-    if not isinstance(backend, runners._LocalProcessBackend):
+    if not isinstance(backend, runner_local._LocalProcessBackend):
         return {"success": False, "code": "FABRIC_EXECUTION_UNIT_UNSUPPORTED"}
     workspace = backend._policy_workspace(contract)
     if not backend.executable():
         return {"success": False, "code": "RUNNER_UNAVAILABLE"}
     backend.build_plan(contract)
     task_id = str(contract["task_id"])
-    meta_path, request_path, _log_path = runners._job_paths(
+    meta_path, request_path, _log_path = runner_common._job_paths(
         task_id, service.hermes_root
     )
     if meta_path.exists():
@@ -68,17 +70,17 @@ def dispatch_contained_write(
             (service.hermes_root or Path.home() / ".hermes").expanduser()
         ),
     }
-    runners._atomic_json(request_path, request)
-    runners._atomic_json(
+    runner_common._atomic_json(request_path, request)
+    runner_common._atomic_json(
         meta_path,
         {
-            "schema_version": runners.SCHEMA_VERSION,
+            "schema_version": runner_common.SCHEMA_VERSION,
             "task_id": task_id,
             "backend": backend_name,
             "state": "queued",
             "outcome": "",
             "workspace": str(workspace),
-            "created_at": runners._now(),
+            "created_at": runner_common._now(),
             "started_at": None,
             "ended_at": None,
             "pid": None,
@@ -90,8 +92,8 @@ def dispatch_contained_write(
         unit_id,
         task_id,
         workspace,
-        runners._root(service.hermes_root),
-        Path(runners.__file__).resolve(),
+        runner_common._root(service.hermes_root),
+        runner_common._RUNNER_ENTRYPOINT,
     )
     if launch.get("accepted"):
         return {

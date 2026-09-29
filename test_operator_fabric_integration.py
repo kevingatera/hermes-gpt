@@ -13,6 +13,8 @@ import operator_fabric_g4c as fabric
 import operator_fabric_router as router
 import operator_fabric_view as view
 import operator_policy as op
+import operator_runner_common as runner_common
+import operator_runner_local as runner_local
 import operator_runners as runners
 import operator_swarm as swarm
 from test_operator_fabric_g4c import (
@@ -84,7 +86,7 @@ class _ImmediateBackend:
 
 
 def _router_for_service(tmp_path, svc, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     now = datetime.now(timezone.utc)
 
     def probe(_node, _timeout):
@@ -209,7 +211,7 @@ def test_auto_local_dispatch_composes_while_remote_candidate_is_available(tmp_pa
     real_get_backend = runners.get_backend
     svc = make_service(tmp_path, monkeypatch)
     monkeypatch.setattr(runners, "get_backend", real_get_backend)
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     now = datetime.now(timezone.utc)
 
     def probe(_node, _timeout):
@@ -296,7 +298,7 @@ def test_auto_read_only_runner_options_cannot_widen_remote_authority(tmp_path, m
         launched = True
         raise AssertionError("read-only Fabric work reached process launch")
 
-    monkeypatch.setattr(runners, "_popen_process_group", must_not_launch)
+    monkeypatch.setattr(runner_local, "_popen_process_group", must_not_launch)
 
     def must_not_confine(*_args, **_kwargs):
         raise AssertionError("writable Pi request reached filesystem confinement")
@@ -746,7 +748,7 @@ def test_mixed_local_remote_swarm_fan_out_fan_in_and_owner_approval_compose(tmp_
     monkeypatch.setenv(op.OPERATOR_ENABLED_ENV, "1")
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "workspace")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
 
     real_get_backend = runners.get_backend
     remote_observed: list[dict[str, str]] = []

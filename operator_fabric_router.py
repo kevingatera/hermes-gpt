@@ -35,6 +35,7 @@ from typing import Any
 
 import operator_fabric as fabric
 import operator_policy as op
+import operator_runner_common as runner_common
 import operator_runners as runners
 
 ROUTER_NAME = "fabric-router-v1"
@@ -613,7 +614,7 @@ class AutoRouter:
                 _capability_missing(exclusions, "LOCATION_MISMATCH", "contract requires remote execution")
             if requirements["runners"] and backend not in requirements["runners"]:
                 _capability_missing(exclusions, "CAPABILITY_RUNNER_MISMATCH", "runner does not match the hard requirement")
-            if not runners._runner_allowed(backend):
+            if not runner_common._runner_allowed(backend):
                 _capability_missing(exclusions, "RUNNER_BACKEND_NOT_ALLOWED", "runner backend is excluded by coordinator policy")
             if not posture.get("ready"):
                 _capability_missing(exclusions, "LOCAL_OPERATOR_NOT_READY", "local runner operator posture is not execution-ready")
@@ -696,7 +697,7 @@ class AutoRouter:
                     _capability_missing(exclusions, "LOCATION_MISMATCH", "contract requires local execution")
                 if requirements["runners"] and backend not in requirements["runners"]:
                     _capability_missing(exclusions, "CAPABILITY_RUNNER_MISMATCH", "runner does not match the hard requirement")
-                if not runners._runner_allowed("fabric"):
+                if not runner_common._runner_allowed("fabric"):
                     _capability_missing(exclusions, "RUNNER_BACKEND_NOT_ALLOWED", "Fabric transport backend is excluded by coordinator policy")
                 if not healthy:
                     exclusions.append(probe_error or {"code": "FABRIC_PEER_UNHEALTHY", "detail": "managed peer is unavailable"})

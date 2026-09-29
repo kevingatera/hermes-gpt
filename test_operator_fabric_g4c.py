@@ -11,6 +11,7 @@ import pytest
 import operator_fabric as base
 import operator_fabric_g4c as fabric
 import operator_fabric_router as base_router
+import operator_runner_common as runner_common
 import operator_runners as runners
 
 TOKEN = "0123456789abcdef0123456789abcdef"
@@ -1276,7 +1277,7 @@ def facts(now):
 def test_auto_remote_write_unlock_requires_live_g4c_features(tmp_path, monkeypatch):
     from datetime import datetime, timezone
 
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     now = datetime.now(timezone.utc)
     common = {
         "registry_loader": lambda: {"node-a": node()},
@@ -1304,7 +1305,7 @@ def test_auto_remote_write_unlock_requires_live_g4c_features(tmp_path, monkeypat
 def test_g4c_auto_route_audits_only_authoritative_post_unlock_decision(tmp_path, monkeypatch):
     from datetime import datetime, timezone
 
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     audits: list[dict[str, object]] = []
 
     def capture_audit(decision, *, success, dry_run):
@@ -1361,7 +1362,7 @@ def test_g4c_auto_route_audits_failure_when_feature_gate_raises(tmp_path, monkey
     record, must not claim the preliminary winner, and must propagate."""
     from datetime import datetime, timezone
 
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     audits: list[dict[str, object]] = []
 
     def capture_audit(decision, *, success, dry_run):
@@ -1408,7 +1409,7 @@ def test_g4c_auto_route_audits_failure_when_feature_gate_raises(tmp_path, monkey
 def test_auto_remote_artifact_unlock_requires_snapshot_features(tmp_path, monkeypatch):
     from datetime import datetime, timezone
 
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     now = datetime.now(timezone.utc)
     router_obj = fabric.AutoRouter(
         registry_loader=lambda: {"node-a": node()},
@@ -1431,7 +1432,7 @@ def test_auto_remote_artifact_unlock_requires_snapshot_features(tmp_path, monkey
 def test_local_auto_write_remains_fail_closed(tmp_path, monkeypatch):
     from datetime import datetime, timezone
 
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     now = datetime.now(timezone.utc)
     route = fabric.AutoRouter(
         registry_loader=dict,

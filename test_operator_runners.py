@@ -8,6 +8,9 @@ import pytest
 
 import operator_contract as contract_mod
 import operator_policy as op
+import operator_runner_common as runner_common
+import operator_runner_local as runner_local
+import operator_runner_workers as runner_workers
 import operator_runners as runners
 
 
@@ -115,6 +118,55 @@ def test_pi_rpc_dry_run_uses_rpc_plan(tmp_path: Path, monkeypatch: pytest.Monkey
     assert payload["plan"]["protocol"] == "jsonl-rpc"
     assert payload["plan"]["mode"] == "rpc"
     assert payload["plan"]["model"] == "x/y"
+
+
+def test_local_runner_dispatch_targets_facade_worker_entrypoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    workspace = tmp_path / "workspace"
+    hermes_root = tmp_path / "hermes"
+    workspace.mkdir()
+    hermes_root.mkdir()
+    _enable_workspace(monkeypatch, workspace)
+
+    class FakeLocalBackend(runner_local._LocalProcessBackend):
+        name = "fake_local"
+
+        def executable(self):
+            return "/bin/fake-runner"
+
+        def build_plan(self, _contract):
+            return {"plan": "test"}
+
+    class FakeProcess:
+        pid = 12345
+
+    captured: dict[str, object] = {}
+
+    def capture_process(argv, **kwargs):
+        captured["argv"] = list(argv)
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(runner_local, "_popen_process_group", capture_process)
+    monkeypatch.setattr(runners.job_supervisor, "register_job", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runners.job_supervisor, "mark_running", lambda *args, **kwargs: None)
+
+    result = FakeLocalBackend().dispatch(
+        _contract(workspace),
+        confirm=True,
+        dry_run=False,
+        timeout=30,
+        hermes_root=hermes_root,
+    )
+
+    argv = captured["argv"]
+    assert isinstance(argv, list)
+    assert argv[1] == str(runner_common._RUNNER_ENTRYPOINT)
+    assert Path(argv[1]).is_file()
+    assert Path(argv[1]).resolve() == Path(runners.__file__).resolve()
+    assert result["success"] is True
+    assert result["state"] == "queued"
 
 
 def test_pi_defaults_and_profile_credential_reference_are_applied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -253,7 +305,7 @@ def test_opencode_worker_pipes_prompt_and_uses_confinement(tmp_path: Path, monke
         "upstream": runners.urllib.parse.urlparse("http://127.0.0.1:9/v1"),
         "real_key": real_key,
     }
-    monkeypatch.setattr(runners, "_opencode_runtime_material", lambda *args, **kwargs: material)
+    monkeypatch.setattr(runner_workers, "_opencode_runtime_material", lambda *args, **kwargs: material)
     fake = tmp_path / "fake-opencode"
     fake.write_text(
         "#!/usr/bin/env python3\n"
@@ -612,12 +664,12 @@ def test_backend_cancel_uses_shared_supervisor_and_marks_source_cancelled(
         "ended_at": None,
     })
     monkeypatch.setattr(
-        runners,
+        runner_local,
         "_job_paths",
         lambda task_id, hermes_root=None: (meta_path, request_path, log_path),
     )
     monkeypatch.setattr(
-        runners,
+        runner_local,
         "_cancel_path",
         lambda task_id, hermes_root=None: cancel_path,
     )
@@ -778,8 +830,8 @@ def test_cancel_marker_wins_over_completed(tmp_path: Path, monkeypatch: pytest.M
     _make_job(root, task_id)
     cancel_path = root / f"{task_id}.cancel.json"
     runners._atomic_json(cancel_path, {"task_id": task_id})
-    monkeypatch.setattr(runners, "get_backend", lambda name: _fake_backend(monkeypatch))
-    monkeypatch.setattr(runners, "_worker_pi", lambda exe, contract, timeout, log_path, hermes_root=None: (0, "done"))
+    monkeypatch.setattr(runner_workers, "get_backend", lambda name: _fake_backend(monkeypatch))
+    monkeypatch.setattr(runner_workers, "_worker_pi", lambda exe, contract, timeout, log_path, hermes_root=None: (0, "done"))
     rc = runners._worker(task_id, root)
     meta = json.loads(meta_path.read_text())
     assert rc == 0, meta.get("error")
@@ -796,8 +848,8 @@ def test_cancel_marker_wins_over_failed(tmp_path: Path, monkeypatch: pytest.Monk
     _make_job(root, task_id)
     cancel_path = root / f"{task_id}.cancel.json"
     runners._atomic_json(cancel_path, {"task_id": task_id})
-    monkeypatch.setattr(runners, "get_backend", lambda name: _fake_backend(monkeypatch))
-    monkeypatch.setattr(runners, "_worker_omx", lambda exe, contract, timeout, log_path: (3, ""))
+    monkeypatch.setattr(runner_workers, "get_backend", lambda name: _fake_backend(monkeypatch))
+    monkeypatch.setattr(runner_workers, "_worker_omx", lambda exe, contract, timeout, log_path: (3, ""))
     runners._worker(task_id, root)
     meta = json.loads(meta_path.read_text())
     assert meta["state"] == "cancelled"
@@ -815,7 +867,7 @@ def test_cancel_marker_wins_on_exception_path(tmp_path: Path, monkeypatch: pytes
     def _raise(name):
         raise LookupError("backend vanished")
 
-    monkeypatch.setattr(runners, "get_backend", _raise)
+    monkeypatch.setattr(runner_workers, "get_backend", _raise)
     assert runners._worker(task_id, root) == 1
     meta = json.loads(meta_path.read_text())
     assert meta["state"] == "cancelled"
@@ -828,8 +880,8 @@ def test_worker_without_cancel_marker_reports_completed(tmp_path: Path, monkeypa
     root = meta_path.parent
     root.mkdir(parents=True, exist_ok=True)
     _make_job(root, task_id)
-    monkeypatch.setattr(runners, "get_backend", lambda name: _fake_backend(monkeypatch))
-    monkeypatch.setattr(runners, "_worker_pi", lambda exe, contract, timeout, log_path, hermes_root=None: (0, "done"))
+    monkeypatch.setattr(runner_workers, "get_backend", lambda name: _fake_backend(monkeypatch))
+    monkeypatch.setattr(runner_workers, "_worker_pi", lambda exe, contract, timeout, log_path, hermes_root=None: (0, "done"))
     rc = runners._worker(task_id, root)
     meta = json.loads(meta_path.read_text())
     assert rc == 0, meta.get("error")
@@ -844,9 +896,9 @@ def test_cancel_arriving_during_terminal_write_still_wins(tmp_path: Path, monkey
     root.mkdir(parents=True, exist_ok=True)
     _make_job(root, task_id)
     cancel_path = root / f"{task_id}.cancel.json"
-    monkeypatch.setattr(runners, "get_backend", lambda name: _fake_backend(monkeypatch))
-    monkeypatch.setattr(runners, "_worker_pi", lambda exe, contract, timeout, log_path, hermes_root=None: (0, "done"))
-    real_atomic = runners._atomic_json
+    monkeypatch.setattr(runner_workers, "get_backend", lambda name: _fake_backend(monkeypatch))
+    monkeypatch.setattr(runner_workers, "_worker_pi", lambda exe, contract, timeout, log_path, hermes_root=None: (0, "done"))
+    real_atomic = runner_workers._atomic_json
     injected = {"done": False}
 
     def _atomic_with_cancel(path, value):
@@ -855,7 +907,7 @@ def test_cancel_arriving_during_terminal_write_still_wins(tmp_path: Path, monkey
             injected["done"] = True
             real_atomic(cancel_path, {"task_id": task_id, "requested_at": runners._now()})
 
-    monkeypatch.setattr(runners, "_atomic_json", _atomic_with_cancel)
+    monkeypatch.setattr(runner_workers, "_atomic_json", _atomic_with_cancel)
     rc = runners._worker(task_id, root)
     meta = json.loads(meta_path.read_text())
     assert rc == 0

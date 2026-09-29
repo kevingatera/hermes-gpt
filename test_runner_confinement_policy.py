@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import operator_runner_workers as runner_workers
 import operator_runners as runners
 import runner_confinement as confinement
 from test_operator_runners import _contract, _enable_workspace
@@ -95,7 +96,7 @@ def test_worker_pi_read_only_unusable_real_confinement_refuses_before_popen(
         launched = True
         raise AssertionError("unconfined Pi child reached process launch")
 
-    monkeypatch.setattr(runners, "_popen_process_group", must_not_launch)
+    monkeypatch.setattr(runner_workers, "_popen_process_group", must_not_launch)
     raw = _contract(ws, backend="pi_rpc", options={"tools": "read"})
     raw["authorization"] = {"class": "read_only", "approved": True}
 
@@ -131,7 +132,7 @@ def test_worker_pi_wraps_argv_under_confinement(tmp_path: Path, monkeypatch: pyt
         raise RuntimeError("stop after spawn")
 
     monkeypatch.setattr(confinement, "wrap_argv", fake_wrap)
-    monkeypatch.setattr(runners, "_popen_process_group", fake_popen)
+    monkeypatch.setattr(runner_workers, "_popen_process_group", fake_popen)
     raw = _contract(ws, backend="pi_rpc", options={"tools": "read,write", "sandbox": "workspace-write"})
     with pytest.raises(RuntimeError, match="stop after spawn"):
         runners._worker_pi("/bin/true", raw, 1, tmp_path / "log.jsonl", root)
@@ -163,7 +164,7 @@ def test_worker_pi_read_only_uses_read_only_workspace_confinement(
         raise RuntimeError("stop after spawn")
 
     monkeypatch.setattr(confinement, "wrap_argv", fake_wrap)
-    monkeypatch.setattr(runners, "_popen_process_group", fake_popen)
+    monkeypatch.setattr(runner_workers, "_popen_process_group", fake_popen)
     raw = _contract(ws, backend="pi_rpc", options={"tools": "read", "sandbox": "read-only"})
     raw["authorization"] = {"class": "read_only", "approved": True}
     with pytest.raises(RuntimeError, match="stop after spawn"):

@@ -7,6 +7,7 @@ import pytest
 
 import operator_fabric as fabric
 import operator_fabric_router as router
+import operator_runner_common as runner_common
 import operator_runners as runners
 
 NOW = datetime(2026, 8, 20, 15, 0, tzinfo=timezone.utc)
@@ -137,7 +138,7 @@ def exclusion_codes(item):
 
 
 def test_hard_constraints_run_before_gpu_preference(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     facts = {
         "local": target_facts(runner_names=("codex",), gpu=False, cost_bucket=0, locality_bucket=0),
         "node-a": target_facts(gpu=True, gpu_memory_mb=24576, cost_bucket=9, locality_bucket=9),
@@ -156,7 +157,7 @@ def test_hard_constraints_run_before_gpu_preference(tmp_path, monkeypatch):
 
 
 def test_fresh_gpu_remote_can_win_specialized_hardware_rank(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     facts = {
         "local": target_facts(runner_names=("codex",), gpu=False, cost_bucket=0, locality_bucket=0),
         "node-a": target_facts(gpu=True, gpu_memory_mb=24576, cost_bucket=9, locality_bucket=0),
@@ -175,7 +176,7 @@ def test_fresh_gpu_remote_can_win_specialized_hardware_rank(tmp_path, monkeypatc
 
 
 def test_stale_remote_manifest_fails_closed(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     stale = target_facts(observed_at=NOW - timedelta(hours=2))
     r = make_router(facts={"node-a": stale}, nodes={"node-a": node()}, local=())
     decision = r.route(contract(tmp_path))
@@ -186,7 +187,7 @@ def test_stale_remote_manifest_fails_closed(tmp_path, monkeypatch):
 
 
 def test_unhealthy_peer_is_never_ranked_eligible(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
 
     def broken(_node, _timeout):
         raise fabric.FabricError("FABRIC_PEER_UNAVAILABLE", "offline")
@@ -204,7 +205,7 @@ def test_unhealthy_peer_is_never_ranked_eligible(tmp_path, monkeypatch):
 
 
 def test_missing_gpu_tool_runtime_are_hard_exclusions(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     facts = {"node-a": target_facts(runtimes=("python",), tools=("code",), gpu=False)}
     r = make_router(facts=facts, nodes={"node-a": node()}, local=())
     decision = r.route(
@@ -228,7 +229,7 @@ def test_missing_gpu_tool_runtime_are_hard_exclusions(tmp_path, monkeypatch):
 
 
 def test_write_capable_auto_fails_closed_until_g4c_guard(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     facts = {
         "local": target_facts(runner_names=("codex",)),
         "node-a": target_facts(),
@@ -241,7 +242,7 @@ def test_write_capable_auto_fails_closed_until_g4c_guard(tmp_path, monkeypatch):
 
 
 def test_remote_required_artifacts_fail_closed_until_g4c_admission(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     r = make_router(
         facts={"node-a": target_facts()},
         nodes={"node-a": node()},
@@ -256,7 +257,7 @@ def test_remote_required_artifacts_fail_closed_until_g4c_admission(tmp_path, mon
 
 
 def test_no_candidate_returns_explainable_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     r = make_router(local=(), nodes={})
     decision = r.route(contract(tmp_path, requirements={"gpu": True}))
     assert decision["selected"] is None
@@ -264,7 +265,7 @@ def test_no_candidate_returns_explainable_failure(tmp_path, monkeypatch):
 
 
 def test_ties_are_stable_by_node_then_backend(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     facts = {
         "node-a": target_facts(runner_names=("codex", "pi_rpc"), cost_bucket=1),
         "node-b": target_facts(runner_names=("codex", "pi_rpc"), cost_bucket=1),
@@ -280,7 +281,7 @@ def test_ties_are_stable_by_node_then_backend(tmp_path, monkeypatch):
 
 
 def test_nonfinite_latency_is_only_worst_soft_bucket(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     r = make_router(
         facts={"node-a": target_facts()},
         nodes={"node-a": node()},
@@ -307,7 +308,7 @@ def test_explicit_backend_selection_remains_unchanged():
 
 
 def test_remote_placement_preserves_authorization_and_uses_fabric(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     r = make_router(
         facts={"node-a": target_facts(gpu=True, gpu_memory_mb=24576)},
         nodes={"node-a": node()},
@@ -324,7 +325,7 @@ def test_remote_placement_preserves_authorization_and_uses_fabric(tmp_path, monk
 
 
 def test_auto_backend_dispatches_only_the_selected_concrete_contract(tmp_path, monkeypatch):
-    monkeypatch.setattr(runners, "_runner_allowed", lambda _name: True)
+    monkeypatch.setattr(runner_common, "_runner_allowed", lambda _name: True)
     r = make_router(
         facts={"local": target_facts(runner_names=("codex",))},
         nodes={},

@@ -15,7 +15,7 @@ import yaml
 import operator_browser as browser
 import operator_config as op_config
 import operator_policy as op
-import operator_runners as runners
+import operator_runner_common as runner_common
 import operator_session as sessions
 import operator_session_job_store as job_store
 import operator_session_jobs as job_runtime
@@ -78,7 +78,7 @@ def _model_credentials(model: str, profile: str, hermes_root: Path | None) -> tu
         key = os.environ.get(env_name, "").strip()
         if not key and profile_home is not None:
             raw = op_config._read_env_value(profile_home / ".env", env_name) or ""
-            key = runners._unquote_env_value(raw).strip()
+            key = runner_common._unquote_env_value(raw).strip()
         if key:
             return env_name, key
     raise PermissionError(f"No {provider} API key is available in the selected credential profile")
@@ -277,7 +277,7 @@ def start_turn(
         readonly_paths=readonly_paths,
         writable_paths=tuple(writable_task_paths),
     )
-    child_env = runners._minimal_child_env()
+    child_env = runner_common._minimal_child_env()
     child_env.update({
         "HOME": str(task_home),
         "HERMES_HOME": str(task_home),
