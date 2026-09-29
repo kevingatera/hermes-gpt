@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import operator_mission_observations as mission_observations
 import operator_mission_spec as mission_spec
 import operator_mission_store as mission_store
 import operator_policy as op
@@ -54,7 +55,7 @@ STATUSES = (
     "failed",
     "cancelled",
 )
-TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+TERMINAL_STATUSES = mission_observations.TERMINAL_STATUSES
 ATTACHMENT_KINDS = {"workflow", "contract", "delegation", "evidence", "artifact"}
 ATTACHMENT_STATES = {"unknown", "pending", "running", "blocked", "succeeded", "failed", "cancelled"}
 MISSION_TRANSITIONS = {
@@ -460,128 +461,14 @@ def reserve_delegation_attachment(
     except (LookupError, OSError, sqlite3.Error):
         return False
 
-def _workflow_state(root: Path, ref: str) -> str:
-    if not WORKFLOW_REF_RE.fullmatch(ref):
-        return "unknown"
-    base = (root / "swarm-workflows").resolve()
-    path = (base / f"{ref}.json").resolve()
-    if path.parent != base or not path.is_file():
-        return "unknown"
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return "unknown"
-    status = raw.get("status")
-    return {
-        "running": "running",
-        "blocked": "blocked",
-        "awaiting_approval": "blocked",
-        "done": "succeeded",
-    }.get(status, "unknown")
-
-
-def _delegation_state(root: Path, mission_id: str, attachment: dict[str, Any]) -> tuple[str, bool, int | None]:
-    """Re-observe one delegation from its authoritative durable lifecycle."""
-    try:
-        import operator_delegations as delegations
-
-        payload = json.loads(delegations.hermes_delegation_reconcile(str(attachment["ref"]), apply=False, hermes_root=root))
-    except (ImportError, KeyError, TypeError, ValueError, json.JSONDecodeError, OSError, sqlite3.Error):
-        return "blocked", False, None
-    row = payload.get("delegation")
-    if not payload.get("success") or not isinstance(row, dict):
-        return "blocked", False, None
-    if str(row.get("mission_id") or "") != mission_id:
-        return "blocked", False, None
-    authority_version = int(row.get("authority_version") or 0)
-    if bool(row.get("cancellation_in_progress")) or (
-        bool(row.get("cancel_requested")) and str(row.get("state") or "") != "cancelled"
-    ):
-        return "blocked", False, authority_version
-    state = {
-        "reserved": "pending",
-        "queued": "pending",
-        "running": "running",
-        "reconciling": "blocked",
-        "succeeded": "succeeded",
-        "failed": "failed",
-        "cancelled": "cancelled",
-    }.get(str(row.get("state") or ""), "blocked")
-    if state != "succeeded":
-        return state, False, authority_version
-    contract_sha = str(row.get("contract_sha256") or "")
-    expected_evidence = f"contract:{contract_sha}" if contract_sha else ""
-    verified = (
-        bool(expected_evidence)
-        and str(row.get("validation_verdict") or "") == "SATISFIED"
-        and str(payload.get("evidence_ref") or "") == expected_evidence
-    )
-    return ("succeeded", True, authority_version) if verified else ("blocked", False, authority_version)
-
-
-def _observe_attachments(root: Path, mission: dict[str, Any]) -> list[dict[str, Any]]:
-    observed: list[dict[str, Any]] = []
-    for att in mission["attachments"]:
-        state = str(att["state"])
-        verified = bool(att.get("verified"))
-        if att["kind"] == "workflow":
-            state = _workflow_state(root, str(att["ref"]))
-            verified = state == "succeeded"
-        elif att["kind"] == "delegation":
-            state, verified, authority_version = _delegation_state(root, str(mission["mission_id"]), att)
-        elif state == "succeeded" and not verified:
-            state = "blocked"
-        item = {"kind": att["kind"], "ref": att["ref"], "state": state, "verified": verified}
-        if att["kind"] == "delegation" and authority_version is not None:
-            item["authority_version"] = authority_version
-        observed.append(item)
-    return observed
-
-
-def _completion_guard(root: Path, mission_id: str, observed: list[dict[str, Any]]):
-    import operator_delegations as delegations
-
-    snapshots = {
-        str(item["ref"]): int(item["authority_version"])
-        for item in observed
-        if item["kind"] == "delegation" and "authority_version" in item
-    }
-    delegation_count = sum(1 for item in observed if item["kind"] == "delegation")
-    if len(snapshots) != delegation_count:
-        raise ValueError("delegation authority snapshot is incomplete")
-    return delegations.mission_completion_guard(mission_id, snapshots, hermes_root=root)
-
-
-def _cancellation_guard(root: Path, mission_id: str, observed: list[dict[str, Any]]):
-    import operator_delegations as delegations
-
-    snapshots = {
-        str(item["ref"]): int(item["authority_version"])
-        for item in observed
-        if item["kind"] == "delegation" and "authority_version" in item
-    }
-    delegation_count = sum(1 for item in observed if item["kind"] == "delegation")
-    if len(snapshots) != delegation_count:
-        raise ValueError("delegation cancellation authority snapshot is incomplete")
-    return delegations.mission_cancellation_guard(mission_id, snapshots, hermes_root=root)
-
-
-def _desired_mission_status(mission: dict[str, Any], observed: list[dict[str, Any]]) -> str:
-    current = str(mission["status"])
-    if current in TERMINAL_STATUSES:
-        return current
-    states = {str(item["state"]) for item in observed}
-    if "failed" in states:
-        return "failed"
-    if "blocked" in states or "unknown" in states:
-        return "blocked"
-    if "running" in states or "pending" in states:
-        return "running"
-    if observed and states <= {"succeeded", "cancelled"} and "succeeded" in states:
-        if mission["final_approval_required"] and not mission["approval"].get("approved"):
-            return "awaiting_approval"
-        return "completed"
-    return current
+# Existing callers and concurrency tests use these runtime-level helper names.
+# Keep the stable names while storing child observation policy in its own module.
+_workflow_state = mission_observations.workflow_state
+_delegation_state = mission_observations.delegation_state
+_observe_attachments = mission_observations.observe_attachments
+_completion_guard = mission_observations.completion_guard
+_cancellation_guard = mission_observations.cancellation_guard
+_desired_mission_status = mission_observations.desired_status
 
 def hermes_mission_reconcile(
     mission_id: str,

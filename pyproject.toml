@@ -132,6 +132,7 @@ py-modules = [
   "operator_mission_resources",
   "operator_mission_overview",
   "operator_mission_runtime",
+  "operator_mission_observations",
   "operator_mission_spec",
   "operator_mission_store",
   "operator_mission_plan",
