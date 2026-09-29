@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 import operator_contract as contract_mod
+import operator_contract_checks as contract_checks
 import operator_mission_common as mission_common
 import operator_policy as op
 
@@ -925,9 +926,9 @@ def test_run_state_retry_selection_is_order_independent(hermes_root, monkeypatch
     c = _contract(task_id="retry-task")
     old_success = {"status": "done", "outcome": "completed", "started_at": "2026-08-13T10:00:00+00:00"}
     latest_failure = {"status": "done", "outcome": "failed", "started_at": "2026-08-13T11:00:00+00:00"}
-    monkeypatch.setattr(contract_mod, "_observed_runs", lambda *_: [old_success, latest_failure])
+    monkeypatch.setattr(contract_checks, "_observed_runs", lambda *_: [old_success, latest_failure])
     first = contract_mod._check_run_state(c, hermes_root)
-    monkeypatch.setattr(contract_mod, "_observed_runs", lambda *_: [latest_failure, old_success])
+    monkeypatch.setattr(contract_checks, "_observed_runs", lambda *_: [latest_failure, old_success])
     second = contract_mod._check_run_state(c, hermes_root)
     assert first["status"] == second["status"] == "FAIL"
     assert first["detail"] == second["detail"]
