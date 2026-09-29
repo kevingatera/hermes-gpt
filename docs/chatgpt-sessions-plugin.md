@@ -56,6 +56,10 @@ and does not require a separate provider API key for the plugin. Omit `model`
 and `reasoning_effort` to use the profile's configured defaults; pass either
 only for a requested per-turn override.
 
+Secure MCP Tunnel still uses its OpenAI runtime key to carry MCP traffic. That
+key authenticates `tunnel-client` to OpenAI; Hermes uses the selected profile's
+provider authentication for model calls.
+
 ## Add managed workspaces and browser access
 
 Managed tasks are an optional confined-workspace mode. They clone the selected
