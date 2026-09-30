@@ -287,9 +287,12 @@ Failed validation can return a stage for one bounded rework retry. A second fail
 
 Codex may provide a bounded review verdict, but Codex is never an implementation owner. Final workflow approval is human and Owner-gated.
 
-## Fabric execution (v0.8)
+## Fabric execution
 
-v0.8 extends Swarm execution across authenticated Hermes machines without moving completion authority to the worker. A stage using `execution.backend=auto` can be placed on an eligible local or remote runtime from the current capability snapshot; explicit backend/placement choices remain available where the workflow supports them.
+Fabric runs Swarm stages across authenticated Hermes machines. The coordinator
+keeps completion authority. A stage using `execution.backend=auto` can be
+placed on an eligible local or remote runtime from the current capability
+snapshot; supported workflows also accept explicit backend and placement choices.
 
 The packaged remote endpoint is `hermes-gpt-fabric-peer`. Loopback HTTP is permitted for same-machine development. Non-loopback peer serving requires both `--cert` and `--key`; the peer refuses insecure remote transport.
 
@@ -303,9 +306,11 @@ Flight Deck adds read-only Fabric node, placement, attempt, evidence, and routin
 
 See [v0.8.0 release notes](release-notes-v0.8.0.md) for the two-machine acceptance boundary and the known historical-timeout presentation limitation.
 
-## Flight Deck (v0.7 foundation, v0.8 Fabric views)
+## Flight Deck
 
-Flight Deck began in v0.7 with production review evidence, structured event history, durable encrypted token storage, and restart reconciliation. v0.8 layers read-only Fabric nodes, placement, attempts, evidence, and routing visibility onto that foundation. Existing authority classes and final human approval remain authoritative.
+Flight Deck shows review evidence, event history, token-store status, and
+read-only Fabric nodes, placement, attempts, evidence, and routing. It uses the
+existing Operator gates and retains final human approval.
 
 ### Review evidence (`hermes_review_accept`)
 
@@ -314,7 +319,7 @@ Flight Deck began in v0.7 with production review evidence, structured event hist
 | `hermes_review_accept(contract_sha256, task_id, assignee, reviewer, verdict, evidence_refs, approval_reference, dry_run, confirm)` | **owner** + direct + confirm | Write a review-acceptance record for a Work Contract. Distinct reviewer is enforced at write time (`reviewer != assignee`); verdicts are bounded to `SATISFIED` / `NOT_SATISFIED`; evidence is referenced, never copied. |
 
 The Work Contract validator reads the review-evidence store as an additional
-evidence source while keeping the v0.6 audit + human-approval paths. A
+evidence source alongside audit records and human approval. A
 `SATISFIED` acceptance by a reviewer distinct from the assignee satisfies the
 review check; a self-review record never does.
 
@@ -325,7 +330,7 @@ review check; a self-review record never does.
 | `hermes_events_query(source, subject_id, kind, since, until, limit)` | read_only + allowlist | Query the normalized, redacted event timeline (audit / swarm / codex / cron / kanban). |
 | `hermes_events_tail(limit)` | read_only + allowlist | Recent events across all allowed sources. |
 
-The event surface is a derived read-model over existing durable stores; it
+The event timeline is derived from existing durable stores; it
 never writes. Allowlist: `HERMES_GPT_EVENTS_ALLOWED_SOURCES` (unset = all
 read-only sources; list = only listed; empty = none). Retention:
 `HERMES_GPT_EVENTS_MAX_AGE_DAYS` (default 90). Redaction invariants match
@@ -336,11 +341,11 @@ Mission Control; prompts appear only as length/sha when present in the source.
 | Tool | Authority | Purpose |
 | --- | --- | --- |
 | `hermes_oauth_status()` | read_only | Durable token store presence/expiry only; never exposes token material. |
-| `hermes_oauth_revoke(confirm, dry_run, rotate_key)` | **owner** + direct + confirm (pending legal scope decision) | Retire every durable token + advance the revocation epoch in one transaction; optionally rotate the active master key. |
+| `hermes_oauth_revoke(confirm, dry_run, rotate_key)` | **owner** + direct + confirm | Retire every durable token and advance the revocation epoch in one transaction; optionally rotate the active master key. |
 
 OAuth access/refresh tokens are persisted through `token_store` (a
 transactional SQLite store at `<hermes_data>/secrets/hermes_gpt_tokens.db`,
-0600; per-row AES-256-GCM ciphertext; keyring → key file → env key
+0600; per-row AES-256-GCM ciphertext; env key, then keyring, then key file
 precedence) so a server restart does not invalidate credentials. No token
 material is ever written to the audit log or any MCP response. The
 `secrets/` directory is a denied path for all tools.

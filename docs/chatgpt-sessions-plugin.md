@@ -4,13 +4,12 @@ Status: private developer-mode setup.
 
 ## ChatGPT account requirements
 
-OpenAI's documentation currently disagrees about personal-plan access. The
-[Developer Mode guide](https://developers.openai.com/api/docs/guides/developer-mode)
-lists Plus and Pro as eligible for full MCP, while the [Help Center article](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)
-limits full MCP to Business, Enterprise, and Edu, and says Pro has read/fetch
-access. Check whether Developer Mode and write tools are available in the
-target account before relying on browser actions; rollout and workspace policy
-may affect access.
+Enable Developer mode under Settings > Security and login, then add the MCP
+connection in ChatGPT Plugins. Check that the target account can enable the
+plugin's write tools before relying on browser actions. Account and workspace
+policy can affect access. See OpenAI's
+[connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt)
+for the current setup steps.
 
 Hermes GPT already exposes session and browser controls through its curated
 `sessions` MCP toolset. This guide connects that toolset to ChatGPT through an

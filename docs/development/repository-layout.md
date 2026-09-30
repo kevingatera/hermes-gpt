@@ -1,8 +1,8 @@
 # Repository cleanup plan
 
-The root currently mixes runtime code, tests, release material, and generated
-files. Long filename prefixes stand in for directories. Start by separating
-those responsibilities, then improve the boundaries inside the Python package.
+This plan separates runtime code, tests, and documentation into directories
+with explicit owners. The migration replaces long filename prefixes with
+Python packages, then reviews the boundaries inside those packages.
 
 ## Target layout
 

@@ -1,143 +1,138 @@
-# Hermes ChatGPT UI — Security & State Boundary Notes
+# UI security and state boundary
 
-Status: current (implementation card t_7266e74c, 2026-08-15)
-Scope: `ui_security.py`, `ui_api.py` (composition), `server.py` mount,
-`web/src/shared/**`, `web/src/stores/connection.ts`, `tests/ui/test_ui_security.py`.
+The Hermes ChatGPT UI runs in the same process as the MCP server and is served
+from the same origin, so its security boundary is the redaction function every
+browser-bound payload passes through. The UI adds no authority of its own.
 
-These notes document the browser-facing security boundary for the
-conversational Hermes GPT UI. The authoritative design is
-`architecture.md` / `interface-contracts.md` (kanban t_ab4f3463); this file
-records what the boundary actually enforces and how to verify it.
+`src/hermes_gpt/ui/security.py` owns that boundary, `/api/me`, and
+`/api/connection`. `src/hermes_gpt/ui/routes.py` composes the route registry,
+and `src/hermes_gpt/server/http.py` mounts it into the ASGI app. Browser code
+lives under `web/src/shared/` and `web/src/stores/`. The authority model is
+[Operator Mode](operator-mode.md); the UI contract is
+[the Flight Deck UI contract](design/v0.7-flight-deck-ui-contract.md).
 
----
+## What crosses the boundary
 
-## 1. What crosses the boundary
+`redact_browser` serializes every browser-bound payload, both JSON response
+bodies and SSE `data` lines. Handlers build responses through the `ok` and
+`err` helpers, which call it, so a handler cannot skip redaction by accident.
 
-Every browser-bound payload (JSON response body and SSE `data` line) is
-serialized through `ui_security.redact_browser`. The two JSON envelope
-helpers (`ui_api.ok` / `ui_api.err`, implemented in `ui_security`) apply
-redaction automatically, so a handler cannot skip it by accident.
+- `ok(data)` applies strict redaction.
+- `ok(data, content_allowed=True)` is used only for the user's own conversation
+  text: chat thread `content` and SSE `token` / `reasoning` deltas. Every other
+  value in that payload still gets strict treatment.
+- `err(code, message)` redacts the message before it leaves the server.
 
-- `ok(data)` — strict redaction (default).
-- `ok(data, content_allowed=True)` — used ONLY for the user's own
-  conversation text (chat thread `content`, SSE `token`/`reasoning`
-  `delta`). Everything else in that payload still gets the strict treatment.
-- `err(code, message)` — message is redacted before it leaves the server.
+Tool events (`tool_start`, `tool_end`) always use the strict default.
 
-SSE event payloads are redacted per-event by the chat bridge using the same
-function; tool events (`tool_start`/`tool_end`) use the strict default.
+## What strict mode removes
 
-## 2. What is redacted (strict mode)
+Values under secret key names become `[REDACTED]`: `prompt`, `token`, `secret`,
+`password`, `credentials`, `memory_body`, `transcript`, `request_dump`,
+`client_secret`, `access_token`, `refresh_token`, `authorization`, `cookie`,
+`private_key`, `profile_secret`, plus any key ending in `_key`, `_token`,
+`_secret`, or `_password`. The marker is written rather than an empty value, so
+a dropped value stays visible.
 
-- Raw prompts, memory bodies, transcripts, request dumps, credentials, and
-  profile-secret bodies: values under secret-key names (`prompt`, `token`,
-  `secret`, `password`, `credentials`, `memory_body`, `transcript`,
-  `request_dump`, `client_secret`, `access_token`, `refresh_token`,
-  `authorization`, `cookie`, `private_key`, `profile_secret`, …) become
-  `[REDACTED]`. Never silently empty.
-- `content` / `delta` keys in strict mode are treated as raw message bodies
-  and redacted entirely (they survive only via `content_allowed=True`).
-- Secret substrings: `sk-…` / `sk-proj-…` OpenAI keys, `AKIA…` AWS keys,
-  `Bearer <token>`, `token=|secret=|password=|api_key=` values (reuses
-  `operator_policy.redact_output`).
-- PII in operator-derived text: emails, phone numbers, `@handles`, name
-  labels (mirrors `operator_mission._sanitize_error`).
-- Absolute filesystem paths (POSIX home paths, Windows drive paths, UNC, `~/...`) →
-  `[REDACTED_PATH]`; secret-file paths (`secrets/…`, `.env`, `auth.json`,
-  `hermes_gpt_tokens.json`, `hermes_gpt_tokens.db`, `hermes_gpt_token_key`, `.ssh/…`) →
-  `[REDACTED_SECRETS_PATH]`. Store paths are never exposed.
-- Length cap: every string in strict mode is truncated to
-  `HERMES_GPT_UI_TOOL_PREVIEW_BYTES` (default 8192) with a `…[truncated]`
-  marker. Chat content is bounded at 1 MiB (conversation text is not a tool
-  preview).
+Strict mode treats `content` and `delta` as raw message bodies and redacts them
+outright. Those keys survive only when a caller passes `content_allowed=True`.
 
-`content_allowed=True` skips PII/path mangling and the 8 KiB cap for the
-user's own text only; unambiguous secret shapes are still removed.
+Every string also runs through the shared output redactor in
+`src/hermes_gpt/policy/redaction.py`, which removes `sk-…` / `sk-proj-…` OpenAI
+keys, `AKIA…` AWS keys, `Bearer <token>`, and `token=|secret=|password=|api_key=`
+values. Text derived from operator records loses more: emails, phone numbers,
+`@handles`, and name labels, the same sanitizing used in
+`src/hermes_gpt/missions/common.py`. Absolute paths then become
+`[REDACTED_PATH]`, and secret-file references (`secrets/…`, `.env`,
+`auth.json`, `hermes_gpt_tokens.json`, `hermes_gpt_tokens.db`,
+`hermes_gpt_token_key`, `.ssh/…`) become `[REDACTED_SECRETS_PATH]`.
 
-## 3. Authn / authz
+Strict-mode strings are truncated to `HERMES_GPT_UI_TOOL_PREVIEW_BYTES`
+(default 8192) with a `…[truncated]` marker. The user's own conversation text
+uses a 1 MiB bound instead, because it is chat and not a tool preview.
+`content_allowed=True` skips the PII and path mangling and the 8 KiB cap for
+that text only; unambiguous secret shapes are still removed.
 
-- The UI reuses `oauth_http.BearerAuthMiddleware` and the existing
-  `build_asgi_app` wiring — **loopback default (no auth)**; static bearer or
-  confidential-client OAuth when configured; remote profile remains blocked
-  by the existing server gates. The UI adds no auth path of its own.
-- UI routes mount BEFORE `Mount("/", mcp_app)` when
-  `HERMES_GPT_UI_ENABLED=1`, so same-origin `/api/*` and `/ui` calls never
-  fall through to the MCP catch-all. With the env unset, the mount code is
-  not even imported — installed wheels without the UI modules are unaffected.
+## Authentication and authorization
 
-## 4. Account status (`GET /api/me`)
+The UI reuses `BearerAuthMiddleware` from `src/hermes_gpt/auth/http.py` and the
+existing `build_asgi_app` wiring. Loopback with no auth is the default; static
+bearer or the confidential-client OAuth boundary applies when configured, and
+the existing server gates still block the remote profile. The UI adds no auth
+path of its own. See [OAuth and bearer authentication](oauth.md).
 
-`accountStatus` is derived read-only from the durable token store
-(`token_store.status`), never from token material:
+With `HERMES_GPT_UI_ENABLED=1`, the UI routes register before the catch-all
+`Mount("/", app=mcp_app)`, so same-origin `/api/*` and `/ui` requests never fall
+through to the MCP app. With the variable unset, `server/http.py` does not
+import the UI modules, so an installed wheel without them is unaffected.
+
+## Account status and capabilities (`GET /api/me`)
+
+`accountStatus` is derived read-only from the durable token store, never from
+token material:
 
 | State | Meaning |
-|---|---|
-| `ok` | no auth configured (loopback), or static bearer, or valid store |
-| `expired` | durable store present, `expires_at` in the past |
-| `revoked` | durable store unreadable/corrupt (tokens unusable) |
-| `unauthorized` | OAuth configured but no usable durable store — re-auth needed |
+| --- | --- |
+| `ok` | no auth configured (loopback), static bearer, or a valid store |
+| `expired` | durable store present with `expires_at` in the past |
+| `revoked` | durable store unreadable or corrupt, so tokens are unusable |
+| `unauthorized` | OAuth configured with no usable durable store, so re-auth is needed |
 
-`/api/me` also returns `operatorLevel` (policy snapshot), `allowedSurfaces`
-(v0.7 Mission allowlist semantics: unset = all, list = only listed, empty =
-none — the unset state is NOT "deny by default"), and `uiCapabilities`
-(permission-aware: the mutating `approvals` lane drops when the account is
-degraded or the level is below `workspace`; read-only lanes stay).
+The same response carries `operatorLevel`, `allowedSurfaces`, `uiCapabilities`,
+`model`, and `serverVersion`. `allowedSurfaces` follows the Mission allowlist:
+unset allows all read-only surfaces, a list restricts to the listed ones, and
+an empty value denies all. The unset state is not "deny by default".
+`uiCapabilities` is permission-aware: `chat`, `flight`, and `events` always
+appear, `fleet` appears when the fleet surface is allowed, and the mutating
+`approvals` capability requires an `ok` account, an allowed `approvals`
+surface, and a level at or above `workspace`.
 
-## 5. Connection / stale-state helpers
+## Restart and stale-state handling
 
-- `GET /api/connection` returns a per-process `serverStartupId`; the
-  connection store compares it across polls to detect a server restart
-  mid-session and surfaces the in-flight turn as interrupted (recoverable via
-  persisted messages + turn lease), never as running.
-- `is_stale_lease(ts)` treats a turn lease older than
-  `HERMES_GPT_UI_STALE_LEASE_S` (default 600) as stale → interrupted UX.
-- `web/src/shared/ConnectionStatus.tsx` renders transport health;
-  `web/src/shared/AccountStatusBanner.tsx` renders the expired/revoked/
-  unauthorized recovery UX (re-auth affordance, mutating controls disabled,
-  read-only chat history stays viewable). Wiring the account store into the
-  banner is the flight card's job (t_1135e15b owns `web/src/stores/account.ts`).
+`GET /api/connection` returns a per-process `serverStartupId`. The connection
+store (`web/src/stores/connection.ts`) compares it across polls, so a server
+restart in the middle of a session surfaces the in-flight turn as interrupted
+and recoverable through persisted messages and the turn lease. It is never
+shown as still running. `is_stale_lease()` treats a turn lease older than
+`HERMES_GPT_UI_STALE_LEASE_S` (default 600) the same way.
 
-## 6. Mutations remain auditable and gated
+`web/src/shared/ConnectionStatus.tsx` renders transport health.
+`web/src/shared/AccountStatusBanner.tsx` renders the expired, revoked, and
+unauthorized recovery state: a re-auth affordance, mutating controls disabled,
+and read-only chat history still visible.
 
-This card adds NO mutation surface. Every mutation the UI offers goes
-through the existing gated `hermes_*` tool path (`POST /api/ops/action`,
-flight card t_1135e15b): read-only default, dry-run-first, confirm gate
-preserved (409 `CONFIRM_REQUIRED`), Owner Mode never bypasses secret-path
-protections, and every call is written to the operator audit JSONL. The
-boundary only guarantees the response is redacted and the envelope
-(`ok`/`error`, gate codes) is never weakened — `test_error_envelope_
-preserves_gate_codes` asserts that.
+## Mutations
 
-## 7. Env vars (architecture.md §15)
+The UI exposes no mutation path of its own. Every mutation it offers goes
+through the existing gated tool call at `POST /api/ops/action`, so the
+read-only default, dry-run-first flow, confirm gate (`409 CONFIRM_REQUIRED`),
+secret-path protections, and Operator audit record all still apply. The
+boundary guarantees two things about the response: it is redacted, and the
+`ok`/`error` envelope keeps its gate codes. `test_error_envelope_preserves_gate_codes`
+asserts the second.
 
-| Env | Default | Meaning |
-|---|---|---|
-| `HERMES_GPT_UI_ENABLED` | unset (off) | mount UI routes + static serving |
+## Environment variables
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `HERMES_GPT_UI_ENABLED` | unset (off) | mount UI routes and static serving |
 | `HERMES_GPT_UI_PROFILE` | `default` | profile the UI runs as |
 | `HERMES_GPT_UI_DIR` | `web/dist` | static build output override |
 | `HERMES_GPT_UI_STALE_LEASE_S` | `600` | stale turn-lease threshold |
-| `HERMES_GPT_UI_TOOL_PREVIEW_BYTES` | `8192` | per-string / tool-preview cap |
+| `HERMES_GPT_UI_TOOL_PREVIEW_BYTES` | `8192` | per-string and tool-preview cap |
 
-Existing env behavior is unchanged.
-
-## 8. Verification
+## Verification
 
 ```bash
-python -m pytest tests/ui/test_ui_security.py      # 36 tests: redaction properties,
-                                          # account states, auth boundary,
-                                          # allowlist semantics, /api/* sweep
-cd web && npm install && npx tsc --noEmit  # frontend shared skeleton typecheck
+python -m pytest tests/ui/test_ui_security.py
+cd web && npm install && npx tsc --noEmit
 ```
 
-Property sweep: `test_property_all_api_get_routes_redacted` walks every
-mounted `GET /api/*` route and asserts the body is free of forbidden
-patterns; `test_property_sse_payloads_redacted` runs every SSE event shape
-through the boundary. When chat/flight routes land in later cards, the same
-sweep covers them automatically.
-
-## 9. Known environment note (not from this card)
-
-`tests/server/test_mcp_compat.py::test_package_metadata_allows_mcp_1x_floor` fails in
-this venv because the installed `hermes-gpt` distribution metadata is stale
-(0.5.0, from before the `mcp[cli]>=1.0,<2` floor). It reads installed
-metadata, not the working tree; it is unaffected by this card's diff.
+`tests/ui/test_ui_security.py` covers redaction properties, account states, the
+auth boundary, allowlist semantics, and a sweep over every mounted `GET /api/*`
+route. `test_property_all_api_get_routes_redacted` asserts no route body
+contains a forbidden pattern, and `test_property_sse_payloads_redacted` runs
+each SSE event shape through the boundary. Routes added later are covered by
+the same sweep. Chat and browser routes have their own suites
+(`tests/ui/test_ui_chat.py`, `tests/ui/test_ui_ops.py`,
+`tests/ui/test_ui_missions.py`, `tests/ui/test_ui_fabric.py`).

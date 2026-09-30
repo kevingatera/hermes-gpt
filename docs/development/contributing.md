@@ -62,6 +62,6 @@ implementation history. State defaults and required gates exactly, then link
 to the guide that owns the details. Keep version history in the changelog.
 
 Use concrete words and varied sentences. Cut promotional claims, filler,
-repeated warnings, and labels that do not help a reader act. Poteto's `unslop`
-skill is used for this cleanup. Preserve technical names when changing them
+repeated warnings, and labels that do not help a reader act. Preserve technical
+names when changing them
 would make a command or a behavior harder to identify.

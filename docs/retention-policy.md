@@ -1,7 +1,6 @@
-# Hermes GPT data retention and cleanup policy
+# Data retention and cleanup policy
 
-**Status:** current v0.7.0 operational policy  
-**Owner:** Hermes GPT maintainer
+Status: current operational policy. Owner: Hermes GPT maintainer.
 
 For documentation authority rules, see [docs/README.md](README.md).
 
@@ -13,35 +12,35 @@ Mission Control does not return raw request dumps, Codex CLI transcripts, prompt
 
 ## Retention windows
 
-| Artifact class | Maximum window | Enforcement in v0.7.0 |
+| Artifact class | Maximum window | Enforcement |
 | --- | --- | --- |
 | `request_dump_*.json` | 7 days from file mtime | maintainer cleanup |
-| Codex job metadata/transcript artifacts | 30 days after terminal completion | age-based cleanup during `operator_codex` reconciliation |
+| Codex job metadata/transcript artifacts | 30 days after terminal completion | age-based cleanup during Codex job reconciliation |
 | terminal Swarm worktrees | 7 days after terminal state and declared artifact preservation | maintainer cleanup through normal Git worktree handling |
 | terminal Swarm workflow/verdict records | 30 days after terminal state | maintainer cleanup |
 | failed/abandoned workflow records | same windows, measured from last state transition | maintainer cleanup |
-| review-acceptance records (`review-evidence/review-acceptances.jsonl`) | 30 days after the contract they evidence reaches terminal state (legal review pending) | maintainer cleanup; see below |
-| event timeline | derived read-model — no stored copy; query window `HERMES_GPT_EVENTS_MAX_AGE_DAYS` (default 90) | enforced at query time by the event surface |
+| review-acceptance records (`review-evidence/review-acceptances.jsonl`) | 30 days after the contract they evidence reaches terminal state | maintainer cleanup; see below |
+| event timeline | derived read model with no stored copy; query window `HERMES_GPT_EVENTS_MAX_AGE_DAYS` (default 90) | enforced at query time by the event tools |
 | durable token store (`secrets/hermes_gpt_tokens.db`) | live rows until expired; retirement tombstones kept permanently | revocation via `hermes_oauth_revoke`; see below |
 
 ### Review-evidence records
 
 Review-acceptance records are append-only and never rewritten in place. They
-contain identity and references only — no raw prompts, transcripts, or bodies.
+contain identity and references only, with no raw prompts, transcripts, or
+bodies.
 Cleanup follows the same conservative procedure as other classes: confirm the
 evidenced contract is terminal and no legal hold applies, then remove the
-record. The retention window is aligned with the contract records it evidences
-and is **subject to legal review before shipping** (ADR-006, risk R11).
+record. Its retention window follows the contract records it evidences.
 
-### Durable token envelope
+### Durable token store
 
 The encrypted token store at `<hermes_data>/secrets/hermes_gpt_tokens.db`
-(0600) is revoked through the owner-gated `hermes_oauth_revoke` surface, which
-deletes the envelope and optionally rotates the master key. It is never
-age-purged automatically, and no tool reads or writes it except the token
-store. The `secrets/` directory is a denied path for all tools. Key management
-(OS keyring → key file → env) is documented in [oauth.md](oauth.md) and is
-subject to legal review (ADR-001, risk R4/R9).
+(0600) is revoked through the Owner-gated `hermes_oauth_revoke` tool. Revocation
+retires token rows, advances the revocation epoch, and optionally rotates the
+master key. Token-store commits remove expired live rows; retirement tombstones
+remain permanently. There is no background purge. The store owns these writes,
+and the `secrets/` directory stays denied to file tools. See
+[OAuth key management](oauth.md#durable-storage) for the key lookup order.
 
 ### Event timeline
 
@@ -51,17 +50,21 @@ window (default 90 days, `HERMES_GPT_EVENTS_MAX_AGE_DAYS`) is enforced at
 query time. The effective window is the minimum of the configured window and
 each source's own retention (for example, Codex jobs age out after 30 days),
 so an event older than its source cannot be returned even if the configured
-window is larger (legal finding L2).
+window is larger.
 
 ### Codex-specific automatic cleanup
 
-`operator_codex` defines `RETENTION_DAYS=30` and performs age-based cleanup as part of job reconciliation.
-
-This is **not** a general background deletion daemon. If no Codex reconciliation occurs, do not describe the policy as a continuously scheduled purge.
+`src/hermes_gpt/execution/codex.py` defines `RETENTION_DAYS=30` and performs
+age-based cleanup as part of job reconciliation. It is not a general background
+deletion daemon: nothing in this class ages out unless a reconciliation pass
+runs.
 
 ### Other artifact classes
 
-v0.7.0 does not install a global cleanup service for request dumps, Swarm worktrees, Swarm workflow/verdict records, or review-acceptance records. The maintainer remains responsible for keeping those classes within the stated windows unless later code explicitly adds and tests automation.
+No global cleanup service handles request dumps, Swarm worktrees, Swarm
+workflow/verdict records, or review-acceptance records. The maintainer remains
+responsible for keeping those classes within the stated windows unless later
+code adds and tests automation.
 
 ## Cleanup procedure
 
@@ -93,4 +96,6 @@ Any future cleanup automation must remain:
 - auditable;
 - conservative around active workflows and legal-hold exceptions.
 
-If documentation and implementation disagree about cleanup behavior, verify `operator_codex.py`, Swarm storage code, and the relevant tests before updating the claim.
+If documentation and implementation disagree about cleanup behavior, verify
+`src/hermes_gpt/execution/codex.py`, the Swarm store code, and the relevant tests
+before changing the claim.

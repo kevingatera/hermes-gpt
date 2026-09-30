@@ -1,9 +1,10 @@
 # Hermes GPT and Codex
 
-Hermes GPT supports **two different Codex workflows**. Keep them separate when configuring systems or generating tool calls.
+Choose the setup that matches who is calling whom:
 
-1. **Codex as an MCP client**: Codex loads a curated Hermes GPT MCP server and calls Hermes tools.
-2. **Codex CLI as a delegated worker/reviewer**: ChatGPT or another trusted client calls the normal Hermes GPT Operator server, which launches bounded async Codex CLI jobs through `hermes_codex_*`.
+- Codex can load Hermes GPT as an MCP server and call its curated tools.
+- ChatGPT or another trusted MCP client can ask the main Hermes GPT server to
+  launch bounded Codex CLI jobs through `hermes_codex_*`.
 
 The first workflow uses the Codex/MCP feature gates. The second uses Operator `workspace` authority plus the Codex runner gate.
 
@@ -12,7 +13,7 @@ For documentation authority rules, see [docs/README.md](README.md).
 Both workflows support MCP Python SDK 1.28.1+ and 2.x. See the
 [MCP compatibility guide](mcp-compatibility.md) for the transport and test matrix.
 
-## Workflow A: Codex as an MCP client
+## Codex as an MCP client
 
 ### Install the MCP entry
 
@@ -82,7 +83,7 @@ The curated Codex MCP server registers these names:
 | `hermes_author_skill` | Draft a skill; writes require explicit gates. |
 | `hermes_gateway_diagnostics` | Read-only gateway diagnostics. |
 
-The `operator` toolset adds curated namespaced aliases for Operator diagnostics, audit, cron, skills, non-secret config/environment, and gateway operations. It intentionally excludes broad workspace, raw git/command, and Owner file-write surfaces.
+The `operator` toolset adds curated namespaced aliases for Operator diagnostics, audit, cron, skills, non-secret config/environment, and gateway operations. It intentionally excludes broad workspace, raw git/command, and Owner file-write tools.
 
 ### Optional session-history integration
 
@@ -126,7 +127,7 @@ main Hermes GPT server:  hermes_web_extract
 Codex-focused MCP:       hermes_extract_page
 ```
 
-Agents must verify which MCP server/toolset is active before generating calls. Do not substitute a familiar tool name from another surface.
+Agents must verify which MCP server/toolset is active before generating calls. Do not substitute a familiar tool name from another server.
 
 ### Feature gates for the core toolset
 
@@ -156,9 +157,9 @@ Persistent core-tool writes are dry-run-first. Skill or cron writes require the 
 - Returned structured text is recursively redacted for common secret/token/cookie/private-key patterns.
 - The MCP server launches even when optional gates are absent so tools can return an actionable blocked response rather than disappearing silently.
 
-## Workflow B: Codex CLI as a delegated worker or reviewer
+## Codex CLI as a worker or reviewer
 
-This workflow uses the **normal Hermes GPT Operator server**, not the curated Codex-as-client MCP server.
+The main Hermes GPT Operator server launches these jobs.
 
 Tools:
 
@@ -193,7 +194,8 @@ Read-only jobs do not need the write gate.
 
 Delegated jobs default to `execution_mode="normal"`. An explicit job-scoped `execution_mode="nolo"` adds Codex's top-level `-a never` approval policy while preserving the requested `read-only` or `workspace-write` sandbox. `workspace-write` still requires `HERMES_GPT_ALLOW_CODEX_WRITE=1`, and Hermes still enforces the approved work directory, direct mode, `confirm=true`, and `dry_run=false`. NOLO expires with the job and is not a persistent global bypass.
 
-**The runner path does not require `HERMES_GPT_ENABLE_CODEX` or `HERMES_GPT_ENABLE_MCP`.** Those two gates belong to Workflow A, where Codex itself is the MCP client.
+`HERMES_GPT_ENABLE_CODEX` and `HERMES_GPT_ENABLE_MCP` enable the curated
+MCP client setup. Delegated runner jobs use the authority listed above.
 
 ### Codex executable resolution
 
@@ -248,7 +250,8 @@ For a Windows setup where ChatGPT connects to the normal Hermes GPT Operator ser
 
 [ChatGPT to Codex through Hermes GPT on Windows](windows-chatgpt-codex.md)
 
-That guide uses Workflow B. Do not add the Workflow A MCP-client gates unless you are also installing Hermes GPT into Codex as an MCP server.
+That guide uses the delegated runner. Enable the MCP-client gates only when
+you also want Codex to load Hermes GPT as an MCP server.
 
 ## Updating before connector changes
 
@@ -266,7 +269,7 @@ hermes-gpt update --apply
 
 Installed-package updates check PyPI. GitHub and PyPI releases can temporarily differ, so a newer GitHub tag does not guarantee that the installed-package updater will offer that version. See [updating](updating.md).
 
-## Example prompts for Workflow A
+## Prompts for Codex as an MCP client
 
 ```text
 Use hermes_plan to inspect this repository and produce a dry-run implementation plan. Do not edit files.
@@ -284,7 +287,7 @@ Use hermes_vision_analyze with this project image and keep the answer concise.
 
 ### Every curated MCP tool says `CODEX_DISABLED`
 
-Set both Workflow A base gates in the process that starts Codex and restart Codex:
+Set both MCP-client base gates in the process that starts Codex and restart Codex:
 
 ```text
 HERMES_GPT_ENABLE_CODEX=1

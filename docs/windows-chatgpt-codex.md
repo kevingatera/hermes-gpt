@@ -11,7 +11,8 @@ ChatGPT
   -> approved Git workspace
 ```
 
-This is **Codex CLI as a delegated worker/reviewer**. It is not the separate workflow where Codex itself loads Hermes GPT as an MCP server.
+Hermes GPT launches Codex CLI as a worker or reviewer in this setup. For Codex
+as the MCP client, use the separate [Codex guide](codex.md).
 
 For documentation authority rules, see [docs/README.md](README.md).
 
@@ -37,6 +38,14 @@ This is an advanced local setup.
 - OpenAI Secure MCP Tunnel or another private/authenticated boundary that can carry the loopback MCP endpoint to ChatGPT
 - The standalone Codex CLI
 - A dedicated Git repository to use as the approved work directory
+
+For a source checkout, install Hermes GPT in the environment that will run the
+service before using the module launch command:
+
+```powershell
+py -m venv .venv
+& ".venv\Scripts\python.exe" -m pip install -e .
+```
 
 Install and authenticate the standalone Codex CLI:
 

@@ -2,12 +2,12 @@
 
 - ``hermes_oauth_status``  — read_only: durable token store presence/expiry only;
   never exposes token material.
-- ``hermes_oauth_revoke``  — owner + direct + confirm (pending legal scope
-  decision): delete the durable token envelope and optionally rotate the key.
+- ``hermes_oauth_revoke`` requires owner + direct + confirm to retire durable
+  tokens and optionally rotate the key.
   Every call is audited.
 
-The token store itself is NOT an MCP mutation surface: only ``oauth_auth``
-reads/writes it via ``token_store``.
+The token store owns transactional writes. These tools expose status and
+policy-gated revocation without returning credentials.
 """
 
 from __future__ import annotations
@@ -86,9 +86,9 @@ def hermes_oauth_revoke(
     rotate_key: bool = True,
     hermes_root: Path | None = None,
 ) -> str:
-    """Revoke durable OAuth tokens (owner + direct + confirm, pending legal).
+    """Revoke durable OAuth tokens with owner + direct + confirm.
 
-    Deletes the encrypted token envelope; optionally rotates the master key.
+    Retires durable token rows; optionally rotates the master key.
     Never exposes token material. Audit is written for every call.
     """
     from hermes_gpt.auth import token_store
@@ -115,6 +115,8 @@ def hermes_oauth_revoke(
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     if effective:
+        # Keep the historical plan key for clients; SQLite revocation now
+        # retires token rows rather than deleting the database file.
         payload = {
             "success": True,
             "schema_version": "0.7-oauth.1",

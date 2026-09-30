@@ -1,114 +1,125 @@
-# Flight Deck v0.8 coverage checklist
+# Flight Deck coverage
 
-This checklist records the browser-facing Flight Deck adapter and UI coverage
-implemented in `ui_ops.py`, `ui_fabric.py`, `operator_fabric_view.py`, and
-`web/src/flight/`. It is an implementation handoff, not a new authority model.
-The current policy contract remains [Operator Mode](operator-mode.md).
+What the read-only browser adapter and UI cover today, and what was left out on
+purpose.
 
-## Reachable read surfaces
+The adapter code is `src/hermes_gpt/ui/ops.py`, `src/hermes_gpt/ui/fabric.py`,
+`src/hermes_gpt/ui/missions.py`, `src/hermes_gpt/fleet/fabric_view.py`, and the
+React panels under `web/src/flight/`. Design background lives in
+[docs/design/v0.7-flight-deck-architecture.md](design/v0.7-flight-deck-architecture.md)
+and [docs/design/v0.8-fabric-architecture.md](design/v0.8-fabric-architecture.md).
+Policy authority is unchanged and documented in [Operator Mode](operator-mode.md).
 
-- [x] v0.9 first-class Missions through `GET /api/ops/missions`, Mission detail,
-  Mission-filtered cursor/long-poll wakeups, and delegation detail. The browser
-  re-reads durable Mission state after a wakeup and exposes no Mission mutation
-  path.
-- [x] Mission Control: overview, health, profiles, fleet, Codex, cron,
+## Read-only routes
+
+- [x] Durable Missions through `GET /api/ops/missions`, mission detail,
+  mission-filtered cursor and long-poll wake-ups, and delegation detail. The
+  browser re-reads durable Mission state after a wake-up and exposes no Mission
+  mutation path.
+- [x] Mission Control overview, health, profiles, fleet, Codex, cron,
   delegations, failures, approvals, vault, usage, and audit through
-  `GET /api/ops/:surface`.
+  `GET /api/ops/{surface}`.
 - [x] Event History query and bounded tail through `GET /api/events`.
 - [x] Contracts and review-acceptance evidence through
-  `GET /api/ops/contracts`, `GET /api/ops/contracts/:contract_sha256`, and
-  `GET /api/ops/review/:contract_sha256`.
+  `GET /api/ops/contracts`, `GET /api/ops/contracts/{contract_sha256}`, and
+  `GET /api/ops/review/{contract_sha256}`.
 - [x] Swarm workflow list and detail through `GET /api/ops/swarm` and
-  `GET /api/ops/swarm/:workflow_id`.
+  `GET /api/ops/swarm/{workflow_id}`.
 - [x] Codex job and cron-job detail routes.
-- [x] Fleet status, policy summary, and OAuth-store presence/expiry status
+- [x] Fleet status, policy summary, and OAuth-store presence and expiry status
   without token material.
-- [x] Fabric node roster through `GET /api/ops/fabric/nodes`, showing enrolled
-  identity, coordinator-owned capability freshness, bounded capability summary,
-  active/capacity observations, authority ceiling, and explicit
-  observed/stale/unknown/disabled state without a peer RPC.
-- [x] Fabric remote attempt list/detail through `GET /api/ops/fabric/attempts`
-  and `GET /api/ops/fabric/attempts/:attempt_id`, including node/backend,
-  explicit-vs-auto placement, retry lineage, blocker/error state, write-epoch
-  authority summary, bounded durable/reconciled peer observations of write-claim
-  and execution-unit state, admitted evidence provenance, admitted artifact
-  metadata, and bounded Fabric audit history. Peer observations are labeled as
-  observations rather than coordinator authority or completion verdicts;
-  `LOST_AMBIGUOUS` is always presented as a blocker.
+- [x] Fabric node roster through `GET /api/ops/fabric/nodes`: enrolled
+  identity, coordinator-owned capability freshness, a bounded capability
+  summary, active and capacity observations, and the authority ceiling, each
+  labeled observed, stale, unknown, or disabled, with no peer RPC.
+- [x] Fabric remote attempt list and detail through
+  `GET /api/ops/fabric/attempts` and
+  `GET /api/ops/fabric/attempts/{attempt_id}`: node and backend,
+  explicit-versus-auto placement, retry lineage, blocker and error state, a
+  coarse write-epoch authority summary, bounded durable or reconciled peer
+  observations of write-claim and execution-unit state, admitted evidence
+  provenance, admitted artifact metadata, and bounded Fabric audit history.
+  Peer observations are labeled as observations, never as coordinator authority
+  or a completion verdict, and `LOST_AMBIGUOUS` is always shown as a blocker.
 - [x] Durable auto-placement receipts through `GET /api/ops/fabric/routing`.
-  G4-D receipts persist hard requirements, bounded candidate exclusions,
-  selected target, and deterministic rank. Older G4-B/G4-C receipts remain
-  readable and explicitly report that the detailed explanation was not
-  persisted rather than reconstructing or guessing it.
+  Current receipts persist hard requirements, bounded candidate exclusions, the
+  selected target, and the deterministic rank. Older receipts stay readable and
+  report that the detailed explanation was not persisted instead of
+  reconstructing or guessing it.
 
-## Fabric safety and trust-boundary handling
+## Fabric trust boundary
 
-- [x] `operator_fabric_view.py` is observational by construction: it does not
-  call peer RPC, poll, reconcile, cancel, retry, collect evidence, collect
-  artifacts, dispatch work, or create the coordinator journal.
-- [x] Fabric browser routes live in a dedicated GET-only sibling adapter.
-  `ui_ops.py` and its mutation allowlist are unchanged by G4-D.
-- [x] Fabric views never surface A2A URLs, bearer credentials, coordinator
+- [x] `src/hermes_gpt/fleet/fabric_view.py` reads only. It does not call peer
+  RPC, poll, reconcile, cancel, retry, collect evidence or artifacts, dispatch
+  work, or create the coordinator journal.
+- [x] Fabric browser routes live in their own GET-only module, so the `ui/ops.py`
+  mutation allowlist is untouched.
+- [x] Fabric views never expose A2A URLs, bearer credentials, coordinator
   principal secrets, local workspace mappings, artifact snapshot paths, or
   coordinator admission paths.
-- [x] Active remote HTML/SVG/JavaScript is never rendered in the trusted Flight
-  Deck origin. The UI receives only bounded metadata plus an
+- [x] Active remote HTML, SVG, and JavaScript is never rendered in the trusted
+  Flight Deck origin. The UI receives bounded metadata plus an
   `isolated_metadata_only` policy marker.
-- [x] Remote worker observations remain evidence inputs, never a completion
-  verdict. The UI states that coordinator validation remains authoritative.
-- [x] Stale/unavailable/ambiguous/reconciling/evidence-pending states are shown
-  explicitly and never upgraded to optimistic green by presentation logic.
-- [x] Router explanation fields are coordinator-generated, closed/bounded, and
-  contain no raw peer logs or caller filesystem/network targets.
-- [x] Any future Fabric intervention must continue through an existing gated
-  Hermes operator tool using the same dry-run/confirm semantics. G4-D adds no
+- [x] Remote worker observations stay evidence inputs rather than a completion
+  verdict, and the UI states that coordinator validation remains
+  authoritative.
+- [x] Stale, unavailable, ambiguous, reconciling, and evidence-pending states
+  appear as such; presentation logic never upgrades them to an optimistic
+  green.
+- [x] Router explanation fields are coordinator-generated, closed and bounded,
+  and carry no raw peer logs or caller filesystem and network targets.
+- [x] Any future Fabric intervention goes through an existing gated Hermes
+  operator tool with the usual dry-run and confirm semantics. There is no
   browser-only peer mutation endpoint.
 
-## General safety and state handling
+## General state handling
 
-- [x] Browser payloads use existing bounded/redacted operator read models and
-  the shared `ui_security` redaction envelope.
-- [x] Mission allowlist semantics are retained: unset permits all read-only
-  surfaces, a list restricts to listed surfaces, and an empty value denies all.
-- [x] UI panels render loading, unavailable/empty, stale, and error/retry
+- [x] Browser payloads use the existing bounded and redacted operator read
+  models plus the shared `ui/security.py` redaction envelope.
+- [x] Mission allowlist semantics are preserved: unset permits all read-only
+  surfaces, a list restricts to the listed surfaces, and an empty value denies
+  all.
+- [x] UI panels render loading, unavailable or empty, stale, and error or retry
   states.
-- [x] Event History is explicitly poll-driven because the current backend has
-  no generic push event stream.
-- [x] Every supported mutation uses `POST /api/ops/action`, with a strict
-  per-tool argument allowlist and server-side root resolution.
-- [x] Mutation flow is dry-run first; confirmation is a second explicit user
-  gesture and is passed only as the existing tool's `confirm` argument.
-- [x] Existing operator level, direct-mode, confirmation, audit, and secret-path
-  protections remain authoritative. The Flight Deck adds no authority bypass.
+- [x] Event History is poll-driven because the backend has no generic push
+  event stream.
+- [x] Every supported mutation goes through `POST /api/ops/action`, with a
+  strict per-tool argument allowlist and server-side root resolution.
+- [x] Mutation is dry-run first. Confirmation is a second explicit user action
+  and is passed only as the existing tool's `confirm` argument.
+- [x] Operator level, direct mode, confirmation, audit, and secret-path
+  protections stay authoritative. Flight Deck adds no bypass.
 - [x] Blocking cron execution returns `202 Accepted` and runs off the request
-  path; the UI refreshes the existing cron read model for status.
+  path; the UI refreshes the cron read model for status.
 
-## Intentional adapter boundaries
+## Deliberate omissions
 
-- No independent contract registry exists; contract list/detail are a bounded
+- No independent contract registry. Contract list and detail are a bounded
   composition of existing review evidence and swarm workflow references.
-- No generic approve/reject writer exists in the current backend; the UI only
-  exposes existing gated tool actions.
-- No read-only review-acceptance list tool exists; the adapter reads the
-  existing bounded review-evidence store.
-- Fabric node health on the G4-D roster is coordinator-observation freshness,
-  not a hidden live probe. Live verification remains part of dispatch/routing
-  correctness rather than presentation polling.
-- The coordinator's v0.8 journal records whether a write epoch was granted but
-  not the exact original write authorization subclass. Flight Deck therefore
-  labels this authority summary as coarse instead of inventing
-  reversible-write vs high-impact detail.
+- No generic approve or reject writer. The UI only exposes existing gated tool
+  actions.
+- No read-only review-acceptance list tool. The adapter reads the existing
+  bounded review-evidence store.
+- Fabric node health on the roster is coordinator-observation freshness, not a
+  live probe. Live verification stays part of dispatch and routing correctness
+  rather than presentation polling.
+- The coordinator journal records whether a write epoch was granted, not the
+  original write authorization subclass. Flight Deck labels that authority
+  summary as coarse instead of inventing reversible-write versus high-impact
+  detail.
 
 ## Verification
 
-- `tests/ui/test_ui_ops.py`: mission/status envelopes, allowlist behavior, event query,
-  route composition, and adversarial mutation-gate tests.
-- `tests/fleet/test_fabric_view.py`: stale/unknown node semantics, non-mutating
-  journal reads, routing-receipt compatibility, evidence redaction, artifact
-  path isolation, and active-content policy.
-- `tests/ui/test_ui_fabric.py`: GET-only Fabric routes, shared browser redaction,
-  invalid-id handling, route composition, and no private artifact path leak.
-- `web` Vitest: Fabric stale/blocked rendering, routing explanations, active
-  artifact isolation, absence of direct mutation controls, plus existing
-  surface/operator/event/approval tests.
-- `web` production build: TypeScript and Vite bundle validation.
+- `tests/ui/test_ui_ops.py`: mission and status envelopes, allowlist behavior,
+  event query, route composition, and adversarial mutation-gate tests.
+- `tests/fleet/test_fabric_view.py`: stale and unknown node semantics,
+  non-mutating journal reads, routing-receipt compatibility, evidence
+  redaction, artifact path isolation, and active-content policy.
+- `tests/ui/test_ui_fabric.py`: GET-only Fabric routes, shared browser
+  redaction, invalid-id handling, route composition, and no private artifact
+  path leak.
+- `tests/ui/test_ui_missions.py`: Mission list, detail, and event routes.
+- `web` Vitest: Fabric stale and blocked rendering, routing explanations,
+  active artifact isolation, absence of direct mutation controls, plus the
+  operator, event, and approval suites.
+- `web` Vite build: TypeScript and bundle validation.

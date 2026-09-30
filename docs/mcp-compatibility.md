@@ -1,25 +1,23 @@
-# MCP Compatibility
+# MCP compatibility
 
-- Status: current source (SDK 1/2 compatibility; not a release announcement)
-
-This manifest describes the MCP surface exposed by both the main server and
-curated Codex server. Package support is `mcp[cli]>=1.28.1,<3`. SDK 1.x remains
-supported; installations may select SDK 2.x without changing Hermes source.
+This guide describes the MCP tools the main server and the curated Codex server
+expose. Both SDK 1.x and SDK 2.x are supported through the package floor
+`mcp[cli]>=1.28.1,<3`, and an installation can move to SDK 2.x without changing
+Hermes source.
 
 ## Protocol compatibility
 
 The SDK package version and negotiated MCP protocol revision are separate.
 The compatibility tests perform real HTTP `initialize` requests for legacy
 revisions **2024-11-05** and **2025-11-25**, checking the exact negotiated
-revision and Hermes GPT application version on both server surfaces. The
+revision and Hermes GPT application version on both servers. The
 existing subprocess stdio test also exercises **2025-06-18**.
 
-SDK 2 introduces the **2026-07-28** stateless protocol while retaining legacy
-client support. New-protocol clients do not use the legacy initialization
-handshake. These are SDK transport semantics, not a change to Hermes Operator
-authority. See the [SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
+SDK 2 adds the 2026-07-28 stateless protocol while keeping legacy client
+support, and new-protocol clients skip the legacy initialization handshake.
+That is SDK transport behavior, not a change to Operator authority. See the [SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
 
-The shared `mcp_compat.HermesMCP` adapter preserves explicit HTTP/SSE options:
+The shared `hermes_gpt.mcp_compat.HermesMCP` adapter preserves explicit HTTP/SSE options:
 SDK 1 accepts them at construction; SDK 2 accepts them at ASGI app creation.
 Both retain JSON, stateless Streamable HTTP when started with `--http` and
 the existing host/origin restrictions. SDK 2 uses its public app-version
@@ -29,7 +27,7 @@ parameter; only SDK 1 needs the legacy private version assignment.
 
 | Transport | Path | Notes |
 |---|---|---|
-| stdio | — | Default local mode (`hermes-gpt` or `python -m hermes_gpt`) |
+| stdio | none | Default local mode (`hermes-gpt` or `python -m hermes_gpt`) |
 | Streamable HTTP | `/mcp` | Enabled with `--http`; transport security host/origin allowlist |
 | Legacy SSE | `/sse` (plus `/messages/`) | Retained for older clients |
 
@@ -57,29 +55,28 @@ For Secure MCP Tunnel, the baseline local hop can remain loopback/noauth while O
 
 `hermes_export_file` returns a direct MCP `CallToolResult` containing safe structured metadata and `EmbeddedResource(BlobResourceContents)` for authorized file bytes. This uses the normal `tools/call` response content union; it is not a new transport and does not require a separate resource-read endpoint.
 
-The file-export surface requires Operator `workspace` authority plus a non-empty `HERMES_GPT_OPERATOR_ALLOWED_PATHS`; see [Binary file export](file-export.md) for the complete confinement, size, extension, denied-path, and audit contract.
+File export requires Operator `workspace` authority plus a non-empty `HERMES_GPT_OPERATOR_ALLOWED_PATHS`; see [Binary file export](file-export.md) for the complete confinement, size, extension, denied-path, and audit contract.
 
 The MCP specification leaves rendering of embedded resources to the client. Hermes GPT guarantees the protocol-native blob representation and does not claim that ChatGPT, Codex, or another client will always render it as a downloadable attachment. No text/base64 fallback is emitted.
 
 ## Version advertisement
 
 The `initialize` handshake advertises the hermes-gpt app version in
-`serverInfo.version` (from `versioning.VERSION`) — not the
-MCP SDK version. This lets a client detect a stale process that is still
+`serverInfo.version`, from `hermes_gpt.versioning.VERSION`. This lets a client detect a stale process that is still
 exposing an old schema. `tests/server/test_mcp_compat.py::test_initialize_advertises_server_version`
-asserts the handshake reports `versioning.VERSION` and that the pinned floor
+asserts the handshake reports `hermes_gpt.versioning.VERSION` and that the pinned floor
 (`2024-11-05`) remains negotiable on the running SDK.
 
 Client notes:
 
-- **ChatGPT (chatgpt.com connector)**: uses the OAuth metadata to drive the
-  ChatGPT connector flow; loopback redirect required. For private developer-mode access without a public Hermes GPT hostname, see [OpenAI Secure MCP Tunnel](openai-secure-mcp-tunnel.md).
+- **ChatGPT (chatgpt.com connector)**: uses OAuth metadata for the
+  connector flow when OAuth is configured. For private developer-mode access without a public Hermes GPT hostname, see [OpenAI Secure MCP Tunnel](openai-secure-mcp-tunnel.md).
 - **Gemini Spark (consumer Custom apps)**: connects as a manually configured
   confidential client (Client ID and secret entered in the Gemini UI under
   "Advanced features → Show more") because the server advertises no
   `registration_endpoint`. Google's callback
   (`https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-<id>-<host-with-dots-as-underscores>`)
-  must be allowlisted exactly — wildcards are not accepted, and the first
+  must be allowlisted exactly. Wildcards are not accepted, and the first
   attempt is rejected so the exact value can be read from the server's HTTP
   access log. PKCE S256 is supported; the OAuth boundary is streamable HTTP
   only (`--http`). See [Gemini Spark custom app](gemini-spark.md).
@@ -109,7 +106,8 @@ callback's string result.
 Core tools returning typed dictionaries continue to provide structured content.
 
 Tests read MCP results through the `wire()` helper in `conftest.py`, which
-serializes a model by its protocol field names. Hermes builds results with
+serializes protocol field names and wraps SDK 1 direct-call tuples in the same
+result envelope used by its HTTP handler. Hermes builds results with
 those same names (`isError`, `structuredContent`), so a test never depends on
 whether the installed SDK spells the Python attribute `isError` or `is_error`.
 
@@ -123,5 +121,4 @@ python -m venv .venv-sdk2 && .venv-sdk2/bin/pip install -e ".[dev]" "mcp>=2,<3"
 .venv-sdk2/bin/python -m pytest -q
 ```
 
-Swap the specifier for `"mcp>=1.28.1,<2"` to check SDK 1. Two runs cover the
-compatibility surface; the suite takes roughly a minute per run.
+Swap the specifier for `"mcp>=1.28.1,<2"` to check SDK 1. Run the suite in both environments before claiming SDK compatibility.
