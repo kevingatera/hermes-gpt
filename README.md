@@ -89,8 +89,10 @@ plans rather than current setup instructions.
 
 ## Contribute
 
-Read [AGENTS.md](AGENTS.md) before editing. The [repository cleanup plan](docs/development/repository-layout.md)
-describes the package layout being introduced and the migration checks.
+Read [AGENTS.md](AGENTS.md) before editing and the
+[contributor guide](docs/development/contributing.md) for ownership and checks.
+The [repository cleanup plan](docs/development/repository-layout.md) describes
+the package layout and migration checks.
 
 ```bash
 python -m pip install -e '.[dev]'

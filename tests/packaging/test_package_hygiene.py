@@ -184,7 +184,8 @@ def built_artifacts(tmp_path_factory):
             timeout=300,
         )
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-        pytest.skip(f"python -m build unavailable or failed: {exc}")
+        output = getattr(exc, "stderr", "") or ""
+        pytest.fail(f"python -m build unavailable or failed: {exc}\n{output}")
     artifacts = sorted(outdir.glob("*.whl")) + sorted(outdir.glob("*.tar.gz"))
     assert artifacts, "build produced no artifacts"
     return artifacts
@@ -224,7 +225,7 @@ def test_sdist_does_not_ship_internal_docs(built_artifacts):
 
 
 def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
-    """Proof 10: wheel ships current public docs and every declared top-level module."""
+    """The wheel ships public guides and all source package modules."""
     try:
         import tomllib
     except ModuleNotFoundError:
@@ -239,6 +240,8 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         "share/hermes-gpt/docs/mcp-compatibility.md",
         "share/hermes-gpt/docs/release-notes-v0.7.0.md",
         "share/hermes-gpt/docs/release-notes-v0.8.0.md",
+        "share/hermes-gpt/docs/development/contributing.md",
+        "share/hermes-gpt/docs/development/repository-layout.md",
     ):
         assert any(n.endswith(suffix) for n in names), f"wheel missing data file: {suffix}"
     with open(REPO_ROOT / "pyproject.toml", "rb") as fh:
@@ -252,3 +255,6 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         name = module.relative_to(source).as_posix()
         assert name in names, f"Wheel missing runtime module: {name}"
     assert not any(name.startswith("tests/") for name in names)
+    assert not any("/" not in name and name.endswith(".py") for name in names), (
+        "Wheel contains obsolete flat runtime modules"
+    )

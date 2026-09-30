@@ -90,6 +90,10 @@ include = ["hermes_gpt*"]
   "examples/install-task.example.ps1",
   "examples/fleet-authority.example.json",
 ]
+"share/hermes-gpt/docs/development" = [
+  "docs/development/contributing.md",
+  "docs/development/repository-layout.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

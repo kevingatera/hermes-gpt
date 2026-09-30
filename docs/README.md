@@ -44,8 +44,10 @@ project overview.
 
 ## Development
 
-Read [AGENTS.md](../AGENTS.md) for repository rules and [the cleanup plan](development/repository-layout.md)
-for the directory migration. [RELEASE_CHECKLIST.md](../RELEASE_CHECKLIST.md)
+Read [AGENTS.md](../AGENTS.md) for repository rules, the
+[contributor guide](development/contributing.md) for ownership and checks, and
+[the cleanup plan](development/repository-layout.md) for the directory migration.
+[RELEASE_CHECKLIST.md](../RELEASE_CHECKLIST.md)
 covers packaging and publication checks. The package version and distributed
 files are declared in `pyproject.toml`.
 
