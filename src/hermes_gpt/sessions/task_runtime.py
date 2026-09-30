@@ -31,6 +31,7 @@ _BROWSER_BRIDGE_MODULES = (
     "hermes_gpt.policy",
     "hermes_gpt.paths",
     "hermes_gpt.browser.bridge",
+    "hermes_gpt.browser.launcher",
     "hermes_gpt.mcp_compat",
     "hermes_gpt.browser.session",
     "hermes_gpt.browser.profiles",

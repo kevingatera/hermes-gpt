@@ -58,6 +58,7 @@ def configure_task_browser(
         raise TypeError("The selected Hermes profile mcp_servers setting must contain a mapping")
 
     package_root = paths.import_root()
+    bridge_args = [str(paths.PACKAGE_DIR / "browser" / "launcher.py")]
     state_file = str(_browser_state_file(task_home))
     own_names = [
         name
@@ -66,7 +67,11 @@ def configure_task_browser(
         and isinstance(server, dict)
         and server.get("command") == agent_python
         and isinstance(server.get("args"), list)
-        and server["args"] in (["-m", "hermes_gpt.browser.bridge"], ["-m", "hermes_gpt_browser_mcp"])
+        and server["args"] in (
+            bridge_args,
+            ["-m", "hermes_gpt.browser.bridge"],
+            ["-m", "hermes_gpt_browser_mcp"],
+        )
         and isinstance(server.get("env"), dict)
         and server["env"].get("HERMES_GPT_BROWSER_STATE_FILE") == state_file
     ]
@@ -85,7 +90,7 @@ def configure_task_browser(
 
     server_config = {
         "command": agent_python,
-        "args": ["-m", "hermes_gpt.browser.bridge"],
+        "args": bridge_args,
         "env": {
             "PYTHONPATH": str(package_root),
             "HERMES_GPT_BROWSER_STATE_FILE": state_file,
