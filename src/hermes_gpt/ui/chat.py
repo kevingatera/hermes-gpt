@@ -191,7 +191,7 @@ def _session_db() -> Any:
         with _session_db_lock:
             if _session_db_instance is None:
                 try:
-                    from hermes_gpt.ui.state import SessionDB
+                    from hermes_state import SessionDB
 
                     _session_db_instance = SessionDB(db_path=_hermes_home() / "state.db")
                 except Exception as exc:

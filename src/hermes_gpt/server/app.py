@@ -128,8 +128,9 @@ def import_hermes() -> None:
             eprint(f"hermes-gpt: skill manager unavailable: {exc}")
 
         try:
-            from hermes_gpt.ui.state import SessionDB as SDB
-            from hermes_gpt.ui.state import get_hermes_home as ghh
+            # Session history needs the full Agent database, not the UI shim.
+            from hermes_state import SessionDB as SDB
+            from hermes_state import get_hermes_home as ghh
 
             SessionDB = SDB
             get_hermes_home = ghh
