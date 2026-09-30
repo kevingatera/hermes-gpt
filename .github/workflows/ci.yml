@@ -138,6 +138,7 @@ jobs:
           python -m ruff check
           oauth_auth.py oauth_token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py
           server_cli.py tests/server/test_server_cli.py
+          operator_session_model_options.py tests/sessions/test_model_options.py
           operator_browser_tabs.py tests/browser/test_browser_tabs.py
           operator_fabric_config.py tests/fleet/test_fabric_config_read_bounds.py
           mcp_compat.py codex_mcp.py tests/server/test_mcp_sdk_migration.py tests/server/test_mcp_compat.py

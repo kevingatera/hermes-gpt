@@ -559,14 +559,15 @@ def test_task_continue_dry_run_reports_selected_model_and_effort(monkeypatch, tm
 
 
 def test_task_model_validation_allows_any_hermes_provider_name():
-    assert tasks.runtime._validate_model_and_effort("my-provider/model-v3", "high") == (
-        "my-provider/model-v3",
-        "high",
-    )
+    overrides = tasks.ModelOverrides("my-provider/model-v3", "high")
+    assert overrides.model == "my-provider/model-v3"
+    assert overrides.reasoning_effort == "high"
 
 
 def test_task_model_and_effort_validation_allows_profile_defaults():
-    assert tasks.runtime._validate_model_and_effort(None, None) == (None, None)
+    overrides = tasks.ModelOverrides()
+    assert overrides.model is None
+    assert overrides.reasoning_effort is None
 
 
 def test_task_start_attaches_an_explicitly_allowed_hermes_browser(
