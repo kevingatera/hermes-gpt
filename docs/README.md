@@ -1,146 +1,67 @@
-# Hermes GPT documentation map
+# Documentation
 
-This file tells humans and agents which documents are current, which are historical, and where to verify behavior before making changes.
+Start with the guide for the task you need to do. Each guide owns its setup,
+configuration, and failure behavior. The root [README](../README.md) gives the
+project overview.
 
-## Source-of-truth order
+## Connect and configure
 
-When documents disagree, use this precedence:
+| Guide | Use it for |
+| --- | --- |
+| [ChatGPT session plugin](chatgpt-sessions-plugin.md) | private session and browser tools in ChatGPT |
+| [OpenAI Secure MCP Tunnel](openai-secure-mcp-tunnel.md) | outbound access to a loopback MCP server |
+| [Authentication](oauth.md) | bearer tokens, OAuth, refresh rotation, and revocation |
+| [Codex](codex.md) | Codex as an MCP client and the separate Codex CLI worker |
+| [Gemini Spark](gemini-spark.md) | an optional additional OAuth client |
+| [MCP compatibility](mcp-compatibility.md) | supported SDKs, transports, and protocol checks |
+| [Cloudflare Tunnel](cloudflare-tunnel.md) | HTTPS proxy setup and its authentication boundary |
+| [Windows deployment](windows-chatgpt-codex.md) | ChatGPT and delegated Codex CLI jobs on Windows |
 
-1. **Runtime code and tests** for the checked-out version.
-2. **Current operational docs** listed below.
-3. **Current release notes and CHANGELOG** for version history and known limitations.
-4. **Design, risk, counsel, and release-planning artifacts** for historical intent and provenance only.
-5. **FEASIBILITY.md** for the original machine-specific feasibility probe only.
+## Sessions and files
 
-A design document describes intended architecture. It does not override implemented code or tests.
+| Guide | Use it for |
+| --- | --- |
+| [Managed Hermes sessions](managed-hermes-sessions.md) | scoped tasks, model and effort choices, shared browser controls |
+| [Session control](session-control.md) | asynchronous start, continue, send, rename, and pin jobs |
+| [Session history](session-history.md) | bounded reads and exports of private session data |
+| [File export](file-export.md) | binary transfers, size limits, and denied paths |
+| [Updating](updating.md) | checking and updating Git or PyPI installations |
+| [Retention](retention-policy.md) | local diagnostic cleanup |
+| [Runtime checkout](runtime-checkout.md) | verifying which checkout a running service uses |
 
-## Current version context
+## Operator and web application
 
-Repository version: **0.12.0**. The GitHub release target is `v0.12.0`; verify the public GitHub Releases and PyPI channels independently.
+| Guide | Use it for |
+| --- | --- |
+| [Operator Mode](operator-mode.md) | policy, Owner authority, diagnostics, contracts, swarms, and fleet execution |
+| [Missions](missions.md) | mission lifecycle, context, attachments, and approval |
+| [Delegations](delegations.md) | worker jobs, lineage, cancellation, and reconciliation |
+| [Live events](live-events.md) | durable cursors, polling, and WebSocket notifications |
+| [Finance](finance.md) | local finance evidence and decisions |
+| [Flight Deck missions](flight-deck-missions.md) | mission views and live refresh |
+| [Flight Deck coverage](flight-deck-coverage.md) | browser checks and mutation decisions |
+| [UI security](ui-security-boundary.md) | browser access and the optional UI mount |
 
-PyPI is an independent distribution channel. Check the PyPI badge in the root README before assuming `pip install hermes-gpt` contains a particular feature set; v0.12 gated budget-enforcement and controller-L2 behavior requires a published PyPI version of 0.12.0 or newer *and* the corresponding machine gates armed; v0.11 Gemini Spark / Bot Chat / SDK 2 behavior requires a published PyPI version of 0.11.0 or newer; v0.10 vNext derived views / controller surfaces and v0.9 Mission/delegation/live-event behavior require 0.10.0 (or 0.9.0) or newer, respectively.
+## Development
 
-## Current operational docs
+Read [AGENTS.md](../AGENTS.md) for repository rules and [the cleanup plan](development/repository-layout.md)
+for the directory migration. [RELEASE_CHECKLIST.md](../RELEASE_CHECKLIST.md)
+covers packaging and publication checks. The package version and distributed
+files are declared in `pyproject.toml`.
 
-| Document | Authority | Use it for |
-| --- | --- | --- |
-| [`../README.md`](../README.md) | current | project overview, current release, quickstart, safety invariants, entry-point selection |
-| [`runtime-checkout.md`](runtime-checkout.md) | host deployment provenance | which checkout the live `hermes-gpt-server.service` serves, and a caution that it is not the branch you happened to inspect |
-| [`oauth.md`](oauth.md) | current | static bearer and confidential-client OAuth configuration, token lifecycle, refresh rotation, and remote authentication limits |
-| [`gemini-spark.md`](gemini-spark.md) | current | opt-in Gemini Spark client profile: dedicated-instance or additional-client setup, exact callback discovery, verification, and rollback |
-| [`mcp-compatibility.md`](mcp-compatibility.md) | current | SDK 1/2 support, protocol regression checks, transport matrix, trusted-client auth metadata |
-| [`file-export.md`](file-export.md) | current | bounded binary file transfer, workspace/denied-path gates, size/extension limits, MCP embedded-resource semantics |
-| [`openai-secure-mcp-tunnel.md`](openai-secure-mcp-tunnel.md) | current | outbound-only private access from supported OpenAI products to loopback Hermes GPT |
-| [`chatgpt-sessions-plugin.md`](chatgpt-sessions-plugin.md) | current | private ChatGPT setup for the curated Hermes session and browser MCP toolset |
-| [`cloudflare-tunnel.md`](cloudflare-tunnel.md) | current | public Cloudflare HTTPS proxy deployment and Host allowlist behavior |
-| [`operator-mode.md`](operator-mode.md) | current | Operator / Owner policy, Mission Control, fleet routing, Work Contracts, Swarm Orchestration, v0.8 Fabric execution, and Flight Deck surfaces |
-| [`finance.md`](finance.md) | current | bounded ChatGPT-to-Hermes Finance bridge, finance evidence/decision contracts, persistence boundary, activation, and verification |
-| [`missions.md`](missions.md) | current | v0.9 first-class Mission lifecycle, bounded context/skills manifests, attachments, reconciliation, and Owner approval |
-| [`live-events.md`](live-events.md) | current | v0.9 durable event cursor/long-poll and authenticated WebSocket wake-up stream |
-| [`flight-deck-missions.md`](flight-deck-missions.md) | current | v0.9 read-only Mission/delegation Flight Deck views with durable live refresh |
-| [`delegations.md`](delegations.md) | current | v0.9 normalized delegation lifecycle across Pi/OpenCode/Codex/Fabric with durable lineage and reconciliation |
-| [`codex.md`](codex.md) | current | Codex-as-MCP-client setup, optional Hermes session/browser tools, and delegated Codex CLI jobs |
-| [`windows-chatgpt-codex.md`](windows-chatgpt-codex.md) | current | Windows ChatGPT -> Hermes GPT -> Codex CLI deployment |
-| [`updating.md`](updating.md) | current | check-first Git and PyPI update behavior |
-| [`retention-policy.md`](retention-policy.md) | current | local diagnostic artifact retention and cleanup |
-| [`session-history.md`](session-history.md) | current | gated read-only session history surface and privacy defaults |
-| [`session-control.md`](session-control.md) | current | gated asynchronous session start/continue/send jobs with optional model and reasoning overrides, plus title and pin metadata controls |
-| [`managed-hermes-sessions.md`](managed-hermes-sessions.md) | current | scoped Hermes sessions with selectable model and effort plus direct or task-shared local browser controls |
-| [`ui-security-boundary.md`](ui-security-boundary.md) | current | conversational UI browser security boundary and opt-in UI mount |
-| [`flight-deck-coverage.md`](flight-deck-coverage.md) | current | Flight Deck browser coverage and mutation safety decisions |
-| [`release-notes-v0.8.0.md`](release-notes-v0.8.0.md) | current release record | shipped v0.8 Fabric behavior, G6 acceptance boundary, and known limitation |
-| [`release-notes-v0.7.0.md`](release-notes-v0.7.0.md) | historical release record | shipped v0.7 behavior and gates |
-| [`release-notes-v0.6.0.md`](release-notes-v0.6.0.md) | current release record | shipped v0.6 behavior and known limitations |
-| [`../RELEASE_CHECKLIST.md`](../RELEASE_CHECKLIST.md) | maintainer | release verification and publication gates |
-| [`../CHANGELOG.md`](../CHANGELOG.md) | historical/current | concise version history |
+Verify a claim against the current implementation and tests first, then the
+operational guide. Release notes describe their version. They do not override
+current code, and a repository version does not prove a package is on PyPI.
 
-## Tool-name namespaces
-
-Do not infer tool names from a different MCP surface.
-
-The main Hermes GPT server and the curated Codex MCP server overlap but are not identical.
-
-Important example:
-
-- main server page extraction: `hermes_web_extract`
-- Codex-focused MCP extraction: `hermes_extract_page`
-
-Before generating a tool call, verify the active server/toolset and exact registered name.
-
-## Current safety invariants
-
-These should remain true across documentation and implementation:
-
-- local loopback is the default network boundary;
-- public unauthenticated Operator hosting is unsupported;
-- default behavior is read-only;
-- mutating Operator tools are opt-in and dry-run-first;
-- direct mutation requires server direct mode plus the individual call's mutation/confirmation gates;
-- Owner Mode is break-glass and does not bypass secret-path restrictions;
-- protected execution paths use fixed argv and `shell=False`;
-- raw prompts are not persisted in Operator audit records;
-- Mission Control excludes raw messages, memory bodies, transcripts, request dumps, credentials, and profile-secret bodies;
-- Work Contract validation is observed-state and fail-closed;
-- Swarm final approval is a human Owner-level gate;
-- Codex is never a Swarm implementation owner.
-
-## Mission Control allowlist semantics
-
-`HERMES_GPT_MISSION_ALLOWED_SURFACES` is restrictive when configured:
-
-- unset: all read-only Mission Control surfaces are available;
-- comma-separated list: only listed valid surfaces are available;
-- empty value: no Mission Control surfaces are available.
-
-Do not describe the unset state as "deny by default". The implementation defaults to all read-only Mission Control surfaces when the variable is absent.
-
-## Historical release notes
-
-These are version records, not current setup instructions:
-
-- [`release-notes-v0.5.0.md`](release-notes-v0.5.0.md)
-- [`release-notes-v0.5.0b2.md`](release-notes-v0.5.0b2.md)
-- [`release-notes-v0.5.0b1.md`](release-notes-v0.5.0b1.md)
-- [`release-notes-v0.4.0.md`](release-notes-v0.4.0.md)
-- [`release-notes-v0.3.0.md`](release-notes-v0.3.0.md)
-- [`release-notes-v0.2.0.md`](release-notes-v0.2.0.md)
+Tool names depend on the active MCP server. For example, the main server uses
+`hermes_web_extract`; the curated Codex server uses `hermes_extract_page`.
+Inspect tool registration before copying a call between clients.
 
 ## Historical and internal artifacts
 
-The following directories contain valuable provenance, but they are not operational source-of-truth documents:
-
-- `design/` - technical design documents written before or during implementation. v0.6 designs are historical; v0.7 Flight Deck architecture and ADRs are current design artifacts for the v0.7 release cycle.
-- `releases/` - release brief, integrated plan, risk reviews, counsel packet, and surface manifest created during pre-release work. v0.6 artifacts are historical; v0.7 Flight Deck research package, risk register, and implementation plan are current release-program artifacts.
-
-Some of these files intentionally preserve phrases such as "candidate", "gate", or "before release" because they record the state at the time they were written. Agents must not treat those historical status statements as the current release state.
-
-When using an internal artifact:
-
-1. read it for rationale or constraints;
-2. verify every implementation claim against current code/tests;
-3. verify every release-status claim against the current GitHub release and current operational docs;
-4. do not copy machine-specific paths, identities, metrics, or approval history into new public docs unless required and still accurate.
-
-## Agent reading protocol
-
-For repository work, use this sequence:
-
-1. Read `AGENTS.md`.
-2. Read this file.
-3. Read `pyproject.toml` to establish the checked-out version and package surface.
-4. Read the relevant current operational doc.
-5. Inspect the implementation module and its tests before changing behavioral documentation.
-6. If working from a design/release artifact, treat it as a hypothesis until code/tests confirm it.
-7. After a behavior change, update the smallest canonical doc set that prevents drift.
-
-## Documentation maintenance rules
-
-- Put current instructions before historical context.
-- Prefer exact environment variable and tool names over prose aliases.
-- State defaults explicitly.
-- Distinguish read-only, dry-run, direct, and Owner authority.
-- Separate "Codex as MCP client" from "Codex CLI as delegated worker".
-- Keep examples minimal and copyable.
-- Link to one canonical explanation instead of duplicating large sections across files.
-- Mark time-sensitive distribution state clearly. Do not imply PyPI and GitHub releases are automatically synchronized.
-- Never document secrets, live credentials, bearer tokens, private keys, or raw prompt/transcript content.
+[CHANGELOG.md](../CHANGELOG.md) and the `release-notes-*` files record past
+versions. [Design documents](design/README.md), [release plans](releases/README.md),
+and `FEASIBILITY.md` preserve earlier decisions and experiments. Read them for
+rationale, then check the current code before treating a statement as a runtime
+contract. Keep private host details, credentials, prompts, and transcripts out
+of shared documentation.
