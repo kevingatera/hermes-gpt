@@ -6,8 +6,8 @@ import sys
 import types
 from pathlib import Path
 
-import finance_worker
-import operator_finance as finance
+from hermes_gpt.workspace import finance_worker
+from hermes_gpt.workspace import finance
 
 
 def evidence(**overrides):

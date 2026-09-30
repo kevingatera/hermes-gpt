@@ -35,7 +35,7 @@ export HERMES_GPT_ENABLE_SESSION_SEARCH=1
 export HERMES_GPT_ENABLE_SESSION_CONTROL=1
 export HERMES_GPT_ENABLE_SCOPED_TASKS=1
 
-python server.py mcp --http --host 127.0.0.1 --port 4751
+python -m hermes_gpt mcp --http --host 127.0.0.1 --port 4751
 ```
 
 For a persistent service, put these values in its private service environment.

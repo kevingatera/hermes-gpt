@@ -1,0 +1,57 @@
+"""Operator diagnostics and recovery tools, kept at their original import path.
+
+Tools include read-only health and release checks, a bounded state snapshot,
+and a dry-run-first recovery workflow. Recovery mutations still require
+``apply=True`` and the normal direct-mode policy gates.
+"""
+
+from hermes_gpt.workspace.diagnostics_checks import _STALE_HEARTBEAT_SECONDS, STATUS_FAIL, STATUS_PASS, STATUS_UNSUPPORTED, STATUS_WARN, _check_config_readable, _check_connector_api_bridge, _check_cron_registry, _check_env_readable, _check_gateway_status, _check_last_audit_record, _check_operator_policy, _check_operator_runtime, _check_result, _check_skills_registry, _config_path, _count_skills_safe, _cron_dir, _env_path, _gateway_pid_path, _gateway_state_path, _gateway_state_summary, _is_process_alive, _jobs_file, _profile_home, _read_config_safe, _read_cron_jobs_safe, _read_env_keys_safe, _read_last_audit_record, _skills_dir, _ticker_heartbeat_path
+from hermes_gpt.workspace.diagnostics_recovery import _recover_step_result, hermes_operator_recover
+from hermes_gpt.workspace.diagnostics_reports import hermes_operator_doctor, hermes_operator_snapshot
+from hermes_gpt.workspace.release_diagnostics import _file_contains, _find_secret_files, _previous_git_tag, _pyproject_version, _repo_status, hermes_release_doctor
+from hermes_gpt.versioning import VERSION
+
+__all__ = [
+    "STATUS_FAIL",
+    "STATUS_PASS",
+    "STATUS_UNSUPPORTED",
+    "STATUS_WARN",
+    "_STALE_HEARTBEAT_SECONDS",
+    "VERSION",
+    "_check_config_readable",
+    "_check_connector_api_bridge",
+    "_check_cron_registry",
+    "_check_env_readable",
+    "_check_gateway_status",
+    "_check_last_audit_record",
+    "_check_operator_policy",
+    "_check_operator_runtime",
+    "_check_result",
+    "_check_skills_registry",
+    "_config_path",
+    "_count_skills_safe",
+    "_cron_dir",
+    "_env_path",
+    "_file_contains",
+    "_find_secret_files",
+    "_gateway_pid_path",
+    "_gateway_state_path",
+    "_gateway_state_summary",
+    "_is_process_alive",
+    "_jobs_file",
+    "_previous_git_tag",
+    "_profile_home",
+    "_pyproject_version",
+    "_read_config_safe",
+    "_read_cron_jobs_safe",
+    "_read_env_keys_safe",
+    "_read_last_audit_record",
+    "_recover_step_result",
+    "_repo_status",
+    "_skills_dir",
+    "_ticker_heartbeat_path",
+    "hermes_operator_doctor",
+    "hermes_operator_recover",
+    "hermes_operator_snapshot",
+    "hermes_release_doctor",
+]

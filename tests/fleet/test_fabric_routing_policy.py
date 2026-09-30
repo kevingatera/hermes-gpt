@@ -14,25 +14,26 @@ from pathlib import Path
 
 import pytest
 
-import operator_fabric_router as router
-import operator_fabric_routing_policy as policy
+from hermes_gpt.fleet import fabric_router as router
+from hermes_gpt.fleet import fabric_routing_policy as policy
 
 NOW = datetime(2026, 8, 20, 15, 0, tzinfo=timezone.utc)
 
 
-def imported_top_level_modules(source: str) -> set[str]:
+def imported_modules(source: str) -> set[str]:
     names: set[str] = set()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
-            names.update(alias.name.split(".")[0] for alias in node.names)
+            names.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            names.add(node.module.split(".")[0])
+            names.add(node.module)
+            names.update(f"{node.module}.{alias.name}" for alias in node.names)
     return names
 
 
 def test_policy_module_never_imports_the_router():
     source = Path(policy.__file__).read_text(encoding="utf-8")
-    assert "operator_fabric_router" not in imported_top_level_modules(source)
+    assert "hermes_gpt.fleet.fabric_router" not in imported_modules(source)
 
 
 def test_router_reexports_policy_names_with_unchanged_identity():

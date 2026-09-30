@@ -17,14 +17,14 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
-import oauth_auth
-import operator_mission as op_mission
-import operator_mission_common as mission_common
-import operator_policy as op
-import server
-import token_store
-import ui_api
-import ui_security
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.missions import mission as op_mission
+from hermes_gpt.missions import common as mission_common
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.server import app as server
+from hermes_gpt.auth import token_store
+from hermes_gpt.ui import routes as ui_api
+from hermes_gpt.ui import security as ui_security
 
 # ---------------------------------------------------------------------------
 # Fixtures and builders

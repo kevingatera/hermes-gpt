@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
-import operator_recovery as rec
-import operator_swarm as op_swarm
-import operator_swarm_model as swarm_model
-import operator_swarm_store as swarm_store
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.workspace import recovery as rec
+from hermes_gpt.execution import swarm as op_swarm
+from hermes_gpt.execution import swarm_model
+from hermes_gpt.execution import swarm_store
 
 
 @pytest.fixture

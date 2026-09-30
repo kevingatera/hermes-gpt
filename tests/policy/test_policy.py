@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
+from hermes_gpt.policy import authorization as op
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +50,7 @@ def test_old_env_enabled_helper_still_works():
     """The old server.env_enabled() helper checks == '1' only. The new
     is_truthy is broader, but old behavior must remain intact for callers
     that still use env_enabled (the broad HERMES_GPT_ENABLE_* flags)."""
-    import server
+    from hermes_gpt.server import app as server
 
     os.environ["HERMES_GPT_TEST_OLD_FLAG"] = "1"
     try:

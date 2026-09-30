@@ -35,7 +35,7 @@ def test_secure_tunnel_guide_preserves_loopback_and_security_boundaries() -> Non
 def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -> None:
     text = _read(SESSIONS_GUIDE)
 
-    assert "python server.py mcp --http --host 127.0.0.1 --port 4751" in text
+    assert "python -m hermes_gpt mcp --http --host 127.0.0.1 --port 4751" in text
     assert "http://127.0.0.1:4751/mcp" in text
     for env_name in (
         "HERMES_GPT_CODEX_TOOLSET=sessions",

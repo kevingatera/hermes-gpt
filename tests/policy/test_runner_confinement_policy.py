@@ -6,9 +6,8 @@ from pathlib import Path
 
 import pytest
 
-import operator_runner_workers as runner_workers
-import operator_runners as runners
-import runner_confinement as confinement
+from hermes_gpt.execution import runner_workers, runners
+from hermes_gpt.policy import confinement
 from tests.execution.test_runners import _contract, _enable_workspace
 
 

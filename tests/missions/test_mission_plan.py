@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_mission_plan as plan
-import operator_mission_runtime as mission
-import operator_policy as op
+from hermes_gpt.missions import plan
+from hermes_gpt.missions import runtime as mission
+from hermes_gpt.policy import authorization as op
 
 
 @pytest.fixture

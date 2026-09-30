@@ -5,10 +5,10 @@ import sqlite3
 
 import pytest
 
-import server
+from hermes_gpt.server import app as server
 from tests.conftest import wire
 from tests.support.server import clear_gate_envs, tool_names, tools_by_name
-from session_test_fakes import FakeSessionDB
+from tests.support.fakes import FakeSessionDB
 
 
 def test_phase2_tools_are_gated_and_registered(monkeypatch):

@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-import oauth_auth
-import oauth_token_codec as codec
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.auth import token_codec as codec
 
 CLIENT_ID = "chatgpt-client"
 CLIENT_SECRET = "test-client-secret-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -48,12 +48,13 @@ def test_codec_module_never_imports_oauth_auth():
     imported: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            imported.update(alias.name.split(".")[0] for alias in node.names)
+            imported.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module.split(".")[0])
+            imported.add(node.module)
+            imported.update(f"{node.module}.{alias.name}" for alias in node.names)
     assert imported, "codec declares no imports"
-    assert "oauth_auth" not in imported
-    assert "oauth_config" not in imported
+    assert "hermes_gpt.auth.oauth" not in imported
+    assert "hermes_gpt.auth.config" not in imported
 
 
 def test_oauth_auth_reexports_the_identical_codec_objects():
@@ -70,7 +71,7 @@ def test_oauth_auth_reexports_the_identical_codec_objects():
 
 
 def test_pkce_regex_object_is_the_one_oauth_http_validates_with():
-    from oauth_http import _PKCE_VALUE
+    from hermes_gpt.auth.http import _PKCE_VALUE
 
     assert _PKCE_VALUE is codec._PKCE_VALUE
 

@@ -3,8 +3,8 @@ import os
 import subprocess
 import sys
 
-import operator_codex as oc
-import operator_job_supervisor as jobs
+from hermes_gpt.execution import codex as oc
+from hermes_gpt.execution import job_supervisor as jobs
 
 
 def _enable_codex_policy(monkeypatch, root):

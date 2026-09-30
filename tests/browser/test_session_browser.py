@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-import operator_browser_profiles as browser_profiles
-import operator_profile_browser as profile_controls
-import operator_session_browser as controls
-import operator_session_tasks as tasks
+from hermes_gpt.browser import profiles as browser_profiles
+from hermes_gpt.browser import profile_browser as profile_controls
+from hermes_gpt.browser import task_browser as controls
+from hermes_gpt.sessions import tasks
 
 
 def test_browser_actions_require_dry_run_or_explicit_confirmation(monkeypatch, tmp_path):

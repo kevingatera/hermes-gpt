@@ -6,11 +6,9 @@ from pathlib import Path
 
 import pytest
 
-import fabric_artifacts
-import fabric_write_guard
-import operator_fabric as fabric
-import operator_fabric_router as router
-import operator_fabric_view as view
+from hermes_gpt.fleet import fabric, fabric_artifacts, fabric_write_guard
+from hermes_gpt.fleet import fabric_router as router
+from hermes_gpt.fleet import fabric_view as view
 
 NOW = datetime.now(timezone.utc)
 

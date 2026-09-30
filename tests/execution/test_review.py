@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_contract as oc
-import operator_policy as op
-import operator_review as rev
+from hermes_gpt.execution import contract as oc
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.execution import review as rev
 
 
 @pytest.fixture

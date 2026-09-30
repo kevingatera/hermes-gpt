@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import server
-import server_hermes_runtime
+from hermes_gpt.server import app as server
+from hermes_gpt.server import hermes_runtime as server_hermes_runtime
 
 
 def _make_fake_root(tmp_path: Path) -> Path:

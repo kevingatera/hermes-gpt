@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import operator_events as ev
+from hermes_gpt.workspace import events as ev
 
 
 @pytest.fixture
@@ -248,7 +248,7 @@ def test_events_tail_bounded(hermes_root):
 
 def test_events_calls_are_audited(hermes_root, tmp_path):
     """Every events call writes an audit record (S6 per-tool audit wiring)."""
-    import operator_policy as op
+    from hermes_gpt.policy import authorization as op
 
     log = tmp_path / "audit.jsonl"
     op.set_audit_log_override(log)

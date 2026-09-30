@@ -49,35 +49,35 @@ jobs:
       - name: Compile operator modules
         run: >-
           python -m py_compile
-          server.py
-          codex_core.py
-          codex_mcp.py
-          mcp_compat.py
-          codex_config.py
-          operator_codex.py
-          operator_contract.py
-          fabric_artifacts.py
-          fabric_write_guard.py
-          operator_fabric.py
-          operator_fabric_control.py
-          operator_fabric_router.py
-          operator_fabric_g4c.py
-          operator_fabric_view.py
-          operator_fleet.py
-          operator_runners.py
-          operator_swarm.py
-          operator_swarm_workflows.py
-          operator_workspace.py
-          operator_export.py
-          updater.py
-          operator_recovery.py
-          operator_review.py
-          operator_events.py
-          operator_oauth.py
-          token_store.py
-          seams.py
-          ui_api.py
-          ui_fabric.py
+          src/hermes_gpt/server/app.py
+          src/hermes_gpt/clients/codex/core.py
+          src/hermes_gpt/clients/codex/mcp.py
+          src/hermes_gpt/mcp_compat.py
+          src/hermes_gpt/clients/codex/config.py
+          src/hermes_gpt/execution/codex.py
+          src/hermes_gpt/execution/contract.py
+          src/hermes_gpt/fleet/fabric_artifacts.py
+          src/hermes_gpt/fleet/fabric_write_guard.py
+          src/hermes_gpt/fleet/fabric.py
+          src/hermes_gpt/fleet/fabric_control.py
+          src/hermes_gpt/fleet/fabric_router.py
+          src/hermes_gpt/fleet/fabric_g4c.py
+          src/hermes_gpt/fleet/fabric_view.py
+          src/hermes_gpt/fleet/fleet.py
+          src/hermes_gpt/execution/runners.py
+          src/hermes_gpt/execution/swarm.py
+          src/hermes_gpt/execution/swarm_workflows.py
+          src/hermes_gpt/workspace/tools.py
+          src/hermes_gpt/workspace/export.py
+          src/hermes_gpt/workspace/updater.py
+          src/hermes_gpt/workspace/recovery.py
+          src/hermes_gpt/execution/review.py
+          src/hermes_gpt/workspace/events.py
+          src/hermes_gpt/auth/tools.py
+          src/hermes_gpt/auth/token_store.py
+          src/hermes_gpt/workspace/seams.py
+          src/hermes_gpt/ui/routes.py
+          src/hermes_gpt/ui/fabric.py
       - name: Check whitespace
         run: git diff --check
 
@@ -101,7 +101,7 @@ jobs:
           HERMES_AGENT_ROOT: ${{ github.workspace }}/hermes-agent-src
           PYTHONPATH: ${{ github.workspace }}/hermes-agent-src
         run: >-
-          python -c "import operator_skill_resolution as r;
+          python -c "from hermes_gpt.skills import resolution as r;
           assert r._agent_modules() is not None, 'Hermes Agent loader missing'"
       - name: Run skill-resolution tests against the real Agent loader
         env:
@@ -136,23 +136,23 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: >-
           python -m ruff check
-          oauth_auth.py oauth_token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py
-          server_cli.py tests/server/test_server_cli.py
-          operator_browser_tabs.py tests/browser/test_browser_tabs.py
-          operator_fabric_config.py tests/fleet/test_fabric_config_read_bounds.py
-          mcp_compat.py codex_mcp.py tests/server/test_mcp_sdk_migration.py tests/server/test_mcp_compat.py
+          src/hermes_gpt/auth/oauth.py src/hermes_gpt/auth/token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py
+          src/hermes_gpt/server/cli.py tests/server/test_server_cli.py
+          src/hermes_gpt/browser/tabs.py tests/browser/test_browser_tabs.py
+          src/hermes_gpt/fleet/fabric_config.py tests/fleet/test_fabric_config_read_bounds.py
+          src/hermes_gpt/mcp_compat.py src/hermes_gpt/clients/codex/mcp.py tests/server/test_mcp_sdk_migration.py tests/server/test_mcp_compat.py
           tests/server/test_mcp_transport_mode.py tests/clients/test_codex_mcp.py tests/packaging/test_hermetic_environment.py tests/execution/test_codex.py
-          fabric_artifacts.py fabric_write_guard.py
-          operator_fabric.py operator_fabric_control.py operator_fabric_router.py operator_fabric_routing_policy.py operator_fabric_g4c.py operator_fabric_view.py
+          src/hermes_gpt/fleet/fabric_artifacts.py src/hermes_gpt/fleet/fabric_write_guard.py
+          src/hermes_gpt/fleet/fabric.py src/hermes_gpt/fleet/fabric_control.py src/hermes_gpt/fleet/fabric_router.py src/hermes_gpt/fleet/fabric_routing_policy.py src/hermes_gpt/fleet/fabric_g4c.py src/hermes_gpt/fleet/fabric_view.py
           tests/fleet/test_fabric.py tests/fleet/test_fabric_adversarial.py tests/fleet/test_fabric_control.py
           tests/fleet/test_fabric_router.py tests/fleet/test_fabric_routing_policy.py tests/fleet/test_fabric_g4c.py tests/fleet/test_fabric_view.py tests/fleet/test_fabric_integration.py tests/ui/test_ui_fabric.py
-          operator_runners.py tests/execution/test_runners.py operator_delegations.py tests/execution/test_delegations.py
-          runner_confinement.py tests/policy/test_runner_confinement.py tests/policy/test_runner_confinement_policy.py
-          operator_export.py tests/workspace/test_export.py tests/server/test_server_export.py
-          operator_mission_runtime.py tests/missions/test_mission_runtime.py
-          operator_live_events.py tests/workspace/test_live_events.py tests/packaging/test_v09_system_invariants.py
+          src/hermes_gpt/execution/runners.py tests/execution/test_runners.py src/hermes_gpt/execution/delegations.py tests/execution/test_delegations.py
+          src/hermes_gpt/policy/confinement.py tests/policy/test_runner_confinement.py tests/policy/test_runner_confinement_policy.py
+          src/hermes_gpt/workspace/export.py tests/workspace/test_export.py tests/server/test_server_export.py
+          src/hermes_gpt/missions/runtime.py tests/missions/test_mission_runtime.py
+          src/hermes_gpt/workspace/live_events.py tests/workspace/test_live_events.py tests/packaging/test_v09_system_invariants.py
           tools/check_package_hygiene.py tests/packaging/test_package_hygiene.py
-          ui_api.py ui_fabric.py ui_missions.py tests/ui/test_ui_missions.py
+          src/hermes_gpt/ui/routes.py src/hermes_gpt/ui/fabric.py src/hermes_gpt/ui/missions.py tests/ui/test_ui_missions.py
 
   web:
     runs-on: ubuntu-latest

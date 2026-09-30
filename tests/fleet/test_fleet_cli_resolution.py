@@ -1,4 +1,4 @@
-import operator_fleet as fleet
+from hermes_gpt.fleet import fleet
 
 
 def test_hermes_bin_prefers_explicit_cli_env(monkeypatch, tmp_path):

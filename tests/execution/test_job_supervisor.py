@@ -6,7 +6,7 @@ import threading
 import time
 from contextlib import nullcontext
 
-import operator_job_supervisor as jobs
+from hermes_gpt.execution import job_supervisor as jobs
 
 
 def test_process_identity_matches_current_process():
@@ -69,7 +69,7 @@ import sys
 import time
 from pathlib import Path
 
-import operator_job_supervisor as jobs
+from hermes_gpt.execution import job_supervisor as jobs
 
 root = Path(sys.argv[1])
 job_id = sys.argv[2]
@@ -98,7 +98,8 @@ os._exit(0)
     )
 
     child_env = os.environ.copy()
-    module_root = os.path.dirname(os.path.abspath(jobs.__file__))
+    from hermes_gpt.paths import import_root
+    module_root = str(import_root())
     existing_pythonpath = child_env.get("PYTHONPATH", "")
     child_env["PYTHONPATH"] = os.pathsep.join(
         part for part in (module_root, existing_pythonpath) if part

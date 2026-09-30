@@ -12,7 +12,7 @@ Use this checklist before publishing a Hermes GPT release artifact.
 
 ## 2. Core verification
 
-- `python -m py_compile server.py tests/server/test_server.py`
+- `python -m py_compile src/hermes_gpt/server/app.py tests/server/test_server.py`
 - `python -m pytest`
 - `python -m pytest tests/missions/test_mission.py`
   - Mission Control redaction, no-raw-body, read-only, audit, bounds, and allowlist behavior must be green.

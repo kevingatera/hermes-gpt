@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-import operator_skill_loader as _skill_loader
+from hermes_gpt.skills import loader as _skill_loader
 
 _ISOLATED_ENV_VARS = (
     "HERMES_GPT_OPERATOR_ENABLED",
@@ -160,7 +160,7 @@ def inject_hermes_skill_loader(monkeypatch):
 @pytest.fixture(autouse=True)
 def restore_oauth_hooks_between_tests():
     """Keep build_server's process-global OAuth callbacks from leaking tests."""
-    import oauth_auth
+    from hermes_gpt.auth import oauth as oauth_auth
 
     persist_hook = oauth_auth._persist_hook
     revocation_hook = oauth_auth._revocation_hook

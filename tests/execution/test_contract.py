@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_contract as contract_mod
-import operator_contract_checks as contract_checks
-import operator_mission_common as mission_common
-import operator_policy as op
+from hermes_gpt.execution import contract as contract_mod
+from hermes_gpt.execution import contract_checks
+from hermes_gpt.missions import common as mission_common
+from hermes_gpt.policy import authorization as op
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -1111,7 +1111,7 @@ def test_all_sqlite_opens_are_mode_ro(hermes_root, monkeypatch):
             uris.append(database)
         return real_connect(database, *args, **kwargs)
 
-    monkeypatch.setattr("operator_mission_sources.sqlite3.connect", capturing_connect)
+    monkeypatch.setattr("hermes_gpt.missions.sources.sqlite3.connect", capturing_connect)
     ws = hermes_root.parent / "ws"
     c = _contract_for_ws(ws, task_id="t-done")
     _run_validate(c, hermes_root)
@@ -1388,7 +1388,7 @@ def test_dispatch_rejects_duplicate_task_id(hermes_root, monkeypatch, tmp_path):
 
 
 def test_server_registers_contract_tools(monkeypatch):
-    import server
+    from hermes_gpt.server import app as server
 
     monkeypatch.setattr(server, "require_imports", lambda: None)
     built = server.build_server()

@@ -1,7 +1,7 @@
 import subprocess
 from pathlib import Path
 
-import operator_session_task_runtime as task_runtime
+from hermes_gpt.sessions import task_runtime
 
 
 def test_source_root_uses_hermes_install_path_from_cli_version(
@@ -55,29 +55,12 @@ def test_browser_bridge_modules_mount_beside_a_workspace_inside_the_checkout(
     )
 
     assert Path(__file__).resolve().parents[2] not in paths
-    assert Path(__file__).resolve().parents[2] / "hermes_gpt_browser_mcp.py" in paths
+    assert Path(__file__).resolve().parents[2] / "src/hermes_gpt/browser/bridge.py" in paths
 
 
 def test_browser_bridge_mounts_include_local_import_dependencies():
-    import ast
+    from tests.support.package_graph import import_dependencies
 
-    root = Path(task_runtime.__file__).resolve().parent
-    mounted = {path.stem for path in task_runtime._browser_bridge_runtime_files()}
-    pending = ["hermes_gpt_browser_mcp"]
-    visited = set()
-    while pending:
-        name = pending.pop()
-        if name in visited:
-            continue
-        visited.add(name)
-        assert name in mounted, f"browser bridge dependency is not mounted: {name}"
-        tree = ast.parse((root / f"{name}.py").read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                names = [alias.name.split(".")[0] for alias in node.names]
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                names = [node.module.split(".")[0]]
-            else:
-                continue
-            pending.extend(dependency for dependency in names
-                           if (root / f"{dependency}.py").is_file())
+    mounted = set(task_runtime._browser_bridge_runtime_files())
+    expected = import_dependencies("hermes_gpt.browser.bridge")
+    assert expected <= mounted, f"Missing browser bridge imports: {expected - mounted}"

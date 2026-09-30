@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 
-import operator_capability_manifest as cm
-import operator_mission_plan as plan
-import operator_mission_runtime as mission
-import operator_placement as pl
-import operator_policy as op
+from hermes_gpt.missions import capability_manifest as cm
+from hermes_gpt.missions import plan
+from hermes_gpt.missions import runtime as mission
+from hermes_gpt.missions import placement as pl
+from hermes_gpt.policy import authorization as op
 
 # ---------------------------------------------------------------------------
 # Synthetic manifest targets (pure-core tests; no filesystem)

@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import operator_fleet
+from hermes_gpt.fleet import fleet as operator_fleet
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -52,7 +52,7 @@ def test_hermes_home_is_redirected_to_a_sandbox_without_real_config():
 
 def test_token_keys_stay_in_the_sandbox(tmp_path):
     """Default token-store persistence cannot reach an OS keychain."""
-    import token_store
+    from hermes_gpt.auth import token_store
 
     try:
         import keyring

@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_diagnostics as od
-import operator_diagnostics_reports as od_reports
-import operator_policy as op
+from hermes_gpt.workspace import diagnostics as od
+from hermes_gpt.workspace import diagnostics_reports as od_reports
+from hermes_gpt.policy import authorization as op
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -554,7 +554,7 @@ def test_recover_writes_audit_record(hermes_root, clean_env, audit_override):
 def test_new_tools_registered():
     import asyncio
 
-    import server
+    from hermes_gpt.server import app as server
 
     built = server.build_server()
     tools = asyncio.run(built.list_tools())
@@ -585,7 +585,7 @@ def test_gateway_state_with_invalid_utf8_reports_not_running(hermes_root):
 def test_mission_profile_summary_uses_state_pid_for_json_pid_file(hermes_root):
     """_profile_summary detects a running gateway from gateway_state.json
     when gateway.pid is JSON (the PR #62 scenario)."""
-    import operator_mission_operational as mission_operational
+    from hermes_gpt.missions import operational as mission_operational
 
     (hermes_root / "gateway.pid").write_text(
         json.dumps({"pid": os.getpid(), "kind": "hermes-gateway"}),

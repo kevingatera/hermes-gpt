@@ -7,8 +7,8 @@ import json
 import pytest
 from mcp.types import BlobResourceContents, EmbeddedResource, TextContent
 
-import operator_export as export
-import operator_policy as op
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.workspace import export
 from tests.conftest import wire
 
 

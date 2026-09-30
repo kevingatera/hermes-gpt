@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import runner_confinement as confinement
+from hermes_gpt.policy import confinement
 
 
 @pytest.fixture(autouse=True)

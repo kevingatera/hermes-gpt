@@ -5,10 +5,10 @@ import sqlite3
 
 import pytest
 
-import hermes_session_history as session_history
-import server
+from hermes_gpt.sessions import history as session_history
+from hermes_gpt.server import app as server
 from tests.support.server import clear_gate_envs, tool_names
-from session_test_fakes import FakeSessionConnection, FakeSessionDB, session_db_factory
+from tests.support.fakes import FakeSessionConnection, FakeSessionDB, session_db_factory
 
 
 def test_phase2_session_list_projects_metadata_and_paginates(monkeypatch):

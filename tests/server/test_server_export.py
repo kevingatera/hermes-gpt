@@ -5,8 +5,8 @@ import base64
 
 from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource
 
-import operator_policy as op
-import server
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.server import app as server
 from tests.conftest import wire
 
 

@@ -15,7 +15,16 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.testclient import TestClient
 
-from oauth_auth import (
+from hermes_gpt.auth.http import (
+    BearerAuthMiddleware,
+    DefaultMcpAcceptMiddleware,
+    authorization_metadata,
+    authorize,
+    protected_resource_metadata,
+    token,
+    validate_bearer_token,
+)
+from hermes_gpt.auth.oauth import (
     ACCESS_TOKEN_TTL_SECONDS,
     AUTH_TOKEN_ENV,
     MAX_ACCESS_TOKENS,
@@ -31,15 +40,6 @@ from oauth_auth import (
     OAuthError,
     OAuthState,
     config_from_env,
-)
-from oauth_http import (
-    BearerAuthMiddleware,
-    DefaultMcpAcceptMiddleware,
-    authorization_metadata,
-    authorize,
-    protected_resource_metadata,
-    token,
-    validate_bearer_token,
 )
 
 CLIENT_ID = "chatgpt-client"

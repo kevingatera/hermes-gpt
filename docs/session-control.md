@@ -10,7 +10,7 @@ Session control is off and hidden by default. Before enabling it, create a dedic
 $env:HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES="chatgpt"
 $env:HERMES_GPT_OPERATOR_ALLOWED_PROFILES="chatgpt"
 $env:HERMES_GPT_ENABLE_SESSION_CONTROL="1"
-python server.py
+python -m hermes_gpt
 ```
 
 The session-control allowlist is empty by default and does not accept `*`. The built-in `default` profile is denied unless it is explicitly listed. Do not list `default` for a remote client unless you intend to grant it the full authority of that profile. Profile selection is not an OS sandbox: the Hermes process receives the capabilities configured for that profile, so use Hermes tool restrictions and OS/container isolation to enforce filesystem and browser boundaries.

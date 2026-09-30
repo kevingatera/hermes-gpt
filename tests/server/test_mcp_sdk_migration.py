@@ -6,7 +6,7 @@ import json
 import pytest
 from starlette.testclient import TestClient
 
-from versioning import VERSION
+from hermes_gpt.versioning import VERSION
 
 
 @pytest.mark.parametrize("surface", ["main", "codex"])
@@ -15,7 +15,7 @@ def test_http_sdk_compatibility(surface, protocol, monkeypatch, tmp_path):
     # Import within the test so the original v1-only import is an explicit
     # regression failure under SDK 2, rather than a collection failure.
     try:
-        server = importlib.import_module("server")
+        server = importlib.import_module("hermes_gpt.server.app")
     except ImportError as exc:
         pytest.fail(f"Hermes GPT must load with the installed MCP SDK: {exc}")
     monkeypatch.setenv("HERMES_GPT_ENABLE_CODEX", "1")
@@ -88,11 +88,11 @@ def test_http_sdk_compatibility(surface, protocol, monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("surface", ["main", "codex"])
 def test_sdk2_stateless_request_without_initialize(surface, monkeypatch):
-    from mcp_compat import SDK_V2
+    from hermes_gpt.mcp_compat import SDK_V2
 
     if not SDK_V2:
         pytest.skip("2026-07-28 protocol requires SDK 2")
-    import server
+    from hermes_gpt.server import app as server
 
     monkeypatch.setenv("HERMES_GPT_ENABLE_CODEX", "1")
     monkeypatch.setenv("HERMES_GPT_ENABLE_MCP", "1")
@@ -119,7 +119,7 @@ def test_sdk2_stateless_request_without_initialize(surface, monkeypatch):
 
 @pytest.mark.parametrize("surface", ["main", "codex"])
 def test_sse_rejects_untrusted_host_and_origin(surface):
-    import server
+    from hermes_gpt.server import app as server
 
     built = server.build_server() if surface == "main" else server.build_codex_mcp_server()
     app = server.build_asgi_app(built, http=False) if surface == "main" else built.sse_app()
@@ -134,7 +134,7 @@ def test_sse_rejects_untrusted_host_and_origin(surface):
 
 def test_hermes_mcp_forwards_untranslated_sdk_options():
     """Options the adapter does not translate reach the SDK constructor."""
-    from mcp_compat import HermesMCP
+    from hermes_gpt.mcp_compat import HermesMCP
 
     built = HermesMCP("hermes-gpt-test", version=VERSION, instructions="Adapter passthrough.")
     assert built.instructions == "Adapter passthrough."

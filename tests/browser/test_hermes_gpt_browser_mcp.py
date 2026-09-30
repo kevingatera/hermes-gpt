@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from hermes_gpt_browser_mcp import build_server
+from hermes_gpt.browser.bridge import build_server
 
 
 def test_managed_browser_bridge_registers_tab_tools():

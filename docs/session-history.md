@@ -33,7 +33,7 @@ server:
 
 ```powershell
 $env:HERMES_GPT_ENABLE_SESSION_SEARCH="1"
-python server.py
+python -m hermes_gpt
 ```
 
 The five tools are:

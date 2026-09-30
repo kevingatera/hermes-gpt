@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 
-import operator_browser as browser
-import operator_browser_state as browser_state
+from hermes_gpt.browser import session as browser
+from hermes_gpt.browser import state as browser_state
 
 
 def _use_test_browser_executable(monkeypatch, executable):

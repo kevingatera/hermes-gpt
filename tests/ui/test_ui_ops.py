@@ -23,9 +23,9 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-import operator_policy as op
-import ui_api
-import ui_ops
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.ui import routes as ui_api
+from hermes_gpt.ui import ops as ui_ops
 
 OWNER_ACK = op.OWNER_ACK_REQUIRED_VALUE
 

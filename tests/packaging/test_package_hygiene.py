@@ -243,24 +243,12 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         assert any(n.endswith(suffix) for n in names), f"wheel missing data file: {suffix}"
     with open(REPO_ROOT / "pyproject.toml", "rb") as fh:
         pyproject = tomllib.load(fh)
-    modules = pyproject["tool"]["setuptools"]["py-modules"]
-    assert modules, "pyproject.toml declares no py-modules"
-    assert "operator_session_task_mcp" in modules
-    assert {
-        "operator_skill_common",
-        "operator_skill_manager",
-        "operator_skill_content",
-        "operator_skill_files",
-        "operator_skill_loader",
-        "operator_skill_catalog",
-        "operator_skill_resolution",
-        "operator_mission_plan_schema",
-        "operator_mission_plan_store",
-        "operator_mission_plan_tools",
-        "server_session_context",
-        "server_session_bot_chat_tools",
-        "server_session_history_tools",
-    } <= set(modules)
+    settings = pyproject["tool"]["setuptools"]
+    assert settings["packages"]["find"]["where"] == ["src"]
+    source = REPO_ROOT / "src"
+    modules = list((source / "hermes_gpt").rglob("*.py"))
+    assert modules, "Runtime package contains no modules"
     for module in modules:
-        top_level = f"{module}.py"
-        assert top_level in names, f"wheel missing py-module: {top_level}"
+        name = module.relative_to(source).as_posix()
+        assert name in names, f"Wheel missing runtime module: {name}"
+    assert not any(name.startswith("tests/") for name in names)

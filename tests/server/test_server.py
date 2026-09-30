@@ -13,10 +13,10 @@ from types import SimpleNamespace
 import pytest
 from starlette.testclient import TestClient
 
-import oauth_auth
-import operator_status as op_status
-import server
-import versioning
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.workspace import status as op_status
+from hermes_gpt.server import app as server
+from hermes_gpt import versioning
 from tests.support.server import GATE_ENVS, clear_gate_envs, tool_names, tools_by_name
 
 
@@ -576,7 +576,9 @@ def test_http_initialize_smoke(monkeypatch):
     proc = subprocess.Popen(
         [
             sys.executable,
-            "server.py",
+            "-I",
+            "-m",
+            "hermes_gpt",
             "--http",
             "--host",
             "127.0.0.1",

@@ -17,8 +17,8 @@ from types import SimpleNamespace
 import pytest
 import uvicorn
 
-import server
-import server_cli
+from hermes_gpt.server import app as server
+from hermes_gpt.server import cli as server_cli
 
 
 class FakeServer:
@@ -97,7 +97,7 @@ class FakeToolListServer:
 
 
 def _capture_codex_config(monkeypatch) -> dict:
-    import codex_config
+    from hermes_gpt.clients.codex import config as codex_config
 
     captured: dict = {}
     monkeypatch.setattr(

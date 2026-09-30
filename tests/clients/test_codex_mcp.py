@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-import codex_core
-import codex_mcp
+from hermes_gpt.clients.codex import core as codex_core
+from hermes_gpt.clients.codex import mcp as codex_mcp
 from tests.conftest import wire
 
 
@@ -81,7 +81,7 @@ def test_operator_toolset_is_opt_in_and_namespaced(monkeypatch):
 
 
 def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatch, tmp_path):
-    import server
+    from hermes_gpt.server import app as server
 
     monkeypatch.setenv(codex_core.CODEX_TOOLSET_ENV, "sessions")
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -180,7 +180,7 @@ def _readline_with_timeout(stream, seconds: float = 30.0) -> str:
 def test_codex_stdio_initialize_list_and_safe_tool_call():
     root = Path(__file__).resolve().parents[2]
     proc = subprocess.Popen(
-        [sys.executable, "server.py", "mcp"],
+        [sys.executable, "-I", "-m", "hermes_gpt", "mcp"],
         cwd=root,
         text=True,
         stdin=subprocess.PIPE,

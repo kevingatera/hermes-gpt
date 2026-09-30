@@ -10,7 +10,7 @@ loopback-only) applies.
 
 from __future__ import annotations
 
-import server
+from hermes_gpt.server import app as server
 
 
 def test_codex_http_runner_does_not_trust_wildcard_proxies(monkeypatch):

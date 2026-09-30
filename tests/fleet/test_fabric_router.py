@@ -5,10 +5,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import operator_fabric as fabric
-import operator_fabric_router as router
-import operator_runner_common as runner_common
-import operator_runners as runners
+from hermes_gpt.execution import runner_common, runners
+from hermes_gpt.fleet import fabric
+from hermes_gpt.fleet import fabric_router as router
 
 NOW = datetime(2026, 8, 20, 15, 0, tzinfo=timezone.utc)
 

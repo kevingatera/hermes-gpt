@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
-import operator_config as ocfg
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.workspace import config as ocfg
 
 
 @pytest.fixture

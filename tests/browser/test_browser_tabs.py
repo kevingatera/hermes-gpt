@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import operator_browser as browser
-import operator_browser_tabs as browser_tabs
+from hermes_gpt.browser import session as browser
+from hermes_gpt.browser import tabs as browser_tabs
 
 
 def test_tab_arguments_only_allow_listing_or_selecting_a_safe_reference():

@@ -70,7 +70,7 @@ $env:HERMES_GPT_OPERATOR_LEVEL="skills_config"
 $env:HERMES_GPT_OPERATOR_APPLY_MODE="dry_run"
 $env:HERMES_GPT_OPERATOR_ALLOWED_PROFILES="default"
 
-python server.py --http --host 127.0.0.1 --port 4750
+python -m hermes_gpt --http --host 127.0.0.1 --port 4750
 ```
 
 Mutating tools return plans or previews but do not apply changes.

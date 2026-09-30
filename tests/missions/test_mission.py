@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_fleet as op_fleet
-import operator_mission as mission
-import operator_mission_common as mission_common
-import operator_policy as op
+from hermes_gpt.fleet import fleet as op_fleet
+from hermes_gpt.missions import mission
+from hermes_gpt.missions import common as mission_common
+from hermes_gpt.policy import authorization as op
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -483,7 +483,7 @@ def test_all_sqlite_opens_are_mode_ro(hermes_root, monkeypatch):
             uris.append(database)
         return real_connect(database, *args, **kwargs)
 
-    monkeypatch.setattr("operator_mission_sources.sqlite3.connect", capturing_connect)
+    monkeypatch.setattr("hermes_gpt.missions.sources.sqlite3.connect", capturing_connect)
     # Exercise surfaces that open SQLite.
     _run("hermes_mission_profiles_tool", hermes_root)
     _run("hermes_mission_delegations_tool", hermes_root)

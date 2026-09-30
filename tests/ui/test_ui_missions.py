@@ -7,11 +7,11 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-import operator_live_events as live_events
-import operator_mission_runtime as missions
-import operator_policy as op
-import ui_api
-import ui_missions
+from hermes_gpt.missions import runtime as missions
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.ui import missions as ui_missions
+from hermes_gpt.ui import routes as ui_api
+from hermes_gpt.workspace import live_events
 
 
 def _spec(mission_id: str = "msn-ui-test") -> str:

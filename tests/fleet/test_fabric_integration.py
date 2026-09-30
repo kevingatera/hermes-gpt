@@ -7,16 +7,13 @@ from pathlib import Path
 
 import pytest
 
-import operator_contract as op_contract
-import operator_fabric as base
-import operator_fabric_g4c as fabric
-import operator_fabric_router as router
-import operator_fabric_view as view
-import operator_policy as op
-import operator_runner_common as runner_common
-import operator_runner_local as runner_local
-import operator_runners as runners
-import operator_swarm as swarm
+from hermes_gpt.execution import contract as op_contract
+from hermes_gpt.execution import runner_common, runner_local, runners, swarm
+from hermes_gpt.fleet import fabric as base
+from hermes_gpt.fleet import fabric_g4c as fabric
+from hermes_gpt.fleet import fabric_router as router
+from hermes_gpt.fleet import fabric_view as view
+from hermes_gpt.policy import authorization as op
 from tests.fleet.test_fabric_g4c import (
     FakeUnitManager,
     auto_contract,

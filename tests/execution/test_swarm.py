@@ -40,14 +40,14 @@ from pathlib import Path
 
 import pytest
 
-import operator_contract as contract_mod
-import operator_mission_common as mission_common
-import operator_policy as op
-import operator_swarm as swarm
-import operator_swarm_advance_tools as swarm_advance
-import operator_swarm_model as swarm_model
-import operator_swarm_store as swarm_store
-import operator_swarm_workflows as swarm_workflows
+from hermes_gpt.execution import contract as contract_mod
+from hermes_gpt.missions import common as mission_common
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.execution import swarm
+from hermes_gpt.execution import swarm_advance_tools as swarm_advance
+from hermes_gpt.execution import swarm_model
+from hermes_gpt.execution import swarm_store
+from hermes_gpt.execution import swarm_workflows
 
 # ---------------------------------------------------------------------------
 # Fixture builders
@@ -165,7 +165,7 @@ def _status(workflow_id: str, root: Path, monkeypatch) -> dict:
 
 def _dispatch(workflow_id: str, stage_id: str, root: Path, monkeypatch, *, confirm: bool = True, dry_run: bool = False, **kw) -> dict:
     _enable_workspace_direct(monkeypatch)
-    import operator_fleet as op_fleet
+    from hermes_gpt.fleet import fleet as op_fleet
 
     # The fleet authority manifest only admits built-in peers; add the test
     # peer so dispatch fixtures can authorize "hermes-dev" (fixture-only).
@@ -1293,7 +1293,7 @@ def test_retention_note_present(hermes_root, monkeypatch):
 
 
 def test_server_registers_swarm_tools(monkeypatch):
-    import server
+    from hermes_gpt.server import app as server
 
     monkeypatch.setattr(server, "require_imports", lambda: None)
     built = server.build_server()

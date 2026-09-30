@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import operator_capability_manifest as cm
+from hermes_gpt.missions import capability_manifest as cm
 
 
 @pytest.fixture

@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-import seams
+from hermes_gpt.workspace import seams
 
 HOST = "127.0.0.1"
 

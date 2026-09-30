@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_delegations as delegations
-import operator_mission_ledger as ld
-import operator_mission_runtime as mission
+from hermes_gpt.execution import delegations
+from hermes_gpt.missions import ledger as ld
+from hermes_gpt.missions import runtime as mission
 
 
 @pytest.fixture
@@ -364,7 +364,7 @@ def test_ledger_mcp_wrapper_accepts_string_cursor():
     """The server wrapper's annotation must accept the opaque ld1. cursor."""
     import inspect
 
-    import server as server_mod
+    from hermes_gpt.server import app as server_mod
 
     sig = inspect.signature(server_mod.hermes_mission_ledger)
     ann = sig.parameters["cursor"].annotation

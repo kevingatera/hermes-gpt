@@ -50,9 +50,9 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
-import oauth_auth
-import server
-import versioning
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.server import app as server
+from hermes_gpt import versioning
 
 
 ISSUER = "https://mcp.example.com"

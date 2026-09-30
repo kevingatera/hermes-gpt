@@ -29,7 +29,7 @@ parameter; only SDK 1 needs the legacy private version assignment.
 
 | Transport | Path | Notes |
 |---|---|---|
-| stdio | — | Default local mode (`hermes-gpt` or `python server.py`) |
+| stdio | — | Default local mode (`hermes-gpt` or `python -m hermes_gpt`) |
 | Streamable HTTP | `/mcp` | Enabled with `--http`; transport security host/origin allowlist |
 | Legacy SSE | `/sse` (plus `/messages/`) | Retained for older clients |
 

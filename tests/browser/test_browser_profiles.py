@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import operator_browser_profiles as profiles
+from hermes_gpt.browser import profiles
 
 
 @pytest.mark.parametrize(

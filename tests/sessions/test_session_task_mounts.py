@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-import operator_session_task_mounts as task_mounts
+from hermes_gpt.sessions import task_mounts
 
 
 def _mount_paths(candidate: Path, home: Path, task_home: Path) -> tuple[Path, ...]:

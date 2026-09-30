@@ -6,12 +6,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_contract as contract_mod
-import operator_policy as op
-import operator_runner_common as runner_common
-import operator_runner_local as runner_local
-import operator_runner_workers as runner_workers
-import operator_runners as runners
+from hermes_gpt.execution import contract as contract_mod
+from hermes_gpt.execution import runner_common, runner_local, runner_workers, runners
+from hermes_gpt.policy import authorization as op
 
 
 def _contract(ws: Path, *, backend: str | None = None, options: dict | None = None) -> dict:
@@ -162,9 +159,9 @@ def test_local_runner_dispatch_targets_facade_worker_entrypoint(
 
     argv = captured["argv"]
     assert isinstance(argv, list)
-    assert argv[1] == str(runner_common._RUNNER_ENTRYPOINT)
-    assert Path(argv[1]).is_file()
-    assert Path(argv[1]).resolve() == Path(runners.__file__).resolve()
+    assert argv[1:4] == ["-I", "-m", runner_common._RUNNER_MODULE]
+    assert runner_common._RUNNER_MODULE == runners.__name__
+    assert Path(runners.__file__).is_file()
     assert result["success"] is True
     assert result["state"] == "queued"
 
@@ -509,8 +506,8 @@ def test_execution_options_reject_secret_like_keys(tmp_path: Path):
 
 
 def test_canonical_swarm_accepts_per_stage_execution(tmp_path: Path):
-    import operator_swarm_model as swarm_model
-    import operator_swarm_workflows as workflows
+    from hermes_gpt.execution import swarm_model
+    from hermes_gpt.execution import swarm_workflows as workflows
 
     wf = workflows.canonical_workflow(
         title="Runner workflow",
@@ -771,7 +768,7 @@ def test_non_fleet_backend_exception_uses_runner_dispatch_error(tmp_path: Path, 
 
 
 def test_codex_observed_runs_uses_normalized_data_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    import operator_codex as op_codex
+    from hermes_gpt.execution import codex as op_codex
 
     ws = tmp_path / "ws"
     ws.mkdir()

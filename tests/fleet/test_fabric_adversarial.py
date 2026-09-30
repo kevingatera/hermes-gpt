@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-import operator_contract as op_contract
-import operator_fabric as fabric
-import operator_runners as op_runners
+from hermes_gpt.execution import contract as op_contract
+from hermes_gpt.execution import runners as op_runners
+from hermes_gpt.fleet import fabric
 from tests.fleet.test_fabric import (
     accept_request,
     contract,

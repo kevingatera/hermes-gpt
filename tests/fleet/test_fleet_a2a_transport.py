@@ -4,7 +4,7 @@ import io
 
 import pytest
 
-import operator_fleet_a2a as transport
+from hermes_gpt.fleet import a2a as transport
 
 
 @pytest.mark.parametrize("method", ["GET", "POST"])

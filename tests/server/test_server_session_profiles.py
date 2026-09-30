@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-import server
+from hermes_gpt.server import app as server
 from tests.conftest import wire
 
 

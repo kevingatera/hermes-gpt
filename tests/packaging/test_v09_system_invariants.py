@@ -5,11 +5,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_delegations as delegations
-import operator_live_events as live_events
-import operator_mission_runtime as missions
-import operator_policy as op
-import operator_runners as runners
+from hermes_gpt.execution import delegations, runners
+from hermes_gpt.missions import runtime as missions
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.workspace import live_events
 
 
 def _enable_workspace(monkeypatch: pytest.MonkeyPatch, workspace: Path) -> None:

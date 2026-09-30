@@ -12,7 +12,7 @@ def test_http_defaults_to_stateless_json_transport(monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
 
-    import server
+    from hermes_gpt.server import app as server
 
     mcp = server.build_server(http=True)
     from starlette.testclient import TestClient

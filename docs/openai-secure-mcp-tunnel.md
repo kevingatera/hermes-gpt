@@ -55,7 +55,7 @@ OpenAI tunnel permissions and ChatGPT developer-mode permissions are separate. D
 Start Hermes GPT with Streamable HTTP on a loopback address:
 
 ```powershell
-python server.py --http --host 127.0.0.1 --port 4750
+python -m hermes_gpt --http --host 127.0.0.1 --port 4750
 ```
 
 The local MCP endpoint is:

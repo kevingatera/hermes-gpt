@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-import oauth_auth as oa
-import operator_oauth as op_oauth
-import operator_policy as op
-import token_store as ts
+from hermes_gpt.auth import oauth as oa
+from hermes_gpt.auth import tools as op_oauth
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.auth import token_store as ts
 
 
 @pytest.fixture

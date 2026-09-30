@@ -14,9 +14,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_mission_budget as budget
-import operator_mission_runtime as mission
-import operator_policy as op
+from hermes_gpt.missions import budget
+from hermes_gpt.missions import runtime as mission
+from hermes_gpt.policy import authorization as op
 
 
 @pytest.fixture
@@ -331,7 +331,7 @@ def test_inv8_envelope_invariants(hermes_root):
 
 
 def test_validate_envelope_rejects_bad_policy(hermes_root):
-    from operator_mission_budget import _clean_policy
+    from hermes_gpt.missions.budget import _clean_policy
 
     with pytest.raises(ValueError):
         _clean_policy({"unit": "not-a-unit"})

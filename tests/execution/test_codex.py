@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-import operator_codex as oc
+from hermes_gpt.execution import codex as oc
 
 
 def _fake_codex(path: Path, version: str = "0.50.0", *, exit_code: int = 0) -> Path:

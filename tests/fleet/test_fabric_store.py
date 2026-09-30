@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-import operator_fabric_store as store
+from hermes_gpt.fleet import fabric_store as store
 
 
 def test_store_initializes_journal_tables_and_readonly_connection_rejects_writes(

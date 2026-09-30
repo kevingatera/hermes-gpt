@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-import server
+from hermes_gpt.server import app as server
 
 
 def test_browser_tab_tools_are_gated_and_have_safe_annotations(monkeypatch):

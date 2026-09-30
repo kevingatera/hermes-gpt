@@ -1,6 +1,6 @@
 import yaml
 
-import operator_session_task_mcp as task_mcp
+from hermes_gpt.sessions import task_mcp
 
 
 def test_task_browser_config_adds_bridge_without_replacing_profile_resources(

@@ -92,7 +92,7 @@ def test_package_metadata_allows_both_sdk_families():
 
 def test_http_tool_metadata_noauth_when_unconfigured(monkeypatch):
     """With no auth env, tools advertise noauth metadata."""
-    import server
+    from hermes_gpt.server import app as server
 
     for name in (
         server.ENABLE_WRITE_ENV,
@@ -122,7 +122,7 @@ def test_http_tool_metadata_noauth_when_unconfigured(monkeypatch):
 
 def test_http_tool_metadata_bearer_when_configured(monkeypatch):
     """With a static bearer token, tools advertise http/bearer metadata."""
-    import server
+    from hermes_gpt.server import app as server
 
     monkeypatch.delenv("HERMES_GPT_OAUTH_ENABLE", raising=False)
     monkeypatch.setenv("HERMES_GPT_BEARER_TOKEN", "test-bearer-token-1234567890-abcdefghijklmnopqrstuvwxyz-ABCDEF")
@@ -134,8 +134,8 @@ def test_http_tool_metadata_bearer_when_configured(monkeypatch):
 
 def test_http_tool_metadata_oauth2_when_configured(monkeypatch):
     """With OAuth configured, tools advertise oauth2 metadata with scope."""
-    import oauth_auth
-    import server
+    from hermes_gpt.auth import oauth as oauth_auth
+    from hermes_gpt.server import app as server
 
     for name in (
         oauth_auth.OAUTH_ENABLE_ENV,
@@ -162,7 +162,7 @@ def test_http_tool_metadata_oauth2_when_configured(monkeypatch):
 
 def test_server_registers_core_tools(monkeypatch):
     """The built server registers the v0.6+ core tool surface."""
-    import server
+    from hermes_gpt.server import app as server
 
     for name in (
         server.ENABLE_WRITE_ENV,
@@ -183,7 +183,7 @@ def test_server_registers_core_tools(monkeypatch):
 
 
 def test_managed_hermes_session_and_browser_tools_register(monkeypatch, tmp_path):
-    import server
+    from hermes_gpt.server import app as server
 
     monkeypatch.setenv(server.ENABLE_SCOPED_TASKS_ENV, "1")
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -231,7 +231,7 @@ def test_managed_hermes_session_and_browser_tools_register(monkeypatch, tmp_path
 @pytest.fixture()
 def built_server(monkeypatch):
     """A server built under a clean, read-only default environment."""
-    import server
+    from hermes_gpt.server import app as server
 
     for name in (
         server.ENABLE_WRITE_ENV,
@@ -319,7 +319,7 @@ def test_flight_deck_tools_have_titles(built_tools):
 
 def test_build_server_is_stable_across_calls(monkeypatch):
     """Proof 8: build_server() twice yields identical tool-name sets."""
-    import server
+    from hermes_gpt.server import app as server
 
     for name in (
         server.ENABLE_WRITE_ENV,
@@ -343,8 +343,8 @@ def test_initialize_advertises_server_version(protocol):
     """Test the real HTTP handshake instead of SDK-private session internals."""
     from starlette.testclient import TestClient
 
-    import server
-    import versioning
+    from hermes_gpt import versioning
+    from hermes_gpt.server import app as server
 
     built = server.build_server(http=True)
     app = server.build_asgi_app(built, http=True)
@@ -366,8 +366,8 @@ def test_gated_write_tools_refuse_without_owner_direct_confirm(built_tools, tmp_
     default read-only policy env (owner + direct + confirm gates intact)."""
     import json
 
-    import operator_policy as op
-    import server
+    from hermes_gpt.policy import authorization as op
+    from hermes_gpt.server import app as server
 
     for name in GATED_WRITE_TOOLS:
         assert name in built_tools, f"missing gated write tool: {name}"

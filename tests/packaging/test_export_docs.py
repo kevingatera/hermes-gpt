@@ -40,11 +40,12 @@ def test_binary_export_is_documented_with_security_boundaries() -> None:
 def test_binary_export_module_and_guide_ship_in_package() -> None:
     data = tomllib.loads(_read(ROOT / "pyproject.toml"))
     setuptools = data["tool"]["setuptools"]
-    assert "operator_export" in setuptools["py-modules"]
+    assert "hermes_gpt*" in setuptools["packages"]["find"]["include"]
+    assert (ROOT / "src/hermes_gpt/workspace/export.py").is_file()
     assert "docs/file-export.md" in setuptools["data-files"]["share/hermes-gpt/docs"]
 
 
 def test_binary_export_ci_has_focused_regressions() -> None:
     workflow = _read(ROOT / ".github" / "workflows" / "ci.yml")
-    assert "operator_export.py" in workflow
+    assert "src/hermes_gpt/workspace/export.py" in workflow
     assert "tests/workspace/test_export.py tests/server/test_server_export.py" in workflow

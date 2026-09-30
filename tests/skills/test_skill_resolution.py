@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_skill_catalog as skill_catalog
-import operator_skill_loader as loader
-import operator_skill_resolution as resolution
+from hermes_gpt.skills import catalog as skill_catalog
+from hermes_gpt.skills import loader
+from hermes_gpt.skills import resolution
 
 
 def _use_real_loader(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-import operator_fabric as fabric
-import operator_fabric_peer_http as peer_http
+from hermes_gpt.fleet import fabric
+from hermes_gpt.fleet import fabric_peer_http as peer_http
 
 
 class FakeBackend:

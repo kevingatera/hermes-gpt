@@ -32,12 +32,12 @@ from pathlib import Path
 
 import pytest
 
-import operator_controller as ctl
-import operator_mission_budget as budget
-import operator_mission_budget_breaker as breaker
-import operator_mission_plan as plan
-import operator_mission_runtime as mission
-import operator_policy as op
+from hermes_gpt.missions import controller as ctl
+from hermes_gpt.missions import budget
+from hermes_gpt.missions import budget_breaker as breaker
+from hermes_gpt.missions import plan
+from hermes_gpt.missions import runtime as mission
+from hermes_gpt.policy import authorization as op
 
 HARD_POLICY = json.dumps({"hard_block_enabled": True, "pause_on_cross": True})
 

@@ -31,9 +31,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import operator_failure_semantics as fs
-import operator_mission_runtime as mission
-import operator_policy as op
+from hermes_gpt.missions import failure_semantics as fs
+from hermes_gpt.missions import runtime as mission
+from hermes_gpt.policy import authorization as op
 
 # ---------------------------------------------------------------------------
 # Minimal standalone harness (no pytest in this environment)

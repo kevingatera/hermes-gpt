@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-import codex_core as core_module
+from hermes_gpt.clients.codex import core as core_module
 
 
 ALL_GATES = [

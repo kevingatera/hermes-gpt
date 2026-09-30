@@ -8,11 +8,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_fabric as base
-import operator_fabric_g4c as fabric
-import operator_fabric_router as base_router
-import operator_runner_common as runner_common
-import operator_runners as runners
+from hermes_gpt.execution import runner_common, runners
+from hermes_gpt.fleet import fabric as base
+from hermes_gpt.fleet import fabric_g4c as fabric
+from hermes_gpt.fleet import fabric_router as base_router
 
 TOKEN = "0123456789abcdef0123456789abcdef"
 

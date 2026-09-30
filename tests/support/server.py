@@ -6,8 +6,8 @@ import asyncio
 
 import pytest
 
-import oauth_auth
-import server
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.server import app as server
 
 GATE_ENVS = [
     server.ENABLE_WRITE_ENV,

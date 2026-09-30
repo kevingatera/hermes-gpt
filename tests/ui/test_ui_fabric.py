@@ -6,8 +6,8 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-import ui_api
-import ui_fabric
+from hermes_gpt.ui import fabric as ui_fabric
+from hermes_gpt.ui import routes as ui_api
 
 
 @pytest.fixture(autouse=True)

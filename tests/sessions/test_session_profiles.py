@@ -2,7 +2,7 @@
 
 import json
 
-import operator_session_profiles as session_profiles
+from hermes_gpt.sessions import profiles as session_profiles
 
 
 def _profile(root, name, config):

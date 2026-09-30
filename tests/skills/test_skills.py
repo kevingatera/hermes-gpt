@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_policy as op
-import operator_skill_manager as skill_manager
-import operator_skills as osk
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.skills import manager as skill_manager
+from hermes_gpt.skills import tools as osk
 
 # ---------------------------------------------------------------------------
 # Fixtures

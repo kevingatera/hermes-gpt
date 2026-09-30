@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Move Python runtime modules into the `hermes_gpt` package under `src/` and group tests by subsystem. Python imports now use package namespaces; launch with `hermes-gpt` or `python -m hermes_gpt` instead of the removed root `server.py`. MCP tool names and persisted formats are unchanged.
+
 - Separate OAuth token encoding and cryptographic validation from grant lifecycle, retaining existing imports, replay prevention, revocation, and persistence checks.
 
 - Bound Fabric configuration and routing-policy file reads before enforcing the existing 128 KiB JSON payload limit.

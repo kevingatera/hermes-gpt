@@ -28,7 +28,7 @@ from starlette.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import ui_chat  # noqa: E402
+from hermes_gpt.ui import chat as ui_chat
 
 
 # ── Test doubles ──────────────────────────────────────────────────────────

@@ -9,10 +9,10 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-import oauth_auth
-import operator_live_events as live
-import operator_policy as op
-import server
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.server import app as server
+from hermes_gpt.workspace import live_events as live
 
 
 @pytest.fixture
@@ -84,7 +84,7 @@ def test_event_id_is_idempotent(hermes_root: Path):
 
 
 def test_mission_runtime_event_bridge(hermes_root: Path, monkeypatch):
-    import operator_mission_runtime as mission
+    from hermes_gpt.missions import runtime as mission
 
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "workspace")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
@@ -105,7 +105,7 @@ def test_mission_runtime_event_bridge(hermes_root: Path, monkeypatch):
 
 
 def test_mission_live_wakeup_is_published_after_authoritative_commit(hermes_root: Path, monkeypatch):
-    import operator_mission_runtime as mission
+    from hermes_gpt.missions import runtime as mission
 
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "workspace")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")
@@ -133,7 +133,7 @@ def test_mission_live_wakeup_is_published_after_authoritative_commit(hermes_root
 
 
 def test_mission_live_wakeup_is_not_published_when_commit_fails(hermes_root: Path, monkeypatch):
-    import operator_mission_runtime as mission
+    from hermes_gpt.missions import runtime as mission
 
     monkeypatch.setenv(op.OPERATOR_LEVEL_ENV, "workspace")
     monkeypatch.setenv(op.OPERATOR_APPLY_MODE_ENV, "direct")

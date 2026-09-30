@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_fleet as fleet
-import operator_fleet_a2a as fleet_a2a
-import operator_fleet_authority as fleet_authority
-import operator_policy as op
+from hermes_gpt.fleet import fleet
+from hermes_gpt.fleet import a2a as fleet_a2a
+from hermes_gpt.fleet import authority as fleet_authority
+from hermes_gpt.policy import authorization as op
 
 HERMES = "/test/hermes"
 REGISTRY = {
@@ -404,7 +404,7 @@ def test_fleet_task_reads_the_a2a_cli_wrapped_task_shape(monkeypatch):
 def test_server_registers_the_bounded_fleet_control_tools():
     import asyncio
 
-    import server
+    from hermes_gpt.server import app as server
 
     names = {tool.name for tool in asyncio.run(server.build_server().list_tools())}
 

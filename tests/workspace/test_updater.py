@@ -1,7 +1,7 @@
 import json
 import subprocess
 
-import updater
+from hermes_gpt.workspace import updater
 
 
 def completed(argv, stdout="", stderr="", returncode=0):

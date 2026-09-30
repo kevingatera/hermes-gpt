@@ -37,14 +37,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import operator_contract as contract_mod
-import operator_controller as ctl
-import operator_delegations as deleg
-import operator_failure_semantics as fs
-import operator_mission_plan as plan
-import operator_mission_runtime as mission
-import operator_placement as placement
-import operator_policy as op
+from hermes_gpt.execution import contract as contract_mod
+from hermes_gpt.missions import controller as ctl
+from hermes_gpt.execution import delegations as deleg
+from hermes_gpt.missions import failure_semantics as fs
+from hermes_gpt.missions import plan
+from hermes_gpt.missions import runtime as mission
+from hermes_gpt.missions import placement
+from hermes_gpt.policy import authorization as op
 
 failures: list[str] = []
 passed: list[str] = []

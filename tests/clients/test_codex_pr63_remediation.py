@@ -11,12 +11,12 @@ except ModuleNotFoundError:  # Python 3.10
 
 import pytest
 
-import oauth_auth
-import operator_controller as controller
-import operator_delegations as deleg
-import operator_mission_plan as plan
-import operator_policy as op
-import token_store
+from hermes_gpt.auth import oauth as oauth_auth
+from hermes_gpt.missions import controller
+from hermes_gpt.execution import delegations as deleg
+from hermes_gpt.missions import plan
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.auth import token_store
 
 
 def _oauth_config() -> oauth_auth.OAuthConfig:
@@ -232,7 +232,7 @@ def test_controller_reconcile_preview_writes_nothing(monkeypatch, tmp_path: Path
     """dry_run=True is a truthful preview: full envelope, zero durable writes."""
     import sqlite3
 
-    import operator_mission_runtime as mission
+    from hermes_gpt.missions import runtime as mission
 
     _policy(monkeypatch, "read_only", apply_mode="dry_run")
     monkeypatch.setattr(
@@ -446,8 +446,8 @@ def test_hostile_ledger_cursors_fail_closed(tmp_path: Path):
     never an uncaught OverflowError/RecursionError."""
     import base64
 
-    import operator_mission_ledger as ld
-    import operator_mission_runtime as mission
+    from hermes_gpt.missions import ledger as ld
+    from hermes_gpt.missions import runtime as mission
 
     def cursor_for(obj) -> str:
         return "ld1." + base64.urlsafe_b64encode(
@@ -878,8 +878,8 @@ def test_startup_restore_migrates_legacy_envelope(tmp_path: Path):
 def test_ledger_full_window_reports_truncated(tmp_path: Path):
     """A source holding exactly MAX_PER_SOURCE+1 events must not claim
     completeness at limit=MAX_PER_SOURCE (lookahead signal)."""
-    import operator_mission_ledger as ld
-    import operator_mission_runtime as mission
+    from hermes_gpt.missions import ledger as ld
+    from hermes_gpt.missions import runtime as mission
 
     root = tmp_path / "hermes"
     root.mkdir(parents=True)

@@ -1,7 +1,7 @@
 import subprocess
 
-import operator_session as session
-import operator_session_metadata as metadata
+from hermes_gpt.sessions import session
+from hermes_gpt.sessions import metadata
 
 
 def _allow_profile(monkeypatch, root, profile="chatgpt"):

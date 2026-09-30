@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-import operator_live_events as live_events
-import operator_session as session
-import operator_session_job_runtime as job_runtime_process
-import operator_session_job_store as job_store
-import operator_session_jobs as job_runtime
+from hermes_gpt.workspace import live_events
+from hermes_gpt.sessions import session
+from hermes_gpt.sessions import job_runtime as job_runtime_process
+from hermes_gpt.sessions import job_store
+from hermes_gpt.sessions import jobs as job_runtime
 
 
 class _ImmediateThread:

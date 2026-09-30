@@ -1,6 +1,6 @@
 import json
 
-import operator_session_tasks as tasks
+from hermes_gpt.sessions import tasks
 
 
 def _configure(monkeypatch, tmp_path, workspace):
@@ -76,7 +76,7 @@ def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path)
     assert wrapped["workspace"] == workspace.resolve()
     assert wrapped["writable"] is False
     assert source_root in wrapped["readonly_paths"]
-    assert tasks.Path(__file__).resolve().parents[2] in wrapped["readonly_paths"]
+    assert tasks.Path(tasks.runtime.__file__).resolve().parent in wrapped["readonly_paths"]
     assert wrapped["writable_paths"] == (root / "profiles" / result["task_id"],)
     assert "--toolsets" not in wrapped["argv"]
     assert "--ignore-rules" not in wrapped["argv"]

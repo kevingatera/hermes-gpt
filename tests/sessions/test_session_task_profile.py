@@ -4,7 +4,7 @@ import subprocess
 
 import yaml
 
-import operator_session_task_profile as task_profile
+from hermes_gpt.sessions import task_profile
 
 
 def _mock_clone(monkeypatch, root, source_profile):

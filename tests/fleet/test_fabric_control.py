@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-import operator_fabric as fabric
-import operator_fabric_control as control
+from hermes_gpt.fleet import fabric
+from hermes_gpt.fleet import fabric_control as control
 
 
 class Policy:

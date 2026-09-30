@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-import operator_fabric_config as config
-import operator_fabric_router as router
-from operator_fabric_protocol import _MAX_BODY, FabricError
+from hermes_gpt.fleet import fabric_config as config
+from hermes_gpt.fleet import fabric_router as router
+from hermes_gpt.fleet.fabric_protocol import _MAX_BODY, FabricError
 
 
 @pytest.mark.parametrize("loader", [config._read_closed_json, router.load_routing_policy])

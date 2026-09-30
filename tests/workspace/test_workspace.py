@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-import operator_command_utils as command_utils
-import operator_owner as owner_tools
-import operator_policy as op
-import operator_workspace as ows
+from hermes_gpt.workspace import commands as command_utils
+from hermes_gpt.workspace import owner as owner_tools
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.workspace import tools as ows
 
 
 @pytest.fixture
@@ -550,7 +550,7 @@ def test_tool_registration_includes_new_operator_tools(monkeypatch):
     """The server should expose all the new operator tools by name."""
     import asyncio
 
-    import server
+    from hermes_gpt.server import app as server
 
     for name in [
         "HERMES_GPT_ENABLE_WRITE",
@@ -613,7 +613,7 @@ def test_existing_read_tools_still_present(monkeypatch):
     """The original read tools must still be registered."""
     import asyncio
 
-    import server
+    from hermes_gpt.server import app as server
 
     for name in [
         "HERMES_GPT_ENABLE_WRITE",
@@ -640,7 +640,7 @@ def test_existing_read_tools_still_present(monkeypatch):
 
 def test_operator_policy_tool_returns_default_safe_summary(monkeypatch):
     """Calling hermes_operator_policy with no env vars returns disabled/read_only/dry_run."""
-    import server
+    from hermes_gpt.server import app as server
 
     for name in [
         op.OPERATOR_ENABLED_ENV, op.OPERATOR_LEVEL_ENV,

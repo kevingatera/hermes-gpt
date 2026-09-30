@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-import operator_delegations as delegations
-import operator_mission_observations as observations
+from hermes_gpt.execution import delegations
+from hermes_gpt.missions import observations
 
 
 @pytest.mark.parametrize("payload", [[], None, {"status": []}, {"status": {}}])

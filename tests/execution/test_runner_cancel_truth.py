@@ -1,4 +1,4 @@
-import operator_runners as runners
+from hermes_gpt.execution import runners
 
 
 def _seed_meta(tmp_path, task_id: str, *, state: str = "running"):

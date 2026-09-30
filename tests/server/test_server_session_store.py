@@ -4,9 +4,9 @@ import json
 
 import pytest
 
-import hermes_session_history as session_history
-import server
-from session_test_fakes import FakeSessionConnection, FakeSessionDB, session_db_factory
+from hermes_gpt.sessions import history as session_history
+from hermes_gpt.server import app as server
+from tests.support.fakes import FakeSessionConnection, FakeSessionDB, session_db_factory
 
 
 def test_phase1_adapter_opens_read_only_and_disposes_raw_connection_once():
