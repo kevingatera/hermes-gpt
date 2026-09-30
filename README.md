@@ -31,10 +31,10 @@ The endpoint is `http://127.0.0.1:7677/mcp`. Keep it on loopback.
 
 This checkout is version 0.12.0. PyPI and GitHub releases are published
 separately, so check the installed version before following instructions for
-newer tools. To work on this fork:
+newer tools. To work on this fork's session-control branch:
 
 ```bash
-git clone https://github.com/kevingatera/hermes-gpt.git
+git clone --branch feat/scoped-session-jobs https://github.com/kevingatera/hermes-gpt.git
 cd hermes-gpt
 python -m pip install -e '.[dev]'
 hermes-gpt
