@@ -222,9 +222,9 @@ def test_managed_hermes_session_and_browser_tools_register(monkeypatch, tmp_path
     continue_fields = set(continue_schema["properties"])
     assert {"model", "reasoning_effort"} <= continue_fields
     attach_tool = by_name["hermes_browser_profile_attach"]
-    assert attach_tool.annotations.destructive_hint is True
+    assert wire(attach_tool.annotations)["destructiveHint"] is True
     profile_status = by_name["hermes_browser_profile_status"]
-    assert profile_status.annotations.read_only_hint is True
+    assert wire(profile_status.annotations)["readOnlyHint"] is True
     assert "hermes_task_panel" not in by_name
 
 
