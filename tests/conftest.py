@@ -141,6 +141,13 @@ def wire(model):
     while keeping those wire names, so tests read the serialized form and stay
     correct on both SDK families.
     """
+    if isinstance(model, tuple):
+        # SDK 1's direct FastMCP call returns content plus structured content.
+        # Its HTTP handler wraps the same pair in CallToolResult.
+        from mcp.types import CallToolResult
+
+        content, structured = model
+        model = CallToolResult(content=content, structuredContent=structured)
     return model.model_dump(by_alias=True)
 
 

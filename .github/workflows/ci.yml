@@ -140,6 +140,7 @@ jobs:
           src/hermes_gpt/server/cli.py tests/server/test_server_cli.py
           src/hermes_gpt/sessions/model_options.py tests/sessions/test_model_options.py
           src/hermes_gpt/paths.py tests/packaging/test_package_paths.py
+          tests/server/test_session_store_imports.py
           src/hermes_gpt/browser/launcher.py tests/browser/test_bridge_launcher.py tests/execution/test_worker_launch.py
           src/hermes_gpt/browser/tabs.py tests/browser/test_browser_tabs.py
           src/hermes_gpt/fleet/fabric_config.py tests/fleet/test_fabric_config_read_bounds.py

@@ -29,7 +29,7 @@ def test_profile_discovery_tool_is_gated_and_returns_only_safe_defaults(
     tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
     profile_tool = tools["hermes_session_profiles"]
 
-    assert profile_tool.annotations.read_only_hint is True
+    assert wire(profile_tool.annotations)["readOnlyHint"] is True
 
     result = asyncio.run(mcp.call_tool("hermes_session_profiles", {}))
     response = wire(result)

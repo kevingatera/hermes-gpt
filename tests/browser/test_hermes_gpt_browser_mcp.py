@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from hermes_gpt.browser.bridge import build_server
+from tests.conftest import wire
 
 
 def test_managed_browser_bridge_registers_tab_tools():
@@ -13,5 +14,5 @@ def test_managed_browser_bridge_registers_tab_tools():
 
     assert "task_browser_tabs" in tools
     assert "task_browser_select_tab" in tools
-    assert tools["task_browser_tabs"].annotations.read_only_hint is True
-    assert tools["task_browser_select_tab"].annotations.destructive_hint is True
+    assert wire(tools["task_browser_tabs"].annotations)["readOnlyHint"] is True
+    assert wire(tools["task_browser_select_tab"].annotations)["destructiveHint"] is True

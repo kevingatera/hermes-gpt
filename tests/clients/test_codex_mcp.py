@@ -118,14 +118,14 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     assert {"session_id", "title", "profile"} <= set(rename_schema["properties"])
     pin_schema = by_name["hermes_session_pin"].model_dump(by_alias=True)["inputSchema"]
     assert {"session_id", "pinned", "profile"} <= set(pin_schema["properties"])
-    assert by_name["hermes_session_list"].annotations.read_only_hint is True
-    assert by_name["hermes_session_start"].annotations.destructive_hint is True
-    assert by_name["hermes_session_rename"].annotations.destructive_hint is False
-    assert by_name["hermes_session_pin"].annotations.idempotent_hint is True
-    assert by_name["hermes_session_job_status"].annotations.read_only_hint is True
-    assert by_name["hermes_session_job_result"].annotations.read_only_hint is True
-    assert by_name["hermes_task_start"].annotations.destructive_hint is True
-    assert by_name["hermes_session_list"].meta == codex_mcp.NOAUTH_META
+    assert wire(by_name["hermes_session_list"].annotations)["readOnlyHint"] is True
+    assert wire(by_name["hermes_session_start"].annotations)["destructiveHint"] is True
+    assert wire(by_name["hermes_session_rename"].annotations)["destructiveHint"] is False
+    assert wire(by_name["hermes_session_pin"].annotations)["idempotentHint"] is True
+    assert wire(by_name["hermes_session_job_status"].annotations)["readOnlyHint"] is True
+    assert wire(by_name["hermes_session_job_result"].annotations)["readOnlyHint"] is True
+    assert wire(by_name["hermes_task_start"].annotations)["destructiveHint"] is True
+    assert wire(by_name["hermes_session_list"])["_meta"] == codex_mcp.NOAUTH_META
 
     monkeypatch.setenv(codex_core.ENABLE_SESSION_SEARCH_ENV, "0")
     monkeypatch.setenv(codex_core.ENABLE_SESSION_CONTROL_ENV, "0")

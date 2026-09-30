@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from hermes_gpt.server import app as server
+from tests.conftest import wire
 
 
 def test_browser_tab_tools_are_gated_and_have_safe_annotations(monkeypatch):
@@ -17,10 +18,10 @@ def test_browser_tab_tools_are_gated_and_have_safe_annotations(monkeypatch):
     assert "hermes_task_browser_select_tab" in tools
     assert "hermes_browser_profile_tabs" in tools
     assert "hermes_browser_profile_select_tab" in tools
-    assert tools["hermes_task_browser_tabs"].annotations.read_only_hint is True
-    assert tools["hermes_browser_profile_tabs"].annotations.read_only_hint is True
-    assert tools["hermes_task_browser_select_tab"].annotations.destructive_hint is True
-    assert tools["hermes_browser_profile_select_tab"].annotations.destructive_hint is True
+    assert wire(tools["hermes_task_browser_tabs"].annotations)["readOnlyHint"] is True
+    assert wire(tools["hermes_browser_profile_tabs"].annotations)["readOnlyHint"] is True
+    assert wire(tools["hermes_task_browser_select_tab"].annotations)["destructiveHint"] is True
+    assert wire(tools["hermes_browser_profile_select_tab"].annotations)["destructiveHint"] is True
     assert (
         tools["hermes_browser_profile_list"].annotations.title
         == "List authorized local Hermes browser profiles"

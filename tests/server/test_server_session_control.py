@@ -7,8 +7,8 @@ import pytest
 
 from hermes_gpt.server import app as server
 from tests.conftest import wire
-from tests.support.server import clear_gate_envs, tool_names, tools_by_name
 from tests.support.fakes import FakeSessionDB
+from tests.support.server import clear_gate_envs, tool_names, tools_by_name
 
 
 def test_phase2_tools_are_gated_and_registered(monkeypatch):
@@ -39,7 +39,7 @@ def test_managed_task_list_is_registered_only_when_scoped_tasks_are_enabled(
     tools = tools_by_name(server.build_server())
     assert "hermes_task_list" in tools
     assert "hermes_browser_profile_attach" in tools
-    assert tools["hermes_task_list"].annotations.read_only_hint is True
+    assert wire(tools["hermes_task_list"].annotations)["readOnlyHint"] is True
 
 
 def test_managed_task_list_runs_through_mcp_tool_call(monkeypatch, tmp_path):
@@ -97,7 +97,7 @@ def test_managed_task_start_exposes_browser_profile_through_mcp(monkeypatch):
     )
 
     assert "browser_profile" in schema["properties"]
-    assert tool.annotations.destructive_hint is True
+    assert wire(tool.annotations)["destructiveHint"] is True
     assert wire(result)["isError"] is False
     assert captured["browser_profile"] == "memtest"
 
