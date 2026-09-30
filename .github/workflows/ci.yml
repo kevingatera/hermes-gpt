@@ -136,6 +136,7 @@ jobs:
       - run: python -m pip install -e ".[dev]"
       - run: >-
           python -m ruff check
+          oauth_auth.py oauth_token_codec.py test_oauth_auth.py test_oauth_token_codec.py
           server_cli.py test_server_cli.py
           operator_browser_tabs.py test_operator_browser_tabs.py
           operator_fabric_config.py test_fabric_config_read_bounds.py

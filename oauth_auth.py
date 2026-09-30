@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import hmac
-import json
-import re
 import secrets
 import time
 from pathlib import Path
 from typing import Any
 
 import oauth_config as _oauth_config
+import oauth_token_codec as _token_codec
 
 # Keep the established oauth_auth imports available to server and client code.
 AUTH_TOKEN_ENV = _oauth_config.AUTH_TOKEN_ENV
@@ -37,18 +34,20 @@ MAX_AUTH_CODES = 1024
 MAX_ACCESS_TOKENS = 4096
 MAX_REFRESH_TOKENS = 4096
 MAX_TOKEN_REQUEST_BYTES = 16384
-_PKCE_VALUE = re.compile(r"^[A-Za-z0-9._~-]{43,128}$")
-_BASE64URL = re.compile(r"^[A-Za-z0-9_-]+$")
-_NONCE = re.compile(r"^[A-Za-z0-9_-]{32,128}$")
 
-
-def _s256(verifier: str) -> str:
-    digest = hashlib.sha256(verifier.encode("ascii")).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
-
-
-def _valid_pkce_verifier(verifier: str) -> bool:
-    return bool(_PKCE_VALUE.fullmatch(verifier))
+# Wire-format and crypto primitives live in oauth_token_codec; these names are
+# retained here with identical objects because server, HTTP, and test code
+# import them from oauth_auth.
+OAuthError = _token_codec.OAuthError
+ACCESS_TOKEN_PREFIX = _token_codec.ACCESS_TOKEN_PREFIX
+_ACCESS_TOKEN_MAC_CONTEXT = _token_codec.ACCESS_TOKEN_MAC_CONTEXT
+_PKCE_VALUE = _token_codec._PKCE_VALUE
+_BASE64URL = _token_codec._BASE64URL
+_NONCE = _token_codec._NONCE
+_base64url_encode = _token_codec.base64url_encode
+_base64url_decode = _token_codec.base64url_decode
+_s256 = _token_codec.s256
+_valid_pkce_verifier = _token_codec.valid_pkce_verifier
 
 
 # Optional persistence hook (v0.7 S5). server.py installs it so every token
@@ -112,38 +111,12 @@ def _run_persist_hook_strict(state: OAuthState, kind: str) -> None:
     _persist_hook(state, kind)
 
 
-def _base64url_encode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
-
-
-def _base64url_decode(value: str) -> bytes:
-    if not value or not _BASE64URL.fullmatch(value):
-        raise ValueError("invalid base64url value")
-    padding = "=" * (-len(value) % 4)
-    decoded = base64.b64decode(value + padding, altchars=b"-_", validate=True)
-    if _base64url_encode(decoded) != value:
-        raise ValueError("non-canonical base64url value")
-    return decoded
-
-
-ACCESS_TOKEN_PREFIX = "hg.at.v1."
-_ACCESS_TOKEN_MAC_CONTEXT = b"hermes-gpt.oauth.access.v1\0"
-
-
 def _durable_record(kind: str, value: str, item: dict[str, Any]) -> dict[str, Any]:
     """Token item carrying the internal markers the store needs to file it."""
     record = dict(item)
     record["_kind"] = kind
     record["_token_value"] = value
     return record
-
-
-class OAuthError(RuntimeError):
-    def __init__(self, error: str, description: str, *, status_code: int = 400) -> None:
-        super().__init__(description)
-        self.error = error
-        self.description = description
-        self.status_code = status_code
 
 
 class OAuthState:
@@ -233,169 +206,55 @@ class OAuthState:
             "expires_at": int(time.time()) + AUTH_CODE_TTL_SECONDS,
             "epoch": issuance_epoch,
         }
-        encoded = _base64url_encode(
-            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return _token_codec.encode_signed_payload(
+            payload, key=self._authorization_code_key
         )
-        signature = hmac.new(
-            self._authorization_code_key, encoded.encode("ascii"), hashlib.sha256
-        ).digest()
-        return f"{encoded}.{_base64url_encode(signature)}"
 
     def _decode_authorization_code(self, code: str) -> dict[str, Any]:
-        if len(code) > 4096:
-            raise OAuthError(
-                "invalid_grant", "Invalid, expired, or already used authorization code."
-            )
-        encoded, separator, encoded_signature = code.partition(".")
-        if not separator:
-            raise OAuthError(
-                "invalid_grant", "Invalid, expired, or already used authorization code."
-            )
-        try:
-            supplied_signature = _base64url_decode(encoded_signature)
-            expected_signature = hmac.new(
-                self._authorization_code_key,
-                encoded.encode("ascii"),
-                hashlib.sha256,
-            ).digest()
-            if not hmac.compare_digest(supplied_signature, expected_signature):
-                raise ValueError("signature mismatch")
-            payload = json.loads(_base64url_decode(encoded))
-        except (UnicodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            raise OAuthError(
-                "invalid_grant", "Invalid, expired, or already used authorization code."
-            ) from exc
-        required_types = {
-            "v": int,
-            "nonce": str,
-            "client_id": str,
-            "redirect_uri": str,
-            "scope": str,
-            "resource": str,
-            "code_challenge": str,
-            "expires_at": int,
-        }
-        if not isinstance(payload, dict) or any(
-            not isinstance(payload.get(key), kind)
-            for key, kind in required_types.items()
-        ):
-            raise OAuthError(
-                "invalid_grant", "Invalid, expired, or already used authorization code."
-            )
-        if payload["v"] not in (1, 2) or not _NONCE.fullmatch(payload["nonce"]):
-            raise OAuthError(
-                "invalid_grant", "Invalid, expired, or already used authorization code."
-            )
+        payload = _token_codec.decode_authorization_code(
+            code, key=self._authorization_code_key
+        )
         # v2 codes are bound to the revocation epoch they were issued under;
         # a revocation since issuance invalidates every outstanding code.
         if payload["v"] == 2:
             epoch = payload.get("epoch")
             if isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
-                raise OAuthError(
-                    "invalid_grant",
-                    "Invalid, expired, or already used authorization code.",
-                )
+                raise _token_codec.invalid_authorization_code_error()
             if self._hermes_root is not None:
                 import token_store as _ts
 
                 try:
                     current_epoch = _ts.read_revocation_epoch(self._hermes_root)
                 except Exception:  # noqa: BLE001 - Reject codes if the revocation epoch is unreadable.
-                    raise OAuthError(
-                        "invalid_grant",
-                        "Invalid, expired, or already used authorization code.",
-                    )
+                    raise _token_codec.invalid_authorization_code_error()
                 if epoch < current_epoch:
-                    raise OAuthError(
-                        "invalid_grant",
-                        "Invalid, expired, or already used authorization code.",
-                    )
+                    raise _token_codec.invalid_authorization_code_error()
         return payload
 
     def _access_token_key(self) -> bytes:
-        """Derive the clustered access-token HMAC key from the shared client secret.
+        """Return the clustered access-token HMAC key for this client secret.
 
-        Clustered origins (the same public MCP hostname served by more than one
-        process) share ``HERMES_GPT_OAUTH_CLIENT_SECRET`` but not process memory.
-        Opaque ``token_urlsafe`` access tokens therefore 401 on the origin that
-        did not issue them. HMAC-SHA256 over a versioned payload lets any origin
-        with the same confidential client secret validate the bearer without a
-        shared token table. Rotating the client secret invalidates every signed
-        access token.
+        Thin compatibility wrapper; the derivation lives in
+        ``oauth_token_codec.access_token_key``.
         """
-        return hashlib.sha256(
-            _ACCESS_TOKEN_MAC_CONTEXT + self.config.client_secret.encode("utf-8")
-        ).digest()
+        return _token_codec.access_token_key(self.config.client_secret)
 
     def _new_access_token(
         self, *, client_id: str, scope: str, resource: str
     ) -> tuple[str, dict[str, Any]]:
-        expires_at = int(time.time()) + ACCESS_TOKEN_TTL_SECONDS
-        payload = {
-            "v": 1,
-            "typ": "access",
-            "nonce": secrets.token_urlsafe(24),
-            "client_id": client_id,
-            "scope": scope,
-            "resource": resource,
-            "expires_at": expires_at,
-        }
-        encoded = _base64url_encode(
-            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        return _token_codec.encode_access_token(
+            key=self._access_token_key(),
+            client_id=client_id,
+            scope=scope,
+            resource=resource,
+            expires_at=int(time.time()) + ACCESS_TOKEN_TTL_SECONDS,
         )
-        signature = hmac.new(
-            self._access_token_key(), encoded.encode("ascii"), hashlib.sha256
-        ).digest()
-        token_value = f"{ACCESS_TOKEN_PREFIX}{encoded}.{_base64url_encode(signature)}"
-        item = {
-            "client_id": client_id,
-            "scope": scope,
-            "resource": resource,
-            "expires_at": float(expires_at),
-        }
-        return token_value, item
 
     def _decode_signed_access_token(self, token_value: str) -> dict[str, Any] | None:
-        if not token_value.startswith(ACCESS_TOKEN_PREFIX) or len(token_value) > 4096:
-            return None
-        encoded, separator, encoded_signature = token_value[
-            len(ACCESS_TOKEN_PREFIX) :
-        ].partition(".")
-        if not separator:
-            return None
-        try:
-            supplied_signature = _base64url_decode(encoded_signature)
-            expected_signature = hmac.new(
-                self._access_token_key(),
-                encoded.encode("ascii"),
-                hashlib.sha256,
-            ).digest()
-            if not hmac.compare_digest(supplied_signature, expected_signature):
-                return None
-            payload = json.loads(_base64url_decode(encoded))
-        except (UnicodeError, ValueError, TypeError, json.JSONDecodeError):
-            return None
-        required_types = {
-            "v": int,
-            "typ": str,
-            "nonce": str,
-            "client_id": str,
-            "scope": str,
-            "resource": str,
-            "expires_at": int,
-        }
-        if not isinstance(payload, dict) or any(
-            not isinstance(payload.get(key), kind)
-            for key, kind in required_types.items()
-        ):
-            return None
-        if (
-            payload["v"] not in (1, 2)
-            or payload["typ"] != "access"
-            or not _NONCE.fullmatch(payload["nonce"])
-        ):
-            return None
-        if payload["expires_at"] <= time.time():
+        payload = _token_codec.decode_signed_access_token(
+            token_value, key=self._access_token_key()
+        )
+        if payload is None:
             return None
         if payload[
             "resource"

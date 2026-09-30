@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Separate OAuth token encoding and cryptographic validation from grant lifecycle, retaining existing imports, replay prevention, revocation, and persistence checks.
+
 - Bound Fabric configuration and routing-policy file reads before enforcing the existing 128 KiB JSON payload limit.
 
 - Extract the server CLI orchestration (`_run_codex_mcp`, `_run_legacy_server`, `main`) into `server_cli.py`. `server.py` keeps those names as wrappers that pass an explicit context of its own collaborators, so CLI flags, authorization gates, transport defaults, stderr messages, and monkeypatch behavior are unchanged; `server_cli` never imports `server`.
