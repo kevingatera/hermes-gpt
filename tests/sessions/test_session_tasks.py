@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from hermes_gpt.sessions import tasks
 
 
@@ -375,7 +377,14 @@ def test_task_list_validates_pagination_and_scoped_task_gate(monkeypatch, tmp_pa
     assert tasks.hermes_task_list(hermes_root=root)["success"] is False
 
 
-def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    "session_id,browser_status,browser_ready",
+    [("", "running", True), ("existing", "running", True),
+     ("existing", "closed", True), ("existing", "running", False)],
+)
+def test_browser_task_mounts_private_state_dir_and_browser_symlink(
+    monkeypatch, tmp_path, session_id, browser_status, browser_ready
+):
     workspace = tmp_path / "authorized" / "demo"
     workspace.mkdir(parents=True)
     root = _configure(monkeypatch, tmp_path, workspace)
@@ -398,10 +407,18 @@ def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, 
     socket_dir = tmp_path / "hgpt-test-socket"
     socket_dir.mkdir(mode=0o700)
     state_file.write_text(
-        json.dumps({"executable": str(cli_path), "socket_dir": str(socket_dir)}),
+        json.dumps({"executable": str(cli_path), "socket_dir": str(socket_dir),
+                    "status": browser_status}),
         encoding="utf-8",
     )
     monkeypatch.setattr(tasks.runtime.browser, "browser_state_file", lambda _home: state_file)
+    preparation_calls = []
+    monkeypatch.setattr(
+        tasks.runtime.browser,
+        "browser_command",
+        lambda home, command, args: preparation_calls.append((home, command, args))
+        or {"success": browser_ready},
+    )
 
     source_root = tmp_path / "hermes-agent"
     source_root.mkdir()
@@ -440,7 +457,7 @@ def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, 
         "model": None,
         "reasoning_effort": None,
         "browser_enabled": True,
-        "session_id": "",
+        "session_id": session_id,
         "turn_count": 0,
     }
 
@@ -455,6 +472,12 @@ def test_browser_task_mounts_private_state_dir_and_browser_symlink(monkeypatch, 
         save_task=lambda _record: None,
     )
 
+    expected_calls = [(task_home, "tab", ["list"])] if session_id and browser_status != "closed" else []
+    assert preparation_calls == expected_calls
+    if not browser_ready:
+        assert result["code"] == "TASK_BROWSER_UNAVAILABLE"
+        assert not wrapped, "Failed preparation must stop before launching the Agent"
+        return
     readonly = set(wrapped["readonly_paths"])
     writable = set(wrapped["writable_paths"])
     assert result["success"] is True

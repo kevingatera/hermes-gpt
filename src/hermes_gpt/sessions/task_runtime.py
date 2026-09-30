@@ -275,6 +275,16 @@ def start_turn(
 
     if browser_enabled:
         browser_state = json.loads(browser.browser_state_file(task_home).read_text(encoding="utf-8"))
+        if session_id and browser_state.get("status") != "closed":
+            # A stopped daemon must start in the parent. Its Bun runtime needs
+            # procfs, which stays hidden from the credential-bearing Agent.
+            ready = browser.browser_command(task_home, "tab", ["list"])
+            if not ready.get("success"):
+                return {
+                    "success": False,
+                    "code": "TASK_BROWSER_UNAVAILABLE",
+                    "safe_message": "The task browser could not be prepared for continuation.",
+                }
         browser_executable_path = Path(str(browser_state["executable"])).expanduser()
         browser_executable = browser_executable_path.resolve(strict=True)
         # Keep the bridge target fixed even though Hermes can write its own home.

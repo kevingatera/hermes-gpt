@@ -2,14 +2,16 @@
 
 ## Unreleased
 
+- Prepare a managed task's stopped browser before starting a resumed Agent turn. Failed preparation returns `TASK_BROWSER_UNAVAILABLE`; Agent confinement and explicit browser closure remain in force.
+
 - Move Python runtime modules into the `hermes_gpt` package under `src/` and group tests by subsystem. Python imports now use package namespaces; launch with `hermes-gpt` or `python -m hermes_gpt` instead of the removed root `server.py`. MCP tool names and persisted formats are unchanged.
 
 - Separate OAuth token encoding and cryptographic validation from grant lifecycle, retaining existing imports, replay prevention, revocation, and persistence checks.
 
 - Bound Fabric configuration and routing-policy file reads before enforcing the existing 128 KiB JSON payload limit.
 
-- Extract the server CLI orchestration (`_run_codex_mcp`, `_run_legacy_server`, `main`) into `server_cli.py`. `server.py` keeps those names as wrappers that pass an explicit context of its own collaborators, so CLI flags, authorization gates, transport defaults, stderr messages, and monkeypatch behavior are unchanged; `server_cli` never imports `server`.
-- Extract Fabric routing-policy models, the shared `RoutingError`, and policy loading/validation into `operator_fabric_routing_policy.py`. `operator_fabric_router` imports those names back, so existing importers, monkeypatch targets, and the raised error type keep their identity; the new module never imports the router, and eligibility filtering, ranking, journaling, and backend dispatch are unchanged.
+- Separate CLI orchestration in `hermes_gpt.server.cli` from server composition in `hermes_gpt.server.app`. CLI flags, authorization gates, transport defaults, and stderr messages are unchanged.
+- Separate Fabric routing-policy models, `RoutingError`, and policy validation into `hermes_gpt.fleet.fabric_routing_policy`. The router imports that policy layer; eligibility filtering, ranking, journaling, and backend dispatch are unchanged.
 - Refresh the active browser tab title from the current page instead of forwarding stale CLI metadata; omit it when the observation fails.
 
 - Separate budget policy validation, SQLite storage, and MCP actions into focused modules while retaining the established budget imports and enforcement gates.
