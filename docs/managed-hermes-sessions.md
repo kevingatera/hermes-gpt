@@ -1,6 +1,16 @@
 # Managed Hermes sessions and browser access
 
-The optional managed-session tools let a trusted MCP client start and resume a real Hermes Agent session in an explicitly configured workspace. Each task gets a private clone of an allowlisted Hermes profile, a separate session database, and a browser shared with ChatGPT through a small MCP bridge. Hermes's `profile create --clone-all` copies the selected profile's configuration, provider settings, credentials, tools, MCP servers, skills, memory, and other supported resources while leaving the source session history behind. By default, the task browser is isolated. A task may instead attach to a local Chromium browser configured by an explicitly allowlisted Hermes profile.
+Managed tasks run Hermes Agent in an authorized workspace. You can start a
+session, continue it by task ID, and use the same browser from Hermes and an
+MCP client such as ChatGPT.
+
+Each task gets a private profile clone and a separate session database.
+Hermes's `profile create --clone-all` copies the selected profile's
+configuration, providers, credentials, tools, MCP servers, skills, memory, and
+other supported resources. It leaves the source session history behind.
+
+The browser is isolated by default. To use existing tabs and login state,
+attach the local Chromium browser configured by an allowed Hermes profile.
 
 The attach option reads only `browser.cdp_url` from the selected browser profile. It accepts a loopback endpoint and keeps the live browser profile in place; the task gets only the local endpoint and its own browser descriptor. The managed task's Hermes home is a clone of the selected session profile, so no separate provider key is requested or injected by the MCP tool.
 
@@ -32,7 +42,14 @@ To attach an existing browser, also list its Hermes profile in `HERMES_GPT_TASK_
 
 Enable the scoped-session feature to register the `hermes_task_*` session controls and the `hermes_browser_profile_*` tools for authorized local browsers.
 
-Use `hermes_task_list` to find a managed session in a later conversation. Its bounded pages include the task ID, workspace alias, status, model and effort overrides, browser source (`disabled`, `isolated`, or `hermes_profile`), whether the isolated browser is headed, turn count, and timestamps. A null model or effort means Hermes used the selected profile's configured default. The browser source identifies an attachment type without revealing the profile name. The list omits workspace paths, credential profile names, session IDs, prompts, and job output. Pass a listed task ID to `hermes_task_status` or `hermes_task_continue`.
+Use `hermes_task_list` to find a task in a later conversation. Each entry has
+its task ID, workspace alias, status, model and effort overrides, browser type,
+headed-browser flag, turn count, and timestamps. A null model or effort means
+the turn used the profile's configured default.
+
+The browser type is `disabled`, `isolated`, or `hermes_profile`. The list omits
+host paths, profile names, session IDs, prompts, and job output. Use the task ID
+with `hermes_task_status` or `hermes_task_continue`.
 
 Start a session with a workspace alias, prompt, and allowed Hermes profile. Omit `model` and `reasoning_effort` to use the profile's configured defaults; pass either only when an override is requested. Omit `browser_profile` to use the task-owned isolated browser. Set `browser_profile` to an allowlisted profile to use its configured local browser. `headed_browser` applies only to isolated browsers. Starts require `dry_run=false`, `confirm=true`, Operator workspace level, and direct apply mode. Workspace access is read-only by default. A dry run reports any explicit model or effort override and the use of the profile's configured toolsets without launching Hermes or attaching to the browser.
 
@@ -66,7 +83,8 @@ Tab listings refresh the active page's title because the browser CLI can retain 
 - Prompts travel over stdin, not process arguments or job metadata. Job records store a prompt length and digest, not prompt text. Standard output contains the answer; stderr stays in a separate local diagnostic file.
 - Hermes writes its session ID to stderr in quiet one-shot chat mode; the job watcher records it for later turns and can recover it after a server restart. Older jobs that used a structured usage report remain readable. Process ownership is not inferred from a saved PID.
 
-The MCP tools are the initial interface. A task panel or Hermes slash-command UI can be added later without changing the session and browser ownership model.
+Session controls currently use MCP tools. There is no task panel or
+slash-command UI yet.
 
 ## Verify the integration
 
