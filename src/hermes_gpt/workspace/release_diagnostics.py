@@ -162,16 +162,13 @@ def hermes_release_doctor(
         if not _file_contains(wd, "CHANGELOG.md", VERSION):
             warnings.append(f"CHANGELOG.md does not mention {VERSION}.")
 
-        # README/docs mention reliability tools.
-        if not _file_contains(wd, "README.md", "hermes_operator_doctor"):
-            warnings.append("README.md does not mention the new diagnostic tools.")
-        if not _file_contains(wd, "docs/operator-mode.md", "hermes_operator_recover"):
-            warnings.append(
-                "docs/operator-mode.md does not mention hermes_operator_recover."
-            )
+        # Detailed tool instructions belong in the operational guide.
+        for tool in ("hermes_operator_doctor", "hermes_operator_recover"):
+            if not _file_contains(wd, "docs/operator-mode.md", tool):
+                warnings.append(f"docs/operator-mode.md does not mention {tool}.")
 
-        # Import / py_compile check against the canonical server module rather
-        # than a checkout-local script path.
+        # Import checks the running installation. Compile checks the requested
+        # checkout separately, which may differ from the running installation.
         try:
             from hermes_gpt.server import app as server_app  # noqa: F401
         except Exception as exc:
@@ -180,16 +177,18 @@ def hermes_release_doctor(
             )
         else:
             try:
-                op.run_argv(
+                rc, _out, _err = op.run_argv(
                     [
                         sys.executable,
                         "-m",
                         "py_compile",
-                        str(Path(server_app.__file__).resolve()),
+                        str(wd / "src" / "hermes_gpt" / "server" / "app.py"),
                     ],
                     timeout=60,
                     workdir=str(wd),
                 )
+                if rc != 0:
+                    blocking.append("py_compile of the checkout server module failed.")
             except Exception as exc:
                 blocking.append(
                     f"py_compile of the server module failed: {exc.__class__.__name__}"

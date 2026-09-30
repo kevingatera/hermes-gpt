@@ -291,6 +291,22 @@ def test_snapshot_never_includes_env_values(hermes_root, clean_env, audit_overri
 # ---------------------------------------------------------------------------
 
 
+def _write_checkout_server(repo, source="print('ok')\n"):
+    server = repo / "src" / "hermes_gpt" / "server" / "app.py"
+    server.parent.mkdir(parents=True, exist_ok=True)
+    server.write_text(source, encoding="utf-8")
+
+
+def test_release_doctor_checks_requested_checkout(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "pyproject.toml").write_text(f'version = "{od.VERSION}"\n')
+    _write_checkout_server(repo, "def invalid syntax\n")
+    result = json.loads(od.hermes_release_doctor(workdir=str(repo)))
+    assert result["status"] == "BLOCKED"
+    assert any("py_compile" in issue for issue in result["blocking_issues"])
+
+
 def test_release_doctor_clean_repo_passes(tmp_path, monkeypatch):
     # Build a minimal clean repo.
     repo = tmp_path / "repo"
@@ -302,8 +318,8 @@ def test_release_doctor_clean_repo_passes(tmp_path, monkeypatch):
     (repo / "CHANGELOG.md").write_text(f"## {od.VERSION}\n", encoding="utf-8")
     (repo / "README.md").write_text("hermes_operator_doctor\n", encoding="utf-8")
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_recover\n", encoding="utf-8")
-    (repo / "server.py").write_text("print('ok')\n", encoding="utf-8")
+    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_doctor\nhermes_operator_recover\n", encoding="utf-8")
+    _write_checkout_server(repo)
     op.run_argv(["git", "add", "."], timeout=30, workdir=str(repo))
     op.run_argv(["git", "commit", "-m", "init"], timeout=30, workdir=str(repo))
 
@@ -405,8 +421,8 @@ def test_release_doctor_warns_on_dirty_tree(tmp_path, monkeypatch):
     (repo / "CHANGELOG.md").write_text(f"## {od.VERSION}\n", encoding="utf-8")
     (repo / "README.md").write_text("hermes_operator_doctor\n", encoding="utf-8")
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_recover\n", encoding="utf-8")
-    (repo / "server.py").write_text("print('ok')\n", encoding="utf-8")
+    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_doctor\nhermes_operator_recover\n", encoding="utf-8")
+    _write_checkout_server(repo)
     op.run_argv(["git", "add", "."], timeout=30, workdir=str(repo))
     op.run_argv(["git", "commit", "-m", "init"], timeout=30, workdir=str(repo))
     (repo / "dirty.txt").write_text("x", encoding="utf-8")
@@ -425,8 +441,8 @@ def test_release_doctor_warns_on_missing_changelog_version(tmp_path, monkeypatch
     (repo / "CHANGELOG.md").write_text("## 0.1.0\n", encoding="utf-8")
     (repo / "README.md").write_text("hermes_operator_doctor\n", encoding="utf-8")
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_recover\n", encoding="utf-8")
-    (repo / "server.py").write_text("print('ok')\n", encoding="utf-8")
+    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_doctor\nhermes_operator_recover\n", encoding="utf-8")
+    _write_checkout_server(repo)
     out = od.hermes_release_doctor(workdir=str(repo), full_tests=False)
     parsed = json.loads(out)
     assert parsed["success"] is True
@@ -441,8 +457,8 @@ def test_release_doctor_full_tests_fail_blocked(tmp_path, monkeypatch):
     (repo / "CHANGELOG.md").write_text(f"## {od.VERSION}\n", encoding="utf-8")
     (repo / "README.md").write_text("hermes_operator_doctor\n", encoding="utf-8")
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_recover\n", encoding="utf-8")
-    (repo / "server.py").write_text("print('ok')\n", encoding="utf-8")
+    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_doctor\nhermes_operator_recover\n", encoding="utf-8")
+    _write_checkout_server(repo)
 
     def fake_runner(argv, timeout=None, workdir=None):
         return (1, "", "pytest failed")
@@ -461,8 +477,8 @@ def test_release_doctor_full_tests_timeout_blocked(tmp_path, monkeypatch):
     (repo / "CHANGELOG.md").write_text(f"## {od.VERSION}\n", encoding="utf-8")
     (repo / "README.md").write_text("hermes_operator_doctor\n", encoding="utf-8")
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_recover\n", encoding="utf-8")
-    (repo / "server.py").write_text("print('ok')\n", encoding="utf-8")
+    (repo / "docs" / "operator-mode.md").write_text("hermes_operator_doctor\nhermes_operator_recover\n", encoding="utf-8")
+    _write_checkout_server(repo)
 
     def fake_runner(argv, timeout=None, workdir=None):
         raise subprocess.TimeoutExpired(argv, timeout or 1)
