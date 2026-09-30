@@ -1,6 +1,13 @@
-# ChatGPT session and browser plugin
+# Use Hermes from ChatGPT
 
-Status: private developer-mode setup.
+Ask Hermes to do work from ChatGPT using its configured tools, accounts,
+providers, skills, and memory. Start with an authorized profile. You can ask
+for research, check an integration, inspect schedules, continue a conversation,
+or operate its browser. The plugin uses the existing Hermes setup.
+
+This is a private developer-mode connection. The package is displayed as
+**Hermes**. Its existing `hermes-sessions` package ID and `sessions` server
+configuration remain valid.
 
 ## ChatGPT account requirements
 
@@ -133,7 +140,66 @@ for the current registration and `.app.json` mapping flow. The plugin source is
 in [`plugins/hermes-sessions`](../plugins/hermes-sessions/README.md). The package
 builder does not create the tunnel or the ChatGPT connection.
 
-## Use the tools
+## Ask Hermes
+
+Use `hermes_session_profiles` to discover an authorized profile, then
+`hermes_ask(prompt=..., profile=...)`. Supply `session_id` to continue a
+conversation, or omit it to start one. Model and effort overrides are optional.
+The tool waits up to 20 seconds by default, with a maximum of 30. A completed
+turn includes its bounded result. A pending turn includes a job ID and the next
+polling action. Retrieve its result before reporting completion. Polling never
+requires submitting the prompt again.
+
+A disabled direct web, vision, or scheduling tool does not describe all of
+Hermes's own abilities. The selected profile's enabled tools and configured
+accounts determine what a delegated request can do. Hermes reports missing
+integrations in its answer. The bridge does not promise that a mail account is
+connected and does not interpret TUI slash commands as an arbitrary CLI API.
+For Hermes's own tool and command behavior, see its
+[tools guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/tools/)
+and [CLI reference](https://hermes-agent.nousresearch.com/docs/reference/cli-commands/).
+
+## Inspect schedules
+
+Use `hermes_cron_list(profile=...)` or `hermes_cron_status(profile=...)`.
+These are read-only and do not require `HERMES_GPT_ENABLE_CRON`, which controls
+the curated planning and creation tools. `hermes_capabilities` reports cron read
+profiles separately from session delegation.
+
+By default cron reads inherit `HERMES_GPT_OPERATOR_ALLOWED_PROFILES`. To inspect
+a scheduler in another profile without granting mutation authority, set
+`HERMES_GPT_CRON_READ_ALLOWED_PROFILES=default,chatgpt`. An explicit empty value
+denies reads. This setting grants no session, browser, or cron write access.
+An unnamed job is displayed as `cron job`, never as an excerpt of its prompt.
+
+## Diagnose a failed request
+
+`hermes_request_diagnostics` returns the recent call sequence. It records tool
+names, start and finish times, durations, outcomes, safe error codes, and job,
+task, and session IDs. It excludes arguments, prompts, answers, credentials,
+page URLs, and exception messages. A submitted job stores its originating
+`request_id`, allowing later polling calls to be linked back to submission.
+
+MCP SDK 2 also returns `hermes_request_id` in result metadata. Pass it as
+`trace_id` to the diagnostics tool. With SDK 1, use recent records or the job's
+`request_id`. Validation and thrown exceptions are recorded as failures; the
+original tool failure behavior is preserved. An Agent's natural-language
+answer about an unavailable account is still an answer, so inspect the result
+instead of interpreting transport success as task completion.
+
+The local JSONL log is `$HERMES_HOME/logs/hermes_gpt_requests.jsonl`, defaulting
+to `~/.hermes/logs/`. Files use mode 0600 on POSIX. Rotation keeps the active
+5 MB file and two backups. Diagnostic reads accept `limit=1` through `limit=100` and scan only
+the last 1 MB of the active file. They describe requests that reached this MCP
+server; an upstream ChatGPT or tunnel failure requires the corresponding
+service logs. Keep the connection private because IDs and activity timing are
+operational data.
+
+After a server update, refresh tool discovery in ChatGPT. Rebuild an installed
+local plugin package to pick up its display name and skill instructions. Server
+instructions also provide the workflow when the local package is older.
+
+## Advanced controls
 
 - Use `hermes_session_list` and `hermes_session_read` to find and inspect an
   existing profile session. Use `hermes_session_continue` to resume it. Omit

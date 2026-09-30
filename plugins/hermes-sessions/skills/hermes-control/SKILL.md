@@ -1,10 +1,24 @@
 ---
 name: hermes-control
-description: Start, resume, and manage Hermes Agent sessions and operate authorized Hermes browsers through Hermes GPT.
+description: Interact with Hermes Agent from ChatGPT using its configured tools, accounts, skills, scheduled jobs, conversations, and browsers.
 ---
 
 Use the Hermes GPT tools when the user asks to control Hermes sessions or its
 authorized browsers.
+
+## Ordinary requests and scheduled jobs
+
+When the user asks Hermes to do something, delegate through a regular profile
+session. This includes checking email through Hermes's configured integrations.
+Prefer `hermes_ask` after discovering an authorized profile. It starts or
+continues a turn and returns an answer or a job ID. Poll a pending job and retrieve the
+answer. Report missing integrations from the actual result. Do not infer their
+availability from the bridge's direct-tool capability flags. Do not claim the
+request is complete merely because the job was accepted.
+
+Use `hermes_cron_list` and `hermes_cron_status` to inspect existing schedules in
+an authorized profile. These reads do not need the cron creation gate. Do not
+turn on scheduling writes to answer a question about existing jobs.
 
 ## Sessions
 
@@ -59,3 +73,12 @@ plugin does not register peer-routing tools. If remote execution is needed but
 those tools are unavailable, explain that it requires a separately authorized
 Operator connection; keep same-host session and browser control on this
 connection so it stays bound to the selected local profile.
+
+## When a request fails
+
+Use `hermes_request_diagnostics` to inspect the recent call sequence or filter
+by the `hermes_request_id` in MCP result metadata. Keep the job ID when a turn
+was accepted. Distinguish bridge rejection, a running job, a failed Agent turn,
+and an Agent answer reporting an unavailable integration. Report the failure
+and next useful action. Never resubmit a running request to obtain its status.
+These diagnostics omit request bodies, private answers, credentials, and URLs.

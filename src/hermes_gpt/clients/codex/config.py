@@ -28,6 +28,10 @@ OPERATOR_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
     "hermes_operator_config_get", "hermes_operator_gateway_status",
 }
 SESSION_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
+    "hermes_ask",
+    "hermes_request_diagnostics",
+    "hermes_cron_list",
+    "hermes_cron_status",
     "hermes_bot_chat_get",
     "hermes_session_list",
     "hermes_session_start",

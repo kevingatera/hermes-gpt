@@ -22,6 +22,7 @@ from typing import Any, Callable, Iterable
 from urllib.parse import urlparse
 
 from hermes_gpt.policy import authorization as op_policy
+from hermes_gpt.policy.cron_read import allowed_profiles as cron_read_profiles
 
 CODEX_TOOLSET_ENV = "HERMES_GPT_CODEX_TOOLSET"
 CODEX_TOOLSETS = ("core", "operator", "sessions")
@@ -340,11 +341,23 @@ class CodexToolCore:
         def state(env_name: str, reason: str) -> dict[str, Any]:
             enabled = base_enabled and _env_enabled(env_name)
             return {"enabled": enabled, **({} if enabled else {"reason": reason if base_enabled else "Codex MCP integration is disabled."})}
+        def session_state(env_name: str) -> dict[str, Any]:
+            enabled = base_enabled and toolset == "sessions" and _env_enabled(env_name)
+            return {"enabled": enabled, **({} if enabled else {"reason": "Requires the sessions toolset and its feature gate."})}
         return redact_value({
             "ok": True,
             "active_toolset": toolset,
             "available_toolsets": list(CODEX_TOOLSETS),
             "toolset_error": toolset_error,
+            "scope": "Direct MCP capabilities only. Hermes sessions use the selected profile's enabled resources.",
+            "workflow": {
+                "use_for": "Delegate ordinary requests to Hermes, including requests that need its configured accounts and tools.",
+                "start": "hermes_ask",
+                "status": "hermes_session_job_status",
+                "result": "hermes_session_job_result",
+                "defaults": "Discover an authorized profile; omit model and reasoning_effort unless an override was requested.",
+                "completion": "Poll the job and retrieve its result before reporting completion.",
+            } if toolset == "sessions" else None,
             "operator": {
                 "enabled": policy.enabled,
                 "level": policy.level,
@@ -358,7 +371,11 @@ class CodexToolCore:
                 "vision": state(ENABLE_VISION_ENV, f"Set {ENABLE_VISION_ENV}=1."),
                 "web_search": state(ENABLE_WEB_ENV, f"Set {ENABLE_WEB_ENV}=1."),
                 "web_extract": state(ENABLE_WEB_ENV, f"Set {ENABLE_WEB_ENV}=1."),
-                "cron": state(ENABLE_CRON_ENV, f"Set {ENABLE_CRON_ENV}=1."),
+                "cron": state(ENABLE_CRON_ENV, f"Set {ENABLE_CRON_ENV}=1 for planning and creation; existing jobs can be inspected separately."),
+                "cron_read": {"enabled": base_enabled and toolset in {"sessions", "operator"}, "requires": "An existing profile authorized for cron reads.", "profiles": cron_read_profiles()},
+                "history": session_state(ENABLE_SESSION_SEARCH_ENV),
+                "delegation": session_state(ENABLE_SESSION_CONTROL_ENV),
+                "managed_tasks": session_state(ENABLE_SCOPED_TASKS_ENV),
                 "diagnostics": state(ENABLE_DIAGNOSTICS_ENV, f"Set {ENABLE_DIAGNOSTICS_ENV}=1."),
                 "skill_authoring": {
                     "enabled": base_enabled,

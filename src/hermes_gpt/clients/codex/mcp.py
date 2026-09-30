@@ -6,8 +6,12 @@ import json
 from collections.abc import Callable
 from typing import Any
 
+from mcp.types import ToolAnnotations
+
 from hermes_gpt.clients.codex.core import CodexToolCore, codex_toolset
-from hermes_gpt.mcp_compat import HermesMCP as FastMCP
+from hermes_gpt.clients.codex.usage import SESSION_INSTRUCTIONS
+from hermes_gpt.server.request_log import TracedMCP as FastMCP
+from hermes_gpt.server.request_log import request_diagnostics
 from hermes_gpt.versioning import VERSION
 
 NOAUTH_META = {"securitySchemes": [{"type": "noauth"}]}
@@ -28,6 +32,7 @@ def build_codex_server(core: CodexToolCore, *, host: str = "127.0.0.1", port: in
     server = FastMCP(
         "hermes-gpt",
         version=VERSION,
+        instructions=SESSION_INSTRUCTIONS if codex_toolset() == "sessions" else None,
         host=host,
         port=port,
         streamable_http_path="/mcp",
@@ -98,4 +103,28 @@ def build_codex_server(core: CodexToolCore, *, host: str = "127.0.0.1", port: in
             # also return plain text.
             wrapper.__signature__ = __import__("inspect").signature(callback)  # type: ignore[attr-defined]
             server.add_tool(wrapper, name=alias, meta=NOAUTH_META, structured_output=False)
+    if codex_toolset() == "sessions":
+        # Read adapters enforce profile authorization. The creation gate must
+        # not block inspection of existing schedules.
+        def hermes_request_diagnostics(limit: int = 20, trace_id: str | None = None) -> dict[str, Any]:
+            """Inspect recent MCP request outcomes and job IDs without private inputs or answers."""
+            return request_diagnostics(limit, trace_id)
+
+        server.add_tool(hermes_request_diagnostics, meta=NOAUTH_META,
+            annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+        callbacks = operator_tools or {}
+        def hermes_cron_list(profile: str, include_disabled: bool = False) -> dict[str, Any]:
+            """List existing scheduled jobs in an authorized Hermes profile. Read-only."""
+            return _structured_redacted(callbacks["hermes_operator_cron_list"](
+                profile=profile, include_disabled=include_disabled))
+
+        def hermes_cron_status(profile: str) -> dict[str, Any]:
+            """Read scheduler counts and last-run health for an authorized profile."""
+            return _structured_redacted(callbacks["hermes_operator_cron_status"](profile=profile))
+
+        for name, tool in (("hermes_operator_cron_list", hermes_cron_list),
+                           ("hermes_operator_cron_status", hermes_cron_status)):
+            if name in callbacks:
+                server.add_tool(tool, meta=NOAUTH_META, annotations=ToolAnnotations(
+                    readOnlyHint=True, destructiveHint=False, idempotentHint=True))
     return server

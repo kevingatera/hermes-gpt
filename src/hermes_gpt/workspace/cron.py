@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from hermes_gpt.policy import authorization as op
+from hermes_gpt.policy.cron_read import CRON_READ_PROFILES_ENV, require_profile as _require_read_profile
 
 # Keep the former module-level helper and tool names for callers.
 from hermes_gpt.workspace.cron_execution import _hermes_argv, hermes_cron_pause, hermes_cron_run
@@ -20,8 +21,7 @@ def hermes_cron_list(
 ) -> str:
     """List cron jobs for a profile. Read-only."""
     try:
-        policy = op.OperatorPolicy()
-        policy.require_profile(profile, hermes_root)
+        _require_read_profile(profile, hermes_root)
         profile_home = op.resolve_profile_home(profile, hermes_root)
         jobs = _read_jobs(profile_home)
         if not include_disabled:
@@ -52,8 +52,7 @@ def hermes_cron_status(
 ) -> str:
     """Aggregate cron status for a profile. Read-only."""
     try:
-        policy = op.OperatorPolicy()
-        policy.require_profile(profile, hermes_root)
+        _require_read_profile(profile, hermes_root)
         profile_home = op.resolve_profile_home(profile, hermes_root)
         jobs = _read_jobs(profile_home)
         enabled = [j for j in jobs if j.get("enabled", True)]

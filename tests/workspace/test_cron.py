@@ -734,3 +734,24 @@ def test_cron_create_model_only_scheduler_contract(hermes_root, clean_env, audit
     assert "provider" not in written
     assert not isinstance(written["model"], dict)
 
+
+
+def test_cron_read_authority_does_not_grant_mutation_authority(monkeypatch, tmp_path):
+    from hermes_gpt.workspace import cron
+    from hermes_gpt.policy import authorization as op
+    (tmp_path / "profiles" / "chatgpt").mkdir(parents=True)
+    monkeypatch.setenv(op.OPERATOR_ALLOWED_PROFILES_ENV, "chatgpt")
+    monkeypatch.setenv(cron.CRON_READ_PROFILES_ENV, "default")
+    assert json.loads(cron.hermes_cron_list("default", hermes_root=tmp_path))["success"] is True
+    with pytest.raises(PermissionError):
+        op.OperatorPolicy().require_profile("default", tmp_path)
+    assert json.loads(cron.hermes_cron_list("chatgpt", hermes_root=tmp_path))["success"] is False
+    monkeypatch.setenv(cron.CRON_READ_PROFILES_ENV, "")
+    assert json.loads(cron.hermes_cron_list("default", hermes_root=tmp_path))["success"] is False
+
+
+def test_unnamed_cron_job_does_not_expose_prompt_as_name():
+    from hermes_gpt.workspace.cron_store import _format_job_safe
+    result = _format_job_safe({"id": "test", "prompt": "private email instructions"})
+    assert result["name"] == "cron job"
+    assert "private email instructions" not in json.dumps(result)

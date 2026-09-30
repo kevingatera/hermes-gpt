@@ -8,7 +8,7 @@ project overview.
 
 | Guide | Use it for |
 | --- | --- |
-| [ChatGPT session plugin](chatgpt-sessions-plugin.md) | private session and browser tools in ChatGPT |
+| [Hermes in ChatGPT](chatgpt-sessions-plugin.md) | delegate work, inspect schedules, and control Hermes from ChatGPT |
 | [OpenAI Secure MCP Tunnel](openai-secure-mcp-tunnel.md) | outbound access to a loopback MCP server |
 | [Authentication](oauth.md) | bearer tokens, OAuth, refresh rotation, and revocation |
 | [Codex](codex.md) | Codex as an MCP client and the separate Codex CLI worker |

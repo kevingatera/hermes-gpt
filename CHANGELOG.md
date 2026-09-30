@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Present the plugin as Hermes, with `hermes_ask` for ordinary delegated requests and bounded answer waiting. Existing package IDs and session controls remain compatible.
+- Expose read-only cron inspection on the curated connection and distinguish direct MCP capabilities from a Hermes profile's tools. A separate cron read allowlist grants no mutation authority.
+- Add rotating private request logs, request-to-job correlation, and bounded `hermes_request_diagnostics`. Logs omit request and response bodies, credentials, URLs, and exception messages.
+- Stop using private cron prompt excerpts as names for unnamed jobs.
+
 - Prepare a managed task's stopped browser before starting a resumed Agent turn. Failed preparation returns `TASK_BROWSER_UNAVAILABLE`; Agent confinement and explicit browser closure remain in force.
 
 - Move Python runtime modules into the `hermes_gpt` package under `src/` and group tests by subsystem. Python imports now use package namespaces; launch with `hermes-gpt` or `python -m hermes_gpt` instead of the removed root `server.py`. MCP tool names and persisted formats are unchanged.

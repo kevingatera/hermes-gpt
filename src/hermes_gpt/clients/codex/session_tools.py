@@ -51,6 +51,10 @@ def register_codex_session_tools(
                 ),
             )
 
+    if session_control_enabled:
+        from hermes_gpt.clients.codex.ask import register_ask_tool
+        register_ask_tool(server, session_control_tools, tool_meta)
+
     session_control_tools.register_mcp_tools(
         server,
         tool_meta=tool_meta,

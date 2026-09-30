@@ -161,6 +161,11 @@ def start_managed_session_job(
             "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         }
     )
+    # Link the durable job to its originating MCP call without storing inputs.
+    from hermes_gpt.server.request_log import request_id
+    trace = request_id.get()
+    if trace:
+        meta["request_id"] = trace
     _, output_path = _paths(job_id, hermes_root)
     stderr_path = output_path.with_suffix(".stderr.txt")
     output_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

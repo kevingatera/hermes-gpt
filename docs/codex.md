@@ -99,7 +99,15 @@ hermes-gpt codex install --toolset sessions
 
 For an existing Hermes GPT entry, add `--refresh` to back it up and replace its toolset. The installer enables session history, session control, and scoped tasks in the Codex MCP entry. Configure profile and workspace allowlists in the MCP server environment, and keep provider authentication in the selected Hermes profiles. The plugin does not need a separate provider key.
 
-The `sessions` toolset includes the curated core tools plus:
+The `sessions` toolset includes the curated core tools plus `hermes_ask` for
+ordinary delegated requests, read-only `hermes_cron_list` and
+`hermes_cron_status`, and `hermes_request_diagnostics` for bounded request
+traces. Cron reads inherit Operator profile authority unless
+`HERMES_GPT_CRON_READ_ALLOWED_PROFILES` is explicitly set. They do not require
+the cron creation gate. See the [interaction guide](chatgpt-sessions-plugin.md)
+for polling and diagnostic details.
+
+It also includes:
 
 - Read-only session history tools and `hermes_bot_chat_get`.
 - `hermes_session_start` for a new session in an authorized profile, and `hermes_session_continue` / `hermes_session_send` for existing sessions, plus asynchronous job status, result, and cancellation. Both paths can select `model` and `reasoning_effort` for each turn.

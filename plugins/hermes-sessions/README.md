@@ -1,7 +1,7 @@
-# Hermes Sessions plugin
+# Hermes plugin
 
-This package adds session and browser workflows for the Hermes GPT MCP
-connection. The connection itself must already be registered in ChatGPT
+This package lets ChatGPT ask Hermes to do work, inspect schedules, continue
+conversations, use authorized browsers, and diagnose failed requests. The connection itself must already be registered in ChatGPT
 Developer Mode and reachable through the private tunnel.
 
 Regular session tools run Hermes with the selected profile's configuration,
@@ -9,6 +9,13 @@ provider authentication, tools, MCP servers, skills, and session data. The
 plugin does not need a separate provider API key. Confined workspace tasks
 clone those supported profile resources into private task state; see the
 repository's managed-session guide for their workspace and browser boundaries.
+
+Prefer `hermes_ask` for ordinary requests. It returns an answer or a job ID to
+follow. Use direct read tools for schedules and inspect request diagnostics
+when something fails. See the [interaction guide](../../docs/chatgpt-sessions-plugin.md).
+
+The package ID remains `hermes-sessions` for existing installations; the display
+name is **Hermes**.
 
 Build an account-bound package from the repository root:
 

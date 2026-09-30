@@ -183,3 +183,16 @@ def test_redaction_covers_provider_github_cookie_and_private_key_text():
     assert "github_pat_" not in rendered
     assert "session-abcdefgh" not in rendered
     assert "BEGIN PRIVATE KEY" not in rendered
+
+
+def test_session_capabilities_separate_reads_from_creation(monkeypatch, tool_core):
+    enable_base(monkeypatch)
+    monkeypatch.setenv(core_module.CODEX_TOOLSET_ENV, "sessions")
+    monkeypatch.setenv(core_module.ENABLE_SESSION_CONTROL_ENV, "1")
+    tool, _ = tool_core
+    result = tool.capabilities()
+    assert result["capabilities"]["cron_read"]["enabled"] is True
+    assert result["capabilities"]["cron"]["enabled"] is False
+    assert result["capabilities"]["delegation"]["enabled"] is True
+    assert result["workflow"]["start"] == "hermes_ask"
+    assert tool.status()["ok"] is True

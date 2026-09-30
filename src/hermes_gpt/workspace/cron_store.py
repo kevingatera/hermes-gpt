@@ -125,7 +125,7 @@ def _format_job_safe(job: dict[str, Any]) -> dict[str, Any]:
     skills = [str(s) for s in skills if s]
     return {
         "job_id": str(job.get("id") or "unknown"),
-        "name": str(job.get("name") or prompt[:50] or (skills[0] if skills else "") or "cron job"),
+        "name": str(job.get("name") or (skills[0] if skills else "") or "cron job"),
         "schedule": str(job.get("schedule_display") or job.get("schedule") or "?"),
         "enabled": bool(job.get("enabled", True)),
         "state": str(job.get("state") or ("scheduled" if job.get("enabled", True) else "paused")),

@@ -44,7 +44,7 @@ hermes-gpt
 
 | What you want to do | Guide |
 | --- | --- |
-| Start and resume Hermes sessions from ChatGPT, with model and effort overrides | [ChatGPT session plugin](docs/chatgpt-sessions-plugin.md) |
+| Start and resume Hermes sessions from ChatGPT, with model and effort overrides | [Hermes in ChatGPT](docs/chatgpt-sessions-plugin.md) |
 | Share an authorized Hermes browser or use an isolated task browser | [Managed sessions and browser access](docs/managed-hermes-sessions.md) |
 | Reach the local server privately from supported OpenAI products | [OpenAI Secure MCP Tunnel](docs/openai-secure-mcp-tunnel.md) |
 | Use Codex as an MCP client or delegate a job to the Codex CLI | [Codex integration](docs/codex.md) |

@@ -92,6 +92,10 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     tools = asyncio.run(server.build_codex_mcp_server().list_tools())
     by_name = {tool.name: tool for tool in tools}
     expected = {
+        "hermes_ask",
+        "hermes_cron_list",
+        "hermes_cron_status",
+        "hermes_request_diagnostics",
         "hermes_session_list",
         "hermes_session_start",
         "hermes_session_continue",
@@ -118,6 +122,9 @@ def test_sessions_toolset_registers_history_control_and_browser_tools(monkeypatc
     assert {"session_id", "title", "profile"} <= set(rename_schema["properties"])
     pin_schema = by_name["hermes_session_pin"].model_dump(by_alias=True)["inputSchema"]
     assert {"session_id", "pinned", "profile"} <= set(pin_schema["properties"])
+    assert wire(by_name["hermes_cron_list"].annotations)["readOnlyHint"] is True
+    assert wire(by_name["hermes_cron_status"].annotations)["readOnlyHint"] is True
+    assert wire(by_name["hermes_request_diagnostics"].annotations)["readOnlyHint"] is True
     assert wire(by_name["hermes_session_list"].annotations)["readOnlyHint"] is True
     assert wire(by_name["hermes_session_start"].annotations)["destructiveHint"] is True
     assert wire(by_name["hermes_session_rename"].annotations)["destructiveHint"] is False

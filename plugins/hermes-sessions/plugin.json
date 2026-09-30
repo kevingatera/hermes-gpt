@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hermes-sessions",
-  "version": "0.1.0",
-  "description": "Start and resume Hermes sessions and operate authorized Hermes browsers.",
+  "version": "0.2.0",
+  "description": "Use Hermes Agent from ChatGPT with its configured tools, accounts, and browsers.",
   "author": {
     "name": "Hermes GPT contributors"
   },
@@ -18,9 +18,9 @@
   "extensions": {
     "com.openai": {
       "interface": {
-        "displayName": "Hermes Sessions",
-        "shortDescription": "Start and resume Hermes sessions",
-        "longDescription": "Control Hermes Agent sessions, choose a model and reasoning effort, and use an authorized Hermes browser through the private Hermes GPT connection.",
+        "displayName": "Hermes",
+        "shortDescription": "Ask Hermes to work from ChatGPT",
+        "longDescription": "Delegate work to Hermes using its configured providers, tools, accounts, skills, and memory. Inspect scheduled jobs, continue conversations, control authorized browsers, and follow results with request diagnostics.",
         "developerName": "Hermes GPT contributors",
         "category": "Developer Tools",
         "capabilities": [
@@ -29,8 +29,9 @@
           "Write"
         ],
         "defaultPrompt": [
-          "Find and continue a Hermes session with its profile settings, or start one with optional model and reasoning overrides.",
-          "Inspect or operate an authorized Hermes browser profile."
+          "Ask Hermes to do work using an authorized profile and report the result.",
+          "Show my Hermes scheduled jobs and their last-run status.",
+          "Continue a Hermes conversation or use its authorized browser."
         ],
         "brandColor": "#2563EB"
       }
