@@ -1,37 +1,92 @@
-# Unified Delegation Lifecycle (v0.9)
+# Delegations
 
-Hermes GPT v0.9 adds a durable delegation lifecycle above Work Contracts and the existing execution backends. The delegation record is **lineage and state metadata**, not a second execution authority: runner, Fabric, Work Contract validation, and Operator policy remain authoritative for dispatch, observation, cancellation, and completion evidence.
+A delegation tracks a Work Contract across runner or Fabric execution. Its
+record stores lineage and state. Operator policy controls dispatch and
+cancellation; backend observations and Work Contract validation determine
+completion.
 
 ## Tools
 
-- `hermes_delegation_dispatch` — dry-run-first dispatch of a canonical Work Contract with optional Mission linkage.
-- `hermes_delegation_get` — read one durable delegation and its bounded lifecycle events.
-- `hermes_delegation_list` — list/filter delegation records by Mission or normalized state.
-- `hermes_delegation_reconcile` — derive normalized state from authoritative runner/Fabric observations; applying the derived state requires workspace/direct authority.
-- `hermes_delegation_cancel` — route cancellation to the selected backend while preserving existing backend cancellation and Operator gates.
+| Tool | Use it to |
+| --- | --- |
+| `hermes_delegation_dispatch` | preview or dispatch a canonical Work Contract, with optional mission linkage |
+| `hermes_delegation_get` | read a delegation and its bounded lifecycle events |
+| `hermes_delegation_list` | filter records by mission or state |
+| `hermes_delegation_reconcile` | derive state from backend observations; applying it requires workspace and direct authority |
+| `hermes_delegation_cancel` | request cancellation through the selected backend and its existing gates |
 
-Normalized states are `queued`, `running`, `reconciling`, `blocked`, `succeeded`, `failed`, and `cancelled`.
+States are `queued`, `running`, `reconciling`, `blocked`, `succeeded`, `failed`,
+and `cancelled`.
 
-## Data and authority boundaries
+The database stores bounded IDs, contract digests, backend references, states,
+timestamps, and event hashes. It excludes contract objectives, prompts, and
+model responses.
 
-The delegation database stores only bounded lineage and lifecycle metadata: delegation id, Mission id, Work Contract task id and SHA-256, selected backend, normalized/backend state, bounded backend references, timestamps, and event hashes. It does **not** store Work Contract objectives/prompts or model responses.
+## Verify completion
 
-A delegation never marks work successful because a worker says it succeeded. Reconciliation reads the existing runner/Fabric observations for the Work Contract task id, but backend terminal success remains `reconciling` until the matching immutable Work Contract lineage has a `SATISFIED` validation verdict. Missing, unreadable, or `UNVERIFIED` evidence therefore fails closed. When a Work Contract is supplied to reconciliation, its canonical SHA and task id must match the stored lineage before validation can contribute evidence.
+A worker reporting success is only one part of the evidence. Reconciliation
+reads runner or Fabric observations for the Work Contract task ID. Completed
+backend execution stays `reconciling` until validation of the matching contract
+returns `SATISFIED`.
 
-Mission linkage uses the existing `delegation` attachment kind. Dispatch creates/updates a pending/running attachment. A Mission attachment becomes `succeeded` only when delegation reconciliation has both authoritative backend completion and a `SATISFIED` Work Contract verdict; that bridge records the contract digest as its verification reference. Cancellation records `cancelled` only when the backend explicitly confirms `cancelled`/`canceled`. Other successful backend responses remain reconciling. An explicit unsuccessful, unchanged backend response releases the provisional cancellation latch; ambiguous failures remain latched for authoritative reconciliation.
+The contract task ID and canonical SHA-256 must match the stored lineage.
+Missing or unreadable evidence, and an `UNVERIFIED` verdict, cannot produce
+success.
 
-An exact cancellation retry does not invoke backend cancellation again while `cancellation_in_progress` is set for that lineage. It returns an explicit in-progress/ambiguous idempotent response and leaves the latch in place for the first caller or authoritative reconciliation.
+When linked to a mission, dispatch creates or updates a `delegation` attachment.
+The attachment becomes `succeeded` after backend completion and matching
+`SATISFIED` validation. It records the contract digest as its verification
+reference.
 
-Authoritative reconciliation resolves that provisional latch only from a terminal backend observation demonstrably ordered after the durable cancellation claim. The observation must carry a parseable, timezone-aware backend terminal timestamp such as `ended_at` or `completed_at`, and that timestamp must be strictly later than `cancellation_claimed_at`. Payload/hash differences, visibility time, generic update time, and equal timestamps do not establish ordering. A backend without a trustworthy post-attempt terminal timestamp or advancing authoritative generation therefore remains latched fail-closed. A post-claim explicit `cancelled`/`canceled` observation promotes durable cancellation; post-claim terminal failure clears the latch and records failure; post-claim terminal completion clears the latch but still requires the normal matching Work Contract validation before success. Missing, stale, ambiguous, unknown, or nonterminal observation retains `cancel_requested` and `cancellation_in_progress` and remains `reconciling`.
+## Cancel and reconcile
 
-## OpenCode backend
+Cancellation records `cancelled` only after an explicit `cancelled` or
+`canceled` backend response. Other successful responses remain `reconciling`.
+An unsuccessful response that explicitly made no change releases the pending
+cancellation claim. An ambiguous failure keeps the claim pending.
 
-v0.9 also adds `opencode` as a first-class local runner backend. Hermes invokes the installed non-interactive OpenCode CLI using `opencode run --format json --pure --dir <workspace>`. The objective is piped over stdin rather than placed on process argv. `--auto` is never enabled by Hermes.
+While `cancellation_in_progress` is set, an exact retry returns the pending
+result without invoking cancellation again. The first caller or reconciliation
+must resolve the claim.
 
-Filesystem authority is enforced externally by the same Hermes confinement layer used for local coding runners. Read-only contracts receive read-only workspace confinement; write-authorized contracts require `workspace-write` posture. Optional `model`, `agent`, and `variant` execution options are bounded, and model selection remains subject to the existing runner model allowlist.
+Reconciliation needs a terminal backend observation ordered after the durable
+cancellation claim. A parseable, timezone-aware `ended_at` or `completed_at`
+must be strictly later than `cancellation_claimed_at`. Equivalent terminal
+fields `finished_at` and `terminal_at` are also accepted. The current check
+uses terminal timestamps, not backend generation counters.
+A changed payload, a new hash, the time the server saw an observation, a generic
+update time, or an equal timestamp cannot establish that ordering.
 
-Provider authorization stays in the trusted Hermes worker. The confined OpenCode process receives a fresh per-job random relay capability and a sanitized provider configuration; the loopback relay rejects missing or incorrect capabilities before forwarding and substitutes the upstream authorization only after that check. The upstream authorization is never serialized into the child config, argv, workspace, or child environment.
+After a qualifying observation:
+
+- Explicit cancellation records durable cancellation.
+- Terminal failure clears the pending claim and records failure.
+- Terminal completion clears the claim but still needs matching Work Contract
+  validation before success.
+
+Missing, stale, ambiguous, unknown, or nonterminal observations leave
+`cancel_requested` and `cancellation_in_progress` set. The delegation remains
+`reconciling` until authoritative evidence resolves it.
+
+## OpenCode runner
+
+The `opencode` backend invokes the installed CLI with
+`opencode run --format json --pure --dir <workspace>`. It sends the objective
+through stdin. Hermes never enables `--auto`.
+
+The runner confinement layer enforces filesystem access. Read-only contracts
+receive a read-only workspace; write-authorized contracts require the
+`workspace-write` posture. The optional `model`, `agent`, and `variant` values
+are bounded. Model selection also requires the runner model allowlist.
+
+Provider authorization stays in the trusted Hermes worker. Each child gets a
+random relay capability and sanitized provider configuration. The loopback
+relay checks that capability before forwarding and adds upstream authorization
+only after the check. The child configuration, arguments, workspace, and
+environment never contain that upstream authorization.
 
 ## Live events
 
-Delegation lifecycle changes publish bounded wake-up events on the v0.9 live-event bus. These notifications are non-authoritative pointers back to durable delegation/runner/Fabric state; notification failure cannot advance or complete work.
+Delegation changes publish bounded notifications through [live events](live-events.md).
+Use each notification to read the durable delegation or backend record again.
+Notification failure cannot advance state or complete work.

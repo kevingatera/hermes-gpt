@@ -1,6 +1,13 @@
 # Hermes session control
 
-Hermes GPT can start a new session or send one bounded non-interactive turn to an existing Hermes session and expose its status and result as an asynchronous MCP job. Each run starts the Hermes CLI with the selected profile as `HERMES_HOME`, so Hermes loads that profile's own `config.yaml`, `.env`, authentication, tools, MCP servers, skills, SOUL, memory, and session data. Hermes GPT does not parse or copy provider credentials, and a normal profile session needs no second provider key.
+Start a new Hermes session or send a turn to an existing one. The MCP call
+returns a job ID so you can check progress, retrieve the answer, or cancel the
+run without holding the connection open.
+
+Hermes loads the selected profile's configuration, provider credentials, tools,
+MCP servers, skills, SOUL, memory, and session data. Each run sets `HERMES_HOME`
+to that profile. Hermes GPT does not copy or parse its provider credentials,
+and this workflow needs no second model-provider key.
 
 ## Enable locally
 
@@ -13,20 +20,38 @@ $env:HERMES_GPT_ENABLE_SESSION_CONTROL="1"
 python -m hermes_gpt
 ```
 
-The session-control allowlist is empty by default and does not accept `*`. The built-in `default` profile is denied unless it is explicitly listed. Do not list `default` for a remote client unless you intend to grant it the full authority of that profile. Profile selection is not an OS sandbox: the Hermes process receives the capabilities configured for that profile, so use Hermes tool restrictions and OS/container isolation to enforce filesystem and browser boundaries.
+The session-control allowlist is empty by default and does not accept `*`.
+The built-in `default` profile is denied unless you list it explicitly.
+Listing it gives the client the capabilities configured for that profile.
+
+Profile selection does not isolate the process from the operating system.
+Use Hermes tool restrictions and OS or container isolation to enforce file
+and browser boundaries. For scoped workspace execution, use
+[managed sessions](managed-hermes-sessions.md).
 
 Read-only history remains separately controlled by `HERMES_GPT_ENABLE_SESSION_SEARCH=1`. Enable both when the client needs to list or inspect sessions before choosing one to continue. See [session history](session-history.md) for its four-tool read-only workflow and privacy defaults.
 
-## Workflow
+## Start or continue
 
 1. Call `hermes_session_profiles` to see the existing profiles authorized by both allowlists and each profile's non-secret configured model, provider, and reasoning-effort defaults. It does not return credentials or other profile configuration.
 2. Call `hermes_session_start(prompt, profile="chatgpt", timeout=900)` to create a new session, or find a session ID with `hermes_session_list` when history is enabled and use `hermes_session_continue(session_id, prompt, timeout)` or its `hermes_session_send` alias.
 3. Omit `model` and `reasoning_effort` to let the selected Hermes profile choose its configured defaults. Pass either value only when the user requests a per-turn override. The profile must be explicitly authorized in both allowlists.
-4. Save the returned `job_id`.
-5. Poll `hermes_session_job_status(job_id)` until the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`. The new session ID appears in the job status after Hermes reports it.
-6. Call `hermes_session_job_cancel(job_id)` to stop a running job owned by this server process.
-7. Call `hermes_session_job_result(job_id)` for the bounded, redacted output.
-8. Use `hermes_session_rename(session_id, title, profile)` to update its title, or `hermes_session_pin(session_id, pinned, profile)` to pin or unpin it. These commands use Hermes' session CLI, accept exact or unique-prefix IDs, and apply the same two profile allowlists. Rename titles are limited to 100 printable characters.
+4. Save the returned `job_id`. Poll `hermes_session_job_status(job_id)` until
+   the status is `completed`, `failed`, `timed_out`, `cancelled`, or `orphaned`.
+   The new session ID appears after Hermes reports it.
+5. Read the answer with `hermes_session_job_result(job_id)`. Output is bounded
+   and redacted before the tool returns it.
+
+To stop a running job, call `hermes_session_job_cancel(job_id)`. Only the server
+process that owns the child can signal it.
+
+## Rename or pin
+
+Use `hermes_session_rename(session_id, title, profile)` to change a title, or
+`hermes_session_pin(session_id, pinned, profile)` to pin or unpin a session.
+These commands use Hermes' session CLI and accept exact or unique-prefix IDs.
+Both profile allowlists still apply. Titles are limited to 100 printable
+characters.
 
 Profile discovery and metadata tools are exposed only while session control is enabled. They do not start a model call.
 
