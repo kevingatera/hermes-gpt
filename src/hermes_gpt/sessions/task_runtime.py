@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import json
 import os
-import re
 import subprocess
 import sys
 from collections.abc import Callable
@@ -21,11 +20,11 @@ from hermes_gpt.sessions import task_mcp
 from hermes_gpt.sessions import task_mounts
 from hermes_gpt.sessions import task_profile
 from hermes_gpt.policy import confinement
+from hermes_gpt.sessions.model_options import ModelOverrides
 
 TOOLSETS = "profile-configured+task-browser"
 PROFILE_DEFAULT_TOOLSETS = "profile-configured"
 MAX_TIMEOUT = 3600
-REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"})
 _BROWSER_BRIDGE_MODULES = (
     "hermes_gpt",
     "hermes_gpt.browser",
@@ -124,22 +123,6 @@ def _installed_source_root(executable: str) -> Path | None:
     return None
 
 
-def _validate_model_and_effort(
-    model: str | None, effort: str | None
-) -> tuple[str | None, str | None]:
-    """Validate explicit per-turn overrides while leaving profile defaults unset."""
-    if model is not None:
-        if not isinstance(model, str) or len(model) > 256 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:+/-]*", model):
-            raise ValueError("model must be a valid provider/model ID")
-        provider, separator, model_name = model.partition("/")
-        if not separator or not provider or not model_name:
-            raise ValueError("model must use provider/model syntax")
-    if effort is not None and (not isinstance(effort, str) or effort not in REASONING_EFFORTS):
-        choices = ", ".join(sorted(REASONING_EFFORTS))
-        raise ValueError(f"reasoning_effort must be one of: {choices}")
-    return model, effort
-
-
 def _hermes_python(executable: str, agent_root: Path | None) -> str:
     if agent_root is not None:
         scripts = "Scripts" if os.name == "nt" else "bin"
@@ -209,7 +192,7 @@ def start_turn(
     policy.require_level("workspace")
     policy.require_mutation(dry_run)
     if policy.effective_dry_run(dry_run):
-        model, reasoning_effort = _validate_model_and_effort(
+        overrides = ModelOverrides(
             task.get("model"), task.get("reasoning_effort")
         )
         browser_enabled = bool(task.get("browser_enabled"))
@@ -219,8 +202,8 @@ def start_turn(
             "changed": False,
             "task_id": task["task_id"],
             "workspace_id": task["workspace_id"],
-            "model": model,
-            "reasoning_effort": reasoning_effort,
+            "model": overrides.model,
+            "reasoning_effort": overrides.reasoning_effort,
             "toolsets": TOOLSETS if browser_enabled else PROFILE_DEFAULT_TOOLSETS,
             "browser_enabled": browser_enabled,
             "allow_workspace_write": bool(task.get("allow_workspace_write")),
@@ -232,7 +215,7 @@ def start_turn(
         str(task.get("profile") or task.get("credential_profile") or "default"),
         hermes_root,
     )
-    model, reasoning_effort = _validate_model_and_effort(
+    overrides = ModelOverrides(
         task.get("model"), task.get("reasoning_effort")
     )
     workspace = Path(str(task["workspace"])).expanduser().resolve(strict=True)
@@ -272,10 +255,10 @@ def start_turn(
     toolsets = TOOLSETS if browser_enabled else PROFILE_DEFAULT_TOOLSETS
     writable_task_paths = [task_home]
     argv = [executable, "chat"]
-    if model is not None:
-        argv.extend(("--model", model))
-    if reasoning_effort is not None:
-        argv.extend(("--reasoning", reasoning_effort))
+    if overrides.model is not None:
+        argv.extend(("--model", overrides.model))
+    if overrides.reasoning_effort is not None:
+        argv.extend(("--reasoning", overrides.reasoning_effort))
     argv.extend(("--in", str(workspace)))
     if session_id:
         argv += ["--resume", session_id]
@@ -356,8 +339,8 @@ def start_turn(
             "workspace": str(workspace),
             "task_home": str(task_home),
             "allow_workspace_write": writable,
-            "model": model,
-            "reasoning_effort": reasoning_effort,
+            "model": overrides.model,
+            "reasoning_effort": overrides.reasoning_effort,
             "toolsets": toolsets,
             "browser_enabled": bool(task.get("browser_enabled")),
             "session_id": session_id,
@@ -378,8 +361,8 @@ def start_turn(
             result["task_state_save_warning"] = "Task started; status will recover from its durable job record."
         result.update({
             "workspace_id": task["workspace_id"],
-            "model": model,
-            "reasoning_effort": reasoning_effort,
+            "model": overrides.model,
+            "reasoning_effort": overrides.reasoning_effort,
             "toolsets": toolsets,
             "browser_enabled": bool(task.get("browser_enabled")),
         })

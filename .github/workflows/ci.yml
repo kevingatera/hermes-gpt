@@ -138,6 +138,7 @@ jobs:
           python -m ruff check
           src/hermes_gpt/auth/oauth.py src/hermes_gpt/auth/token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py
           src/hermes_gpt/server/cli.py tests/server/test_server_cli.py
+          src/hermes_gpt/sessions/model_options.py tests/sessions/test_model_options.py
           src/hermes_gpt/browser/tabs.py tests/browser/test_browser_tabs.py
           src/hermes_gpt/fleet/fabric_config.py tests/fleet/test_fabric_config_read_bounds.py
           src/hermes_gpt/mcp_compat.py src/hermes_gpt/clients/codex/mcp.py tests/server/test_mcp_sdk_migration.py tests/server/test_mcp_compat.py

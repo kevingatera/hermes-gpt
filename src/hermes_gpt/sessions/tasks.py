@@ -25,7 +25,8 @@ from hermes_gpt.sessions import jobs as job_runtime
 from hermes_gpt.sessions import task_profile
 from hermes_gpt.sessions import task_runtime as runtime
 from hermes_gpt.policy import confinement
-from hermes_gpt.sessions.task_runtime import PROFILE_DEFAULT_TOOLSETS, REASONING_EFFORTS, TOOLSETS
+from hermes_gpt.sessions.model_options import REASONING_EFFORTS, ModelOverrides
+from hermes_gpt.sessions.task_runtime import PROFILE_DEFAULT_TOOLSETS, TOOLSETS
 from hermes_gpt.sessions.task_store import _TASK_ID_RE, MAX_TASK_LIST_LIMIT, MAX_TASK_LIST_OFFSET, _now, _public_task_summary, _read_json, _save_task_record, _task_path, _task_root, _task_setting, _write_json
 
 ENABLE_SCOPED_TASKS_ENV = "HERMES_GPT_ENABLE_SCOPED_TASKS"
@@ -174,7 +175,7 @@ def hermes_task_start(
             browser_cdp_port = browser_profiles.profile_cdp_port(
                 selected_browser_profile, hermes_root
             )
-        model, reasoning_effort = runtime._validate_model_and_effort(model, reasoning_effort)
+        overrides = ModelOverrides(model, reasoning_effort)
         policy = op.OperatorPolicy()
         policy.require_level("workspace")
         policy.require_mutation(dry_run)
@@ -204,8 +205,8 @@ def hermes_task_start(
                 "changed": False,
                 "task_id": task_id,
                 "workspace_id": alias,
-                "model": model,
-                "reasoning_effort": reasoning_effort,
+                "model": overrides.model,
+                "reasoning_effort": overrides.reasoning_effort,
                 "toolsets": toolsets,
                 "browser_enabled": browser_enabled,
                 "browser_source": browser_source,
@@ -247,8 +248,8 @@ def hermes_task_start(
             "hermes_root": str(job_store._data_root(hermes_root)),
             "profile": selected_profile,
             "allow_workspace_write": bool(allow_workspace_write),
-            "model": model,
-            "reasoning_effort": reasoning_effort,
+            "model": overrides.model,
+            "reasoning_effort": overrides.reasoning_effort,
             "toolsets": toolsets,
             "browser_enabled": browser_enabled,
             "browser_source": browser_source,
@@ -313,11 +314,11 @@ def hermes_task_continue(
         task = _read_json(_task_path(str(task_id), hermes_root))
         if not task or task.get("task_id") != task_id:
             return {"success": False, "code": "TASK_NOT_FOUND", "safe_message": "Hermes task was not found."}
-        selected_model, selected_effort = runtime._validate_model_and_effort(
+        overrides = ModelOverrides(
             model, reasoning_effort
         )
-        task["model"] = selected_model
-        task["reasoning_effort"] = selected_effort
+        task["model"] = overrides.model
+        task["reasoning_effort"] = overrides.reasoning_effort
         task["toolsets"] = TOOLSETS if bool(task.get("browser_enabled")) else PROFILE_DEFAULT_TOOLSETS
         latest_job = job_store._load(str(task.get("latest_job_id") or ""), hermes_root) or {}
         if job_runtime._recover_task_session_id(latest_job, hermes_root):
