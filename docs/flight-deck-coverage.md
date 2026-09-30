@@ -101,12 +101,12 @@ The current policy contract remains [Operator Mode](operator-mode.md).
 
 ## Verification
 
-- `test_ui_ops.py`: mission/status envelopes, allowlist behavior, event query,
+- `tests/ui/test_ui_ops.py`: mission/status envelopes, allowlist behavior, event query,
   route composition, and adversarial mutation-gate tests.
-- `test_operator_fabric_view.py`: stale/unknown node semantics, non-mutating
+- `tests/fleet/test_fabric_view.py`: stale/unknown node semantics, non-mutating
   journal reads, routing-receipt compatibility, evidence redaction, artifact
   path isolation, and active-content policy.
-- `test_ui_fabric.py`: GET-only Fabric routes, shared browser redaction,
+- `tests/ui/test_ui_fabric.py`: GET-only Fabric routes, shared browser redaction,
   invalid-id handling, route composition, and no private artifact path leak.
 - `web` Vitest: Fabric stale/blocked rendering, routing explanations, active
   artifact isolation, absence of direct mutation controls, plus existing

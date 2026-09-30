@@ -66,7 +66,7 @@ The MCP specification leaves rendering of embedded resources to the client. Herm
 The `initialize` handshake advertises the hermes-gpt app version in
 `serverInfo.version` (from `versioning.VERSION`) — not the
 MCP SDK version. This lets a client detect a stale process that is still
-exposing an old schema. `test_mcp_compat.py::test_initialize_advertises_server_version`
+exposing an old schema. `tests/server/test_mcp_compat.py::test_initialize_advertises_server_version`
 asserts the handshake reports `versioning.VERSION` and that the pinned floor
 (`2024-11-05`) remains negotiable on the running SDK.
 

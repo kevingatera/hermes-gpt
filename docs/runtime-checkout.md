@@ -43,17 +43,17 @@ The service started **after** the HEAD commit date, so the running server serves
 runtime checkout at HEAD `6b641ef`. Because the service reads `server.py` plus the
 imported `operator_*.py` modules from the worktree directory at runtime, it is also
 serving the worktree's **uncommitted** working-tree state, which includes local
-modifications to `operator_fleet.py` and `test_operator_fleet.py`.
+modifications to `operator_fleet.py` and `tests/fleet/test_fleet.py`.
 
 ## Uncommitted state in the live worktree (never reset/discard)
 
 - Modified tracked files:
   - `operator_fleet.py` (+421 lines)
-  - `test_operator_fleet.py` (409 lines changed; 708 insertions / 122 deletions total)
+  - `tests/fleet/test_fleet.py` (409 lines changed; 708 insertions / 122 deletions total)
 - Untracked acceptance/test files and backups in the worktree (28 untracked entries),
   including `live_peer_transport_acceptance.py`,
   `live_peer_work_order_acceptance.py`, `operator_fleet.py.bak.*`,
-  `test_operator_fleet.py.bak.*`, and non-source artifacts.
+  `tests/fleet/test_fleet.py.bak.*`, and non-source artifacts.
 
 These are **local working-tree changes**, not local-only commits. They are not part of
 any published branch and must not be reset, discarded, or checked out over.

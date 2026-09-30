@@ -2,7 +2,7 @@
 
 Status: current (implementation card t_7266e74c, 2026-08-15)
 Scope: `ui_security.py`, `ui_api.py` (composition), `server.py` mount,
-`web/src/shared/**`, `web/src/stores/connection.ts`, `test_ui_security.py`.
+`web/src/shared/**`, `web/src/stores/connection.ts`, `tests/ui/test_ui_security.py`.
 
 These notes document the browser-facing security boundary for the
 conversational Hermes GPT UI. The authoritative design is
@@ -123,7 +123,7 @@ Existing env behavior is unchanged.
 ## 8. Verification
 
 ```bash
-python -m pytest test_ui_security.py      # 36 tests: redaction properties,
+python -m pytest tests/ui/test_ui_security.py      # 36 tests: redaction properties,
                                           # account states, auth boundary,
                                           # allowlist semantics, /api/* sweep
 cd web && npm install && npx tsc --noEmit  # frontend shared skeleton typecheck
@@ -137,7 +137,7 @@ sweep covers them automatically.
 
 ## 9. Known environment note (not from this card)
 
-`test_mcp_compat.py::test_package_metadata_allows_mcp_1x_floor` fails in
+`tests/server/test_mcp_compat.py::test_package_metadata_allows_mcp_1x_floor` fails in
 this venv because the installed `hermes-gpt` distribution metadata is stale
 (0.5.0, from before the `mcp[cli]>=1.0,<2` floor). It reads installed
 metadata, not the working tree; it is unaffected by this card's diff.

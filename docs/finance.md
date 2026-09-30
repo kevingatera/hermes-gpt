@@ -75,7 +75,7 @@ The `finance` profile currently requires no Vault service. Do not add banking or
 Run the focused test suite first:
 
 ```bash
-python -m pytest test_operator_finance.py -q
+python -m pytest tests/workspace/test_finance.py -q
 ```
 
 Then run the normal repository test suite before shipping a change that touches the bridge or its registration path.

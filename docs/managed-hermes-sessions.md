@@ -73,9 +73,9 @@ The MCP tools are the initial interface. A task panel or Hermes slash-command UI
 Check the task runtime and packaging boundaries before testing through ChatGPT:
 
 ```bash
-python -m pytest -q test_operator_session_task_mounts.py \
-  test_operator_session_task_runtime.py test_operator_session_task_mcp.py \
-  test_operator_session_tasks.py test_package_imports.py test_package_hygiene.py
+python -m pytest -q tests/sessions/test_session_task_mounts.py \
+  tests/sessions/test_session_task_runtime.py tests/sessions/test_session_task_mcp.py \
+  tests/sessions/test_session_tasks.py tests/packaging/test_package_imports.py tests/packaging/test_package_hygiene.py
 ```
 
 For a real model check, use an existing authorized profile and provider. No additional model-provider key is needed:

@@ -12,19 +12,19 @@ Use this checklist before publishing a Hermes GPT release artifact.
 
 ## 2. Core verification
 
-- `python -m py_compile server.py test_server.py`
+- `python -m py_compile server.py tests/server/test_server.py`
 - `python -m pytest`
-- `python -m pytest test_operator_mission.py`
+- `python -m pytest tests/missions/test_mission.py`
   - Mission Control redaction, no-raw-body, read-only, audit, bounds, and allowlist behavior must be green.
-- `python -m pytest test_operator_contract.py`
+- `python -m pytest tests/execution/test_contract.py`
   - Work Contract schema, observed-state validation, false-done rejection, test gating, redaction, read-only behavior, and audit must be green.
-- `python -m pytest test_operator_swarm.py`
+- `python -m pytest tests/execution/test_swarm.py`
   - DAG validation, scheduler caps, contract dispatch, observed completion, bounded rework, worktree plans, Codex review posture, approval gate, mutation gates, audit, and redaction must be green.
-- `python -m pytest test_operator_codex.py`
+- `python -m pytest tests/execution/test_codex.py`
   - Codex executable resolution, runner gates, bounded argv, redaction, and retention behavior must be green.
-- `python -m pytest test_operator_session.py`
+- `python -m pytest tests/sessions/test_session.py`
   - Session-control gating, prompt non-persistence, fixed argv, concurrency bounds, timeout/result bounds, redaction, and restart orphan reconciliation must be green.
-- `python -m pytest test_operator_mission_runtime.py test_operator_delegations.py test_operator_live_events.py test_operator_finance.py test_operator_job_supervisor.py`
+- `python -m pytest tests/missions/test_mission_runtime.py tests/execution/test_delegations.py tests/workspace/test_live_events.py tests/workspace/test_finance.py tests/execution/test_job_supervisor.py`
   - First-class Missions, unified delegation lineage, durable live-event delivery, bounded Finance bridge behavior, and restart-safe durable job supervision must all be green.
 - Run the Windows/Linux Python 3.10-3.12 CI matrix.
 
@@ -129,5 +129,5 @@ Only after the checks above pass:
 - restart/reconnect any live MCP deployments whose tool schema changed;
 - for ChatGPT MCP apps/connectors, refresh or rescan the app actions after any tool-schema change and review/enable newly discovered actions before acceptance. ChatGPT may retain a frozen approved tool snapshot even after the MCP server and tunnel restart; if the workspace/plan does not expose an action refresh, recreate/re-publish the app connection;
 - verify the refreshed ChatGPT action count/set against the live MCP `tools/list`, then prove representative newly added tools from a new chat;
-- run the automated connector acceptance gate `python -m pytest -q test_server.py::test_v09_connector_surface_acceptance` (Finance enabled, optional env gates neutralized): it must report the exact expected tool count (137 for the v0.10-v0.12 surface; the v0.12 slice-2 budget-enforcement and controller-L2 rungs add no tools and stay invisible with their machine gates unset) with all release additions present, no duplicates, and `serverInfo.version` equal to `versioning.VERSION` for this checkout;
+- run the automated connector acceptance gate `python -m pytest -q tests/server/test_server.py::test_v09_connector_surface_acceptance` (Finance enabled, optional env gates neutralized): it must report the exact expected tool count (137 for the v0.10-v0.12 surface; the v0.12 slice-2 budget-enforcement and controller-L2 rungs add no tools and stay invisible with their machine gates unset) with all release additions present, no duplicates, and `serverInfo.version` equal to `versioning.VERSION` for this checkout;
 - confirm the advertised `serverInfo/version` seen by a real MCP client handshake (not just the SDK default) matches the version being published before accepting the connector.
