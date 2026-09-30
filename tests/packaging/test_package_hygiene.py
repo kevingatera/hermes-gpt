@@ -242,6 +242,8 @@ def test_wheel_contains_public_docs_and_all_py_modules(built_artifacts):
         "share/hermes-gpt/docs/release-notes-v0.8.0.md",
         "share/hermes-gpt/docs/development/contributing.md",
         "share/hermes-gpt/docs/development/repository-layout.md",
+        "share/hermes-gpt/docs/runtime-checkout.md",
+        "share/hermes-gpt/docs/capabilities-and-mission-ledger.md",
     ):
         assert any(n.endswith(suffix) for n in names), f"wheel missing data file: {suffix}"
     with open(REPO_ROOT / "pyproject.toml", "rb") as fh:

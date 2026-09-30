@@ -21,6 +21,8 @@ include docs/release-notes-v0.7.0.md
 include docs/release-notes-v0.8.0.md
 include docs/retention-policy.md
 include docs/updating.md
+include docs/runtime-checkout.md
+include docs/capabilities-and-mission-ledger.md
 include docs/windows-chatgpt-codex.md
 include docs/ui-security-boundary.md
 include docs/flight-deck-coverage.md

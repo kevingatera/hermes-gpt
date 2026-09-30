@@ -35,6 +35,7 @@ project overview.
 | --- | --- |
 | [Operator Mode](operator-mode.md) | policy, Owner authority, diagnostics, contracts, swarms, and fleet execution |
 | [Missions](missions.md) | mission lifecycle, context, attachments, and approval |
+| [Capabilities and mission ledger](capabilities-and-mission-ledger.md) | derived capability records and replayable mission events |
 | [Delegations](delegations.md) | worker jobs, lineage, cancellation, and reconciliation |
 | [Live events](live-events.md) | durable cursors, polling, and WebSocket notifications |
 | [Finance](finance.md) | local finance evidence and decisions |
