@@ -87,7 +87,7 @@ $env:HERMES_GPT_ENABLE_CODEX_RUNNER = "1"
 $env:HERMES_GPT_CODEX_EXE = "C:\path\to\standalone\codex.exe"
 
 Set-Location -LiteralPath "C:\path\to\hermes-gpt"
-& ".venv\Scripts\python.exe" ".\server.py" --http --host 127.0.0.1 --port 4750
+& ".venv\Scripts\python.exe" -m hermes_gpt --http --host 127.0.0.1 --port 4750
 ```
 
 `HERMES_GPT_CODEX_EXE` is optional if Hermes GPT already resolves the correct standalone CLI from `PATH`.

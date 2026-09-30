@@ -66,8 +66,9 @@ def test_chatgpt_sessions_guide_uses_curated_loopback_mcp_and_explicit_gates() -
 def test_session_control_docs_use_selected_profile_resources_by_default() -> None:
     text = _read(ROOT / "docs" / "session-control.md")
 
-    assert "selected profile as `HERMES_HOME`" in text
-    assert "does not parse or copy provider credentials" in text
+    text = " ".join(text.split())
+    assert "Each run sets `HERMES_HOME` to that profile." in text
+    assert "Hermes GPT does not copy or parse its provider credentials" in text
     assert "Omit `model` and `reasoning_effort`" in text
 
 

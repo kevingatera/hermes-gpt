@@ -9,7 +9,6 @@
 $ErrorActionPreference = 'Stop'
 $WorkingDir = 'C:\Users\<YOU>\hermes-gpt'
 $PythonExe = 'C:\Users\<YOU>\AppData\Local\Programs\Python\Python311\python.exe'
-$ServerScript = 'server.py'
 $ListenHost = '127.0.0.1'
 $ListenPort = 4750
 
@@ -20,4 +19,4 @@ $env:HERMES_GPT_OPERATOR_APPLY_MODE = 'dry_run'
 $env:HERMES_GPT_OPERATOR_ALLOWED_PROFILES = 'default,hermes-researcher,hermes-trt-manager,hermes-nexus-wiki'
 
 Set-Location $WorkingDir
-& $PythonExe $ServerScript --http --host $ListenHost --port $ListenPort
+& $PythonExe -m hermes_gpt --http --host $ListenHost --port $ListenPort
