@@ -1,6 +1,18 @@
 # Operator Mode for Hermes GPT
 
-Operator Mode is the policy-gated control plane for trusted MCP clients such as ChatGPT. This document describes the current v0.12.0 behavior, including the durable Mission lifecycle, unified delegation lineage, live-event bus, and Fabric-backed cross-machine Swarm execution, plus the vNext slice-1 additive surfaces (MissionPlan DAG, derived capability-manifest / mission-ledger views, budget envelope, placement scoring, failure classification + recovery matrix, and the shadow/observe mission controller) and the vNext slice-2 gated execution rungs (budget D3 hard-block enforcement behind `HERMES_GPT_BUDGET_HARD_BLOCK=1`, and the controller L2 rung behind `HERMES_GPT_CONTROLLER_EXECUTE=1`). The slice-1 surfaces are decision-only; the slice-2 rungs are default-off, add no tools, and keep every existing surface byte-identical until their gates are armed. They are documented further in [vnext-capability-manifest-and-mission-ledger.md](vnext-capability-manifest-and-mission-ledger.md) and [design/](design/).
+Operator Mode lets trusted MCP clients inspect and maintain a local Hermes
+installation. Start with the authority settings below, then use the section
+for the operation you need. Tool registration and permission to apply a change
+are separate checks.
+
+Mission plans, budgets, placement decisions, and controller recommendations
+also have their own rules. The controller's optional execution path requires
+`HERMES_GPT_CONTROLLER_EXECUTE=1` plus direct workspace authority, confirmation,
+and `dry_run=false`. The internal budget-breaker API requires
+`HERMES_GPT_BUDGET_HARD_BLOCK=1` and its mission and confirmation gates.
+The registered MCP `hermes_budget_check` currently evaluates only; it does not
+expose the internal enforcement arguments. Both execution paths are disabled
+by default.
 
 For documentation authority and historical-artifact rules, see [docs/README.md](README.md).
 
@@ -10,7 +22,8 @@ For documentation authority and historical-artifact rules, see [docs/README.md](
 
 Hermes GPT is designed to run on the user's machine, bound to loopback. Remote clients require a deliberately configured private or authenticated boundary in front of that loopback service. Public unauthenticated Operator hosting is unsupported.
 
-Operator Mode is defense-in-depth, not an OS sandbox. Use OS-level isolation for untrusted input.
+Operator policy checks which operations may run. Use OS-level isolation to
+contain processes that handle untrusted input.
 
 ## Authority model
 
@@ -171,7 +184,7 @@ Do not describe the unset state as deny-by-default. The implementation deliberat
 
 Mission Control requires only `read_only` authority and never needs direct apply mode.
 
-## Missions lifecycle (v0.9)
+## Mission lifecycle
 
 Beyond the read-only Mission Control overview, v0.9 adds a first-class durable Mission object as the bounded parent record for a larger objective. A Mission groups an objective, acceptance criteria, bounded context references, an explicit skills manifest, Swarm/work/delegation attachments, lifecycle state, and a final Owner approval that defaults on.
 
@@ -183,7 +196,7 @@ Reads are read-only. Mutations preserve the normal workspace/direct/confirm gate
 
 See [Missions (v0.9)](missions.md).
 
-## Delegations (v0.9)
+## Delegations
 
 v0.9 adds a durable, normalized delegation lifecycle above Work Contracts and existing runner/Fabric execution. The delegation record is lineage and state metadata, not a second execution authority; runner, Fabric, Work Contract validation, and Operator policy remain authoritative.
 
@@ -193,7 +206,7 @@ A delegation never marks work successful from a worker's claim: terminal backend
 
 See [Delegations (v0.9)](delegations.md).
 
-## Live events (v0.9)
+## Live events
 
 v0.9 adds a durable, bounded live-event bus for clients and parent orchestrators that need completion/wake-up delivery without polling every underlying store.
 
@@ -203,7 +216,7 @@ Live events are notifications, not proof. Mission, Swarm, Work Contract, runner,
 
 ## Binary file export
 
-`hermes_export_file(path)` is a read-only raw-byte transfer surface gated at Operator `workspace` level. It requires a non-empty `HERMES_GPT_OPERATOR_ALLOWED_PATHS`, resolves paths before authorization so symlink escapes are refused, preserves all denied secret/credential paths even in Owner Mode, enforces a 4 MiB default and 16 MiB hard maximum, and supports an optional `HERMES_GPT_EXPORT_ALLOWED_EXTENSIONS` suffix allowlist. Successful bytes are returned as `EmbeddedResource(BlobResourceContents)` with safe metadata; client download/attachment rendering is client-controlled. See [Binary file export](file-export.md).
+`hermes_export_file(path)` transfers file bytes and requires Operator `workspace` level. It requires a non-empty `HERMES_GPT_OPERATOR_ALLOWED_PATHS`, resolves paths before authorization so symlink escapes are refused, preserves all denied secret/credential paths even in Owner Mode, enforces a 4 MiB default and 16 MiB hard maximum, and supports an optional `HERMES_GPT_EXPORT_ALLOWED_EXTENSIONS` suffix allowlist. Successful bytes are returned as `EmbeddedResource(BlobResourceContents)` with safe metadata; client download/attachment rendering is client-controlled. See [Binary file export](file-export.md).
 
 ## Work Contracts
 
@@ -231,13 +244,12 @@ Missing evidence fails closed. A valid contract with no observed run cannot beco
 
 Retry selection is deterministic. Forbidden-action audit evidence is scoped to the contract's task identity so unrelated concurrent work does not contaminate the verdict.
 
-### Review limitation in v0.6.0
+### Review evidence
 
-v0.6.0 has no production review-accept writer. If a contract requires review, the necessary evidence must already exist through an authorized external reviewer/audit path or human approval reference. If it does not exist, validation returns `NOT_SATISFIED`.
-
-**v0.7 closes this gap**: `hermes_review_accept` (owner-gated, distinct
-reviewer enforced) writes review-acceptance records that the validator reads
-as evidence. See [Flight Deck (v0.7)](#flight-deck-v07).
+If a contract requires review, validation needs an authorized review record or
+human approval reference. `hermes_review_accept` writes records that the
+validator can read. It requires Owner authority and a distinct reviewer.
+Without the required evidence, validation returns `NOT_SATISFIED`.
 
 Required test checks execute only through the workspace test allowlist and inherit the workspace/direct policy gates.
 
@@ -344,7 +356,7 @@ work. The operator explicitly re-advances through the existing gated
 `hermes_swarm_stage_advance`, which is idempotent for already-validated or
 done stages (a re-advance returns current state as a no-op).
 
-### v0.7 surface manifest
+### Tool permissions
 
 | Tool | Authority class | Gates | Audit | Allowlist |
 | --- | --- | --- | --- | --- |
@@ -352,7 +364,7 @@ done stages (a re-advance returns current state as a no-op).
 | `hermes_events_query` | read_only | allowlist | every call | `HERMES_GPT_EVENTS_ALLOWED_SOURCES` |
 | `hermes_events_tail` | read_only | allowlist | every call | `HERMES_GPT_EVENTS_ALLOWED_SOURCES` |
 | `hermes_oauth_status` | read_only | none | every call | n/a |
-| `hermes_oauth_revoke` | owner | direct + confirm (pending legal) | every call | n/a |
+| `hermes_oauth_revoke` | owner | direct + confirm | every call | n/a |
 | `hermes_swarm_reconcile` | workspace/owner | dry-run-first + apply | every call | n/a |
 
 ## Session history and session control
@@ -453,7 +465,7 @@ Audit records do not intentionally persist raw prompts, `.env` values, vault con
 
 ### `hermes_operator_doctor`
 
-Read-only deep health check across the Operator surface. Checks include gateway state, config/env readability, cron/skills, policy, audit readability, and connector capability.
+Read-only health check of the Operator tools and their dependencies. Checks include gateway state, config/env readability, cron/skills, policy, audit readability, and connector capability.
 
 Gateway state is fail-closed: `hermes_operator_doctor` never reports the gateway as healthy on a heartbeat file alone. A heartbeat with no live gateway PID fails with `GATEWAY_PID_MISSING`; a dead PID fails with `GATEWAY_DEAD_PID`; an unreachable gateway fails with `GATEWAY_UNREACHABLE`. Stale heartbeat files surface as `GATEWAY_STALE_HEARTBEAT` warnings.
 
