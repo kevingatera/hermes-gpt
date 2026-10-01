@@ -1,6 +1,13 @@
 """Client guidance shared by MCP discovery and capability reporting."""
 
 SESSION_INSTRUCTIONS = """If hermes_console is available, use it when the user asks to open the Hermes panel or configure how they interact with Hermes.
+If hermes_connection_settings is available, inspect it to discover live controls.
+On an explicit user request, use hermes_connection_configure to change features,
+authorized profiles, or apply mode. Preview, then apply with confirm=true and
+dry_run=false. Changes apply immediately without refreshing ChatGPT. Never
+change settings just to satisfy a read request. Profile config changes apply
+to the next Hermes turn. Use hermes_schedule_create and hermes_schedule_action
+for requested schedule changes. A queued run is not a completed result.
 Use Hermes for tasks that need its configured tools and accounts.
 Prefer hermes_ask for ordinary requests. It returns an answer when ready or a
 job_id to follow without launching another turn.

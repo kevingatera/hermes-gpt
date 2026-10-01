@@ -18,6 +18,8 @@ Design rules enforced here:
 
 from __future__ import annotations
 
+from hermes_gpt.policy import runtime_settings
+
 import os
 import re
 from pathlib import Path
@@ -92,7 +94,7 @@ def is_truthy(value: Any) -> bool:
 
 def env_truthy(name: str) -> bool:
     """Read env var ``name`` and apply ``is_truthy``."""
-    return is_truthy(os.environ.get(name))
+    return is_truthy(runtime_settings.getenv(name))
 
 
 # ---------------------------------------------------------------------------
@@ -263,30 +265,32 @@ class OperatorPolicy:
     )
 
     def __init__(self) -> None:
-        self.enabled = env_truthy(OPERATOR_ENABLED_ENV)
-        self.owner_active = env_truthy(OWNER_ACTIVE_ENV)
-        raw_level = os.environ.get(OPERATOR_LEVEL_ENV, "read_only").strip().lower()
+        environment = runtime_settings.effective_environment()
+        self.enabled = is_truthy(environment.get(OPERATOR_ENABLED_ENV))
+        self.owner_active = is_truthy(environment.get(OWNER_ACTIVE_ENV))
+        raw_level = environment.get(OPERATOR_LEVEL_ENV, "read_only").strip().lower()
         if raw_level not in LEVELS:
             raw_level = "read_only"
         if raw_level == "owner" and not self.owner_active:
             raw_level = "workspace"
         self.level = raw_level
 
-        raw_mode = os.environ.get(OPERATOR_APPLY_MODE_ENV, "dry_run").strip().lower()
+        raw_mode = environment.get(OPERATOR_APPLY_MODE_ENV, "dry_run").strip().lower()
         if raw_mode not in {"dry_run", "direct"}:
             raw_mode = "dry_run"
         self.apply_mode = raw_mode
 
-        self.allowed_profiles = parse_allowed_profiles(
-            os.environ.get(OPERATOR_ALLOWED_PROFILES_ENV)
-        )
-        self.allowed_paths = parse_path_list(os.environ.get(OPERATOR_ALLOWED_PATHS_ENV))
+        raw_profiles = environment.get(OPERATOR_ALLOWED_PROFILES_ENV)
+        # Empty live policy denies all profiles; preserve legacy unset defaults.
+        self.allowed_profiles = ([] if runtime_settings.admin_enabled() and raw_profiles == ""
+                                 else parse_allowed_profiles(raw_profiles))
+        self.allowed_paths = parse_path_list(environment.get(OPERATOR_ALLOWED_PATHS_ENV))
         # Denied paths env adds to the built-in defaults; it cannot remove
         # the defaults. We don't store the env list as paths here because
         # ``is_denied_path`` already covers the built-in conservative set.
-        self.denied_paths = parse_path_list(os.environ.get(OPERATOR_DENIED_PATHS_ENV))
+        self.denied_paths = parse_path_list(environment.get(OPERATOR_DENIED_PATHS_ENV))
 
-        self.owner_ack = os.environ.get(OWNER_ACK_ENV, "")
+        self.owner_ack = environment.get(OWNER_ACK_ENV, "")
 
         self.owner_mode_ready = (
             self.enabled

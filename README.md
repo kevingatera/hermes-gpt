@@ -10,6 +10,8 @@ profiles the client can use.
 Hermes supplies the model providers, credentials, tools, memory, and profile
 configuration. The connection does not need another model-provider key.
 
+Live connection settings and schedule actions: [guide](docs/chatgpt-runtime-settings.md).
+
 ## Start locally
 
 Python 3.10 or newer is required. Install Hermes Agent separately and configure

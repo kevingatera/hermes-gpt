@@ -16,7 +16,8 @@
 <details><summary>Follow existing work</summary><label>Job reference<input id="job-id" maxlength="32" placeholder="Paste a job reference"></label><button id="follow-job" type="button">Follow job</button></details>
 <section id="job" hidden aria-live="polite"><h2>Current work</h2><p id="job-status"></p><p id="job-reference" class="hint"></p><button id="check-job" type="button">Check result</button><button id="cancel-job" type="button">Cancel work</button><pre id="answer"></pre></section>
 <section><div class="section-heading"><h2>Scheduled jobs</h2><div><select id="cron-profile" aria-label="Scheduler profile"></select><button id="load-cron" type="button" disabled>Show schedules</button></div></div><p id="cron-empty" class="hint">Choose a scheduler to inspect its jobs.</p><ul id="cron-list"></ul></section>
+<details id="settings-panel" hidden><summary>Connection settings</summary><p class="hint">Ask ChatGPT to change features, profiles, or model defaults at any time. Changes take effect without refreshing the plugin.</p><div id="setting-features"></div><div id="setting-profiles"></div><label>Changes<select id="apply-mode"><option value="dry_run">Preview only</option><option value="direct">Apply when requested</option></select></label><button id="save-settings" type="button">Apply these settings</button><p id="settings-status" role="status"></p></details>
 <details><summary>Request diagnostics</summary><p class="hint">Recent outcomes and job references. Private messages are excluded.</p><button id="load-diagnostics" type="button" disabled>Show recent requests</button><ul id="diagnostics"></ul></details>
 <p id="error" role="alert" hidden></p>
-<script>/* HOST_BRIDGE */</script><script>/* PANEL_SCRIPT */</script><script>/* JOB_SCRIPT */</script>
+<script>/* HOST_BRIDGE */</script><script>/* PANEL_SCRIPT */</script><script>/* JOB_SCRIPT */</script><script>/* SETTINGS_SCRIPT */</script>
 </body></html>

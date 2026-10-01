@@ -9,6 +9,8 @@ This is a private developer-mode connection. The package is displayed as
 **Hermes**. Its existing `hermes-sessions` package ID and `sessions` server
 configuration remain valid.
 
+Live connection settings and schedule actions: [guide](chatgpt-runtime-settings.md).
+
 ## ChatGPT account requirements
 
 Enable Developer mode under Settings > Security and login, then add the MCP

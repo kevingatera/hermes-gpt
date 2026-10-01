@@ -141,6 +141,8 @@ jobs:
           src/hermes_gpt/server/cli.py tests/server/test_server_cli.py
           src/hermes_gpt/server/request_log.py tests/server/test_request_log.py
           src/hermes_gpt/clients/chatgpt/console.py tests/clients/test_chatgpt_console.py
+          src/hermes_gpt/clients/chatgpt/management.py src/hermes_gpt/clients/chatgpt/schedules.py src/hermes_gpt/policy/runtime_settings.py
+          tests/clients/test_runtime_settings.py tests/clients/test_chatgpt_schedules.py
           src/hermes_gpt/policy/cron_read.py
           src/hermes_gpt/clients/codex/ask.py src/hermes_gpt/clients/codex/usage.py tests/clients/test_ask.py
           src/hermes_gpt/sessions/model_options.py tests/sessions/test_model_options.py

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hermes_gpt.policy import runtime_settings
+
 import os
 import re
 from pathlib import Path
@@ -76,7 +78,7 @@ def hermes_session_profiles(hermes_root: Path | None = None) -> dict[str, Any]:
     raw_allowed = sessions.SESSION_ALLOWED_PROFILES_ENV
     configured = [
         item.strip()
-        for item in os.environ.get(raw_allowed, "").split(",")
+        for item in runtime_settings.getenv(raw_allowed, "").split(",")
         if item.strip()
     ]
     if not configured:

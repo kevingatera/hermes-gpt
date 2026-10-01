@@ -14,3 +14,5 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; margin:12px 0 
 @media(max-width:450px) { body { padding:14px; } .columns { grid-template-columns:1fr; gap:0; } .section-heading { align-items:flex-start; flex-direction:column; } }
 
 #answer,#cron-list,#diagnostics { max-height:340px; overflow:auto; }
+#setting-features,#setting-profiles { display:grid; grid-template-columns:1fr 1fr; gap:0 12px; }
+#settings-panel input[type="checkbox"] { display:inline-block; width:auto; margin:0 8px 0 0; }

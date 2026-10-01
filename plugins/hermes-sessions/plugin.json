@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hermes-sessions",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Use Hermes Agent from ChatGPT with its configured tools, accounts, and browsers.",
   "author": {
     "name": "Hermes GPT contributors"
@@ -20,7 +20,7 @@
       "interface": {
         "displayName": "Hermes",
         "shortDescription": "Ask Hermes to work from ChatGPT",
-        "longDescription": "Delegate work to Hermes using its configured providers, tools, accounts, skills, and memory. Inspect scheduled jobs, continue conversations, control authorized browsers, and follow results with request diagnostics.",
+        "longDescription": "Delegate work to Hermes using its configured providers, tools, accounts, skills, and memory. Manage schedules and change live settings, continue conversations, control authorized browsers, and follow results with request diagnostics.",
         "developerName": "Hermes GPT contributors",
         "category": "Developer Tools",
         "capabilities": [

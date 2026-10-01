@@ -38,6 +38,7 @@ function applyToolResult(result) {
   el("load-diagnostics").disabled = false;
   el("connection").textContent = profiles.length ? "Connected to Hermes" : "Connected. No profiles are authorized for work.";
   updateDefaults();
+  applySettings(data.connection_settings);
 }
 function updateDefaults() {
   const profile = profiles.find(row => row.profile === el("profile").value);

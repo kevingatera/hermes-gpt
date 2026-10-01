@@ -12,6 +12,8 @@ from __future__ import annotations
 import ipaddress
 import json
 import mimetypes
+from hermes_gpt.policy import runtime_settings
+
 import os
 import re
 import socket
@@ -66,7 +68,7 @@ IGNORED_TREE_PARTS = {
 
 
 def _env_enabled(name: str) -> bool:
-    return os.environ.get(name) == "1"
+    return runtime_settings.getenv(name) == "1"
 
 
 def _error(code: str, message: str, suggested_action: str | None = None) -> dict[str, Any]:
@@ -296,7 +298,8 @@ class CodexToolCore:
             return _error(
                 "CAPABILITY_DISABLED",
                 f"{name} is disabled.",
-                f"Set {env_name}=1 and restart the MCP server.",
+                ("On user request, change the feature with hermes_connection_configure; no refresh is needed."
+                 if runtime_settings.admin_enabled() else f"Set {env_name}=1 and restart the MCP server."),
             )
         return None
 
@@ -350,6 +353,9 @@ class CodexToolCore:
             "available_toolsets": list(CODEX_TOOLSETS),
             "toolset_error": toolset_error,
             "scope": "Direct MCP capabilities only. Hermes sessions use the selected profile's enabled resources.",
+            "live_configuration": {"available": runtime_settings.admin_enabled(),
+                                   "tool": "hermes_connection_configure" if runtime_settings.admin_enabled() else None,
+                                   "refresh_required": False},
             "workflow": {
                 "use_for": "Delegate ordinary requests to Hermes, including requests that need its configured accounts and tools.",
                 "start": "hermes_ask",

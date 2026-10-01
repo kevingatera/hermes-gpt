@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add opt-in private connection administration with persistent live feature/profile settings, stable tool discovery, nonsecret profile configuration, and native scheduler changes. The panel applies settings without a metadata refresh; protected paths and Owner authority remain server-controlled.
+
 - Add an opt-in inline Hermes panel using the MCP Apps bridge. Profile defaults, conversation selection, work submission, schedule reads, job following/cancellation, and request diagnostics use existing authorized tools. No additional provider credentials or UI network origins are required.
 
 - Present the plugin as Hermes, with `hermes_ask` for ordinary delegated requests and bounded answer waiting. Existing package IDs and session controls remain compatible.

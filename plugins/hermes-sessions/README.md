@@ -4,6 +4,8 @@ This package lets ChatGPT ask Hermes to do work, inspect schedules, continue
 conversations, use authorized browsers, and diagnose failed requests. The connection itself must already be registered in ChatGPT
 Developer Mode and reachable through the private tunnel.
 
+Live connection settings and schedule actions: [guide](../../docs/chatgpt-runtime-settings.md).
+
 Regular session tools run Hermes with the selected profile's configuration,
 provider authentication, tools, MCP servers, skills, and session data. The
 plugin does not need a separate provider API key. Confined workspace tasks

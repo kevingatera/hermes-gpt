@@ -3,8 +3,8 @@ name: hermes-control
 description: Interact with Hermes Agent from ChatGPT using its configured tools, accounts, skills, scheduled jobs, conversations, and browsers.
 ---
 
-Use the Hermes GPT tools when the user asks to control Hermes sessions or its
-authorized browsers.
+Use the Hermes GPT tools when the user asks Hermes for information or actions,
+including work with configured accounts, conversations, schedules, and browsers.
 
 ## Optional control panel
 
@@ -28,6 +28,25 @@ request is complete merely because the job was accepted.
 Use `hermes_cron_list` and `hermes_cron_status` to inspect existing schedules in
 an authorized profile. These reads do not need the cron creation gate. Do not
 turn on scheduling writes to answer a question about existing jobs.
+
+## Live configuration
+
+When available, `hermes_connection_settings` describes the connection's live
+features, authorized profiles, and revision. On the user's request, preview
+changes with `hermes_connection_configure`, then apply with `confirm=true` and
+`dry_run=false`. Known feature and profile changes take effect immediately,
+without refreshing the plugin. The server limits profiles to its configured
+ceiling and retains protected-path and Owner restrictions. Tell the user that
+they can ask to enable a feature or change a profile during the conversation.
+
+Use `hermes_profile_config_get` and `hermes_profile_config_set` for nonsecret
+profile defaults; changes apply to the next Hermes turn. Do not ask for a
+separate provider key. Use `hermes_schedule_create` and
+`hermes_schedule_action` for requested schedule changes. New schedules default
+to paused, local delivery. A run queues work for the next scheduler tick;
+check its status before reporting completion. Direct mutations require
+`confirm=true`, `dry_run=false`, and server direct mode. Never change settings
+to answer a read-only request.
 
 ## Sessions
 

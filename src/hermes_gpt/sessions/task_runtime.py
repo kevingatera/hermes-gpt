@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import json
+from hermes_gpt.policy import runtime_settings
+
 import os
 import subprocess
 import sys
@@ -38,6 +40,7 @@ _BROWSER_BRIDGE_MODULES = (
     "hermes_gpt.browser.state",
     "hermes_gpt.browser.tabs",
     "hermes_gpt.policy.authorization",
+    "hermes_gpt.policy.runtime_settings",
     "hermes_gpt.policy.audit",
     "hermes_gpt.policy.paths",
     "hermes_gpt.policy.subprocess",
@@ -329,7 +332,9 @@ def start_turn(
         readonly_paths=readonly_paths,
         writable_paths=tuple(writable_task_paths),
     )
-    child_env = os.environ.copy()
+    child_env = runtime_settings.effective_environment()
+    # Keep a turn's policy snapshot when its HERMES_HOME becomes task-local.
+    child_env[runtime_settings.ADMIN_ENV] = "0"
     child_env.update({
         "HOME": str(task_home),
         "HERMES_HOME": str(task_home),

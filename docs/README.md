@@ -8,6 +8,7 @@ project overview.
 
 | Guide | Use it for |
 | --- | --- |
+| [Live ChatGPT settings](chatgpt-runtime-settings.md) | private connection administration, profile defaults, and schedule changes |
 | [Hermes in ChatGPT](chatgpt-sessions-plugin.md) | conversation and optional panel for Hermes work, schedules, and results |
 | [OpenAI Secure MCP Tunnel](openai-secure-mcp-tunnel.md) | outbound access to a loopback MCP server |
 | [Authentication](oauth.md) | bearer tokens, OAuth, refresh rotation, and revocation |

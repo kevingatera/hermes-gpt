@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import inspect
 import json
+from hermes_gpt.policy import runtime_settings
+
 import os
 import sqlite3
 import sys
@@ -77,7 +79,7 @@ def eprint(message: str) -> None:
 
 
 def env_enabled(name: str) -> bool:
-    return os.environ.get(name) == "1"
+    return runtime_settings.getenv(name) == "1"
 
 
 def is_loopback_host(host: str) -> bool:
@@ -791,10 +793,12 @@ def build_codex_mcp_server(
             session_control_tools=_session_control_tools,
             managed_task_tools=_managed_session_task_tools,
             tool_meta=lambda: dict(NOAUTH_META),
-            session_history_enabled=env_enabled(ENABLE_SESSION_SEARCH_ENV),
-            session_control_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV),
-            scoped_tasks_enabled=env_enabled(ENABLE_SCOPED_TASKS_ENV),
+            session_history_enabled=runtime_settings.admin_enabled() or env_enabled(ENABLE_SESSION_SEARCH_ENV),
+            session_control_enabled=runtime_settings.admin_enabled() or env_enabled(ENABLE_SESSION_CONTROL_ENV),
+            scoped_tasks_enabled=runtime_settings.admin_enabled() or env_enabled(ENABLE_SCOPED_TASKS_ENV),
         )
+        from hermes_gpt.clients.chatgpt.management import register_management
+        register_management(codex_server, callbacks=operator_tools, controls=_session_control_tools)
         from hermes_gpt.clients.chatgpt.console import register_console
         register_console(codex_server, core=core, controls=_session_control_tools,
                          controls_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV))

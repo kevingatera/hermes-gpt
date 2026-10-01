@@ -6,6 +6,8 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
+from hermes_gpt.policy import runtime_settings
+
 UI_ENV = "HERMES_GPT_ENABLE_CHATGPT_UI"
 UI_URI = "ui://hermes/console/v1.html"
 UI_MIME = "text/html;profile=mcp-app"
@@ -21,7 +23,8 @@ def component_html() -> str:
     for marker, name in (("/* PANEL_STYLE */", "console.css"),
                          ("/* HOST_BRIDGE */", "bridge.js"),
                          ("/* PANEL_SCRIPT */", "console.js"),
-                         ("/* JOB_SCRIPT */", "jobs.js")):
+                         ("/* JOB_SCRIPT */", "jobs.js"),
+                         ("/* SETTINGS_SCRIPT */", "settings.js")):
         html = html.replace(marker, assets.joinpath(name).read_text(encoding="utf-8"))
     return html
 
@@ -37,11 +40,15 @@ def register_console(server: Any, *, core: Any, controls: Any, controls_enabled:
         """Self-contained panel. All operations use the host's existing MCP connection."""
         return component_html()
 
+    from hermes_gpt.clients.chatgpt.management import connection_settings
+
     def hermes_console() -> dict[str, Any]:
         """Open the Hermes panel to ask for work, continue conversations, inspect schedules, and follow results."""
-        profiles = controls.hermes_session_profiles() if controls_enabled else {"success": True, "profiles": []}
+        profiles = controls.hermes_session_profiles() if (runtime_settings.getenv("HERMES_GPT_ENABLE_SESSION_CONTROL") == "1" if runtime_settings.admin_enabled() else controls_enabled) else {"success": True, "profiles": []}
         return {"success": True, "console_version": "1", "profiles": profiles,
-                "capabilities": core.capabilities()}
+                "capabilities": core.capabilities(),
+                "connection_settings": connection_settings()
+                                       if runtime_settings.admin_enabled() else None}
 
     # Opening the component only reads configuration. Buttons call existing
     # tools, so they retain profile checks, annotations, confirmation, and logs.

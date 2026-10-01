@@ -16,6 +16,8 @@ import pytest
 from hermes_gpt.skills import loader as _skill_loader
 
 _ISOLATED_ENV_VARS = (
+    "HERMES_GPT_CONNECTION_ADMIN",
+    "HERMES_GPT_CONNECTION_ALLOWED_PROFILES",
     "HERMES_GPT_OPERATOR_ENABLED",
     "HERMES_GPT_OPERATOR_LEVEL",
     "HERMES_GPT_OPERATOR_APPLY_MODE",

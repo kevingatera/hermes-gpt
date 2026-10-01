@@ -16,6 +16,10 @@ by default.
 
 For documentation authority and historical-artifact rules, see [docs/README.md](README.md).
 
+Private ChatGPT connections can optionally change feature/profile settings and
+apply mode at runtime. Operator enablement, level, protected paths, and Owner
+acknowledgments remain server-controlled. See [live connection settings](chatgpt-runtime-settings.md).
+
 ## Core rule
 
 **Tool visibility is not authority.** A tool can be present in the MCP schema and still refuse to mutate because the required policy gates are not satisfied.

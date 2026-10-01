@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hermes_gpt.policy import runtime_settings
+
 import os
 from pathlib import Path
 from typing import Any
@@ -27,7 +29,7 @@ def validate_session_profile(
 
     configured = [
         item.strip()
-        for item in os.environ.get(SESSION_ALLOWED_PROFILES_ENV, "").split(",")
+        for item in runtime_settings.getenv(SESSION_ALLOWED_PROFILES_ENV, "").split(",")
         if item.strip()
     ]
     if not configured:
@@ -139,7 +141,9 @@ def _profile_runtime(
         else Path(os.environ.get("HERMES_HOME", Path.home() / ".hermes"))
     )
     profile_home = op.resolve_profile_home(profile, base_home)
-    child_env = os.environ.copy()
+    child_env = runtime_settings.effective_environment()
+    # Child tools receive the current policy, not connection administration.
+    child_env[runtime_settings.ADMIN_ENV] = "0"
     child_env["HERMES_HOME"] = str(profile_home)
     child_env["HERMES_PROFILE"] = profile
     return profile_home, child_env

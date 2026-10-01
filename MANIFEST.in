@@ -40,3 +40,5 @@ prune .pytest_cache
 global-exclude *.py[cod] *.log *.err.log .env .env.* *.pem
 
 recursive-include src/hermes_gpt/clients/chatgpt/assets *.html *.css *.js
+
+include docs/chatgpt-runtime-settings.md

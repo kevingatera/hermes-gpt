@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from hermes_gpt.policy import runtime_settings
+
 import os
 import re
 from pathlib import Path
@@ -49,7 +51,7 @@ def validate_local_cdp_port(value: str) -> int:
 
 
 def _allowed_profiles() -> set[str]:
-    raw = os.environ.get(BROWSER_ALLOWED_PROFILES_ENV, "")
+    raw = runtime_settings.getenv(BROWSER_ALLOWED_PROFILES_ENV, "")
     entries = [item.strip() for item in raw.split(",") if item.strip()]
     if not entries or "*" in entries:
         raise PermissionError(
