@@ -6,6 +6,15 @@ description: Interact with Hermes Agent from ChatGPT using its configured tools,
 Use the Hermes GPT tools when the user asks to control Hermes sessions or its
 authorized browsers.
 
+## Optional control panel
+
+Use `hermes_console` when the user asks to open the Hermes panel or wants
+buttons for sending work, choosing a profile, continuing a conversation,
+inspecting schedules, or following a job. The panel calls the same authorized
+tools as the conversation. If the console tool is absent, use the conversational
+workflow below. No browser login or separate provider key is needed for the
+panel. It does not configure account credentials.
+
 ## Ordinary requests and scheduled jobs
 
 When the user asks Hermes to do something, delegate through a regular profile

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermes</title><style>/* PANEL_STYLE */</style></head>
+<body>
+<header><div><h1>Hermes</h1><p>Work with your configured tools and accounts.</p></div><button id="refresh" type="button">Refresh</button></header>
+<p id="connection" role="status" aria-live="polite">Connecting to Hermes…</p>
+<form id="ask-form">
+<fieldset id="controls" disabled>
+<div class="columns"><label>Profile<select id="profile"></select></label><label>Conversation<select id="conversation"><option value="">New conversation</option></select></label></div>
+<p id="defaults" class="hint"></p>
+<label>What would you like Hermes to do?<textarea id="prompt" rows="3" maxlength="20000" required placeholder="Research something, check an integration, or work on a task"></textarea></label>
+<details><summary>Model and effort for this turn</summary><div class="columns"><label>Model override<input id="model" placeholder="Use profile default" maxlength="200"></label><label>Reasoning effort<select id="effort"><option value="">Use profile default</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label></div></details>
+<button id="send" type="submit">Ask Hermes</button>
+</fieldset></form>
+<details><summary>Follow existing work</summary><label>Job reference<input id="job-id" maxlength="32" placeholder="Paste a job reference"></label><button id="follow-job" type="button">Follow job</button></details>
+<section id="job" hidden aria-live="polite"><h2>Current work</h2><p id="job-status"></p><p id="job-reference" class="hint"></p><button id="check-job" type="button">Check result</button><button id="cancel-job" type="button">Cancel work</button><pre id="answer"></pre></section>
+<section><div class="section-heading"><h2>Scheduled jobs</h2><div><select id="cron-profile" aria-label="Scheduler profile"></select><button id="load-cron" type="button" disabled>Show schedules</button></div></div><p id="cron-empty" class="hint">Choose a scheduler to inspect its jobs.</p><ul id="cron-list"></ul></section>
+<details><summary>Request diagnostics</summary><p class="hint">Recent outcomes and job references. Private messages are excluded.</p><button id="load-diagnostics" type="button" disabled>Show recent requests</button><ul id="diagnostics"></ul></details>
+<p id="error" role="alert" hidden></p>
+<script>/* HOST_BRIDGE */</script><script>/* PANEL_SCRIPT */</script><script>/* JOB_SCRIPT */</script>
+</body></html>

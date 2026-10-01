@@ -134,11 +134,13 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e ".[dev]"
+      - run: node --test tests/clients/chatgpt_bridge.test.cjs
       - run: >-
           python -m ruff check
           src/hermes_gpt/auth/oauth.py src/hermes_gpt/auth/token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py
           src/hermes_gpt/server/cli.py tests/server/test_server_cli.py
           src/hermes_gpt/server/request_log.py tests/server/test_request_log.py
+          src/hermes_gpt/clients/chatgpt/console.py tests/clients/test_chatgpt_console.py
           src/hermes_gpt/policy/cron_read.py
           src/hermes_gpt/clients/codex/ask.py src/hermes_gpt/clients/codex/usage.py tests/clients/test_ask.py
           src/hermes_gpt/sessions/model_options.py tests/sessions/test_model_options.py

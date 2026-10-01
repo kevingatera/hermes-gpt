@@ -43,6 +43,9 @@ package-dir = {"" = "src"}
 where = ["src"]
 include = ["hermes_gpt*"]
 
+[tool.setuptools.package-data]
+"hermes_gpt.clients.chatgpt" = ["assets/*.html", "assets/*.css", "assets/*.js"]
+
 [tool.setuptools.data-files]
 "share/hermes-gpt" = [
   "README.md",

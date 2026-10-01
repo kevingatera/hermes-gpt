@@ -140,6 +140,27 @@ for the current registration and `.app.json` mapping flow. The plugin source is
 in [`plugins/hermes-sessions`](../plugins/hermes-sessions/README.md). The package
 builder does not create the tunnel or the ChatGPT connection.
 
+## Optional panel in ChatGPT
+
+ChatGPT can render an [MCP Apps component](https://developers.openai.com/plugins/build/chatgpt-ui)
+alongside a tool result. Enable `HERMES_GPT_ENABLE_CHATGPT_UI=1` on the existing
+`sessions` server, restart it, and refresh its connection in ChatGPT Plugins.
+Then ask "Open the Hermes panel". This calls read-only `hermes_console`.
+
+The panel lets you choose an authorized profile and conversation, send work,
+set model and effort overrides for a turn, inspect scheduled jobs, follow or
+cancel a job, and read recent request diagnostics. Defaults come from the
+selected Hermes profile. It uses the host's MCP connection and existing tool
+permissions. It has no provider keys, direct network access, external scripts,
+or persistent browser storage. A closed panel does not cancel work. Reopen it
+and follow the job reference to retrieve the result.
+
+This is an optional inline interface, not a replacement for the conversational
+tools. Initial resource delivery and the host bridge can be tested locally;
+verify rendering and approval behavior in the target ChatGPT account after
+refreshing. Account credentials remain configured in Hermes. Changing them
+through this panel is unsupported.
+
 ## Ask Hermes
 
 Use `hermes_session_profiles` to discover an authorized profile, then

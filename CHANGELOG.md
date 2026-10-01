@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an opt-in inline Hermes panel using the MCP Apps bridge. Profile defaults, conversation selection, work submission, schedule reads, job following/cancellation, and request diagnostics use existing authorized tools. No additional provider credentials or UI network origins are required.
+
 - Present the plugin as Hermes, with `hermes_ask` for ordinary delegated requests and bounded answer waiting. Existing package IDs and session controls remain compatible.
 - Expose read-only cron inspection on the curated connection and distinguish direct MCP capabilities from a Hermes profile's tools. A separate cron read allowlist grants no mutation authority.
 - Add rotating private request logs, request-to-job correlation, and bounded `hermes_request_diagnostics`. Logs omit request and response bodies, credentials, URLs, and exception messages.

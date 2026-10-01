@@ -1,4 +1,4 @@
-"""Build a local Hermes Sessions plugin with a registered ChatGPT app ID."""
+"""Build a local Hermes plugin with a registered ChatGPT app ID."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def main() -> None:
     except (FileExistsError, OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
 
-    print(f"Created Hermes Sessions plugin package at {output}")
+    print(f"Created Hermes plugin package at {output}")
 
 
 if __name__ == "__main__":

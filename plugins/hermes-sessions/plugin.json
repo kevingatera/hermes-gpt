@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "hermes-sessions",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Use Hermes Agent from ChatGPT with its configured tools, accounts, and browsers.",
   "author": {
     "name": "Hermes GPT contributors"
@@ -29,6 +29,7 @@
           "Write"
         ],
         "defaultPrompt": [
+          "Open the Hermes panel to send work, inspect schedules, and follow results.",
           "Ask Hermes to do work using an authorized profile and report the result.",
           "Show my Hermes scheduled jobs and their last-run status.",
           "Continue a Hermes conversation or use its authorized browser."

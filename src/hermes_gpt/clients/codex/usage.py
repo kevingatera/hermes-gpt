@@ -1,6 +1,7 @@
 """Client guidance shared by MCP discovery and capability reporting."""
 
-SESSION_INSTRUCTIONS = """Use Hermes for tasks that need its configured tools and accounts.
+SESSION_INSTRUCTIONS = """If hermes_console is available, use it when the user asks to open the Hermes panel or configure how they interact with Hermes.
+Use Hermes for tasks that need its configured tools and accounts.
 Prefer hermes_ask for ordinary requests. It returns an answer when ready or a
 job_id to follow without launching another turn.
 First discover an authorized profile with hermes_session_profiles. For ordinary

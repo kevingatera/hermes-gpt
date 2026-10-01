@@ -795,6 +795,9 @@ def build_codex_mcp_server(
             session_control_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV),
             scoped_tasks_enabled=env_enabled(ENABLE_SCOPED_TASKS_ENV),
         )
+        from hermes_gpt.clients.chatgpt.console import register_console
+        register_console(codex_server, core=core, controls=_session_control_tools,
+                         controls_enabled=env_enabled(ENABLE_SESSION_CONTROL_ENV))
     return codex_server
 
 
