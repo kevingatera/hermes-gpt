@@ -13,7 +13,7 @@ function harness() {
   const context = vm.createContext({
     window: { parent, addEventListener: (name, listener) => { receive = listener; } },
     setTimeout: callback => { timers.push(callback); return timers.length; },
-    clearTimeout: () => {}, applyToolResult: () => {}, applyTheme: () => {}, stopPolling: () => {}
+    clearTimeout: () => {}, updateLayout: () => {}, stopLayout: () => {}, applyToolResult: () => {}, applyTheme: () => {}, stopPolling: () => {}
   });
   vm.runInContext(source, context);
   return { context, sent, timers,

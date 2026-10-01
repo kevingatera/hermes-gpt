@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Report panel content-size changes to MCP Apps hosts and scroll within fixed-height panes, keeping completed answers and expanded settings reachable. Following a pasted job selects its authorized profile before offering continuation.
+
 - Add opt-in private connection administration with persistent live feature/profile settings, stable tool discovery, nonsecret profile configuration, and native scheduler changes. The panel applies settings without a metadata refresh; protected paths and Owner authority remain server-controlled.
 
 - Add an opt-in inline Hermes panel using the MCP Apps bridge. Profile defaults, conversation selection, work submission, schedule reads, job following/cancellation, and request diagnostics use existing authorized tools. No additional provider credentials or UI network origins are required.

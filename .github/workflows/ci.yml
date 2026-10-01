@@ -134,7 +134,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e ".[dev]"
-      - run: node --test tests/clients/chatgpt_bridge.test.cjs
+      - run: node --test tests/clients/chatgpt_bridge.test.cjs tests/clients/chatgpt_layout.test.cjs tests/clients/chatgpt_jobs.test.cjs
       - run: >-
           python -m ruff check
           src/hermes_gpt/auth/oauth.py src/hermes_gpt/auth/token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py

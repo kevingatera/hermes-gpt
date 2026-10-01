@@ -9,7 +9,7 @@ from mcp.types import ToolAnnotations
 from hermes_gpt.policy import runtime_settings
 
 UI_ENV = "HERMES_GPT_ENABLE_CHATGPT_UI"
-UI_URI = "ui://hermes/console/v1.html"
+UI_URI = "ui://hermes/console/v2.html"
 UI_MIME = "text/html;profile=mcp-app"
 
 
@@ -22,6 +22,7 @@ def component_html() -> str:
     html = assets.joinpath("console.html").read_text(encoding="utf-8")
     for marker, name in (("/* PANEL_STYLE */", "console.css"),
                          ("/* HOST_BRIDGE */", "bridge.js"),
+                         ("/* LAYOUT_SCRIPT */", "layout.js"),
                          ("/* PANEL_SCRIPT */", "console.js"),
                          ("/* JOB_SCRIPT */", "jobs.js"),
                          ("/* SETTINGS_SCRIPT */", "settings.js")):

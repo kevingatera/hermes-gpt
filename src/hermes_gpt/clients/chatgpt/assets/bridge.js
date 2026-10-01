@@ -32,8 +32,10 @@ window.addEventListener("message", event => {
     applyToolResult(message.params);
   } else if (message.method === "ui/notifications/host-context-changed") {
     applyTheme(message.params);
+    updateLayout(message.params);
   } else if (message.method === "ui/resource-teardown" && message.id !== undefined) {
     stopPolling();
+    stopLayout();
     window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*");
   }
 });
@@ -62,4 +64,5 @@ async function connectHost() {
   });
   applyTheme(result?.hostContext);
   hostNotify("ui/notifications/initialized", {});
+  updateLayout(result?.hostContext);
 }

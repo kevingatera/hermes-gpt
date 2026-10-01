@@ -25,6 +25,12 @@ async function checkJob() {
   const result = await callTool("hermes_session_job_status", { job_id: jobId });
   if (currentJob !== jobId) return;
   const job = result.job || {};
+  if (job.profile && job.profile !== el("profile").value && profiles.some(row => row.profile === job.profile)) {
+    // A pasted job may belong to another authorized profile. Keep its
+    // conversation under that profile before offering a follow-up turn.
+    el("profile").value = job.profile;
+    await loadConversations();
+  }
   jobSession = job.session_id || jobSession;
   el("job-status").textContent = `Hermes: ${job.status || "unknown"}`;
   if (["completed", "failed", "timed_out", "cancelled", "orphaned"].includes(job.status)) {
