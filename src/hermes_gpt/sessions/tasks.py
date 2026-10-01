@@ -16,18 +16,29 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from hermes_gpt.browser import session as browser
 from hermes_gpt.browser import profiles as browser_profiles
+from hermes_gpt.browser import session as browser
 from hermes_gpt.policy import authorization as op
-from hermes_gpt.sessions import session as sessions
-from hermes_gpt.sessions import job_store
-from hermes_gpt.sessions import jobs as job_runtime
-from hermes_gpt.sessions import task_profile
-from hermes_gpt.sessions import task_runtime as runtime
 from hermes_gpt.policy import confinement
+from hermes_gpt.sessions import job_store, task_profile
+from hermes_gpt.sessions import jobs as job_runtime
+from hermes_gpt.sessions import session as sessions
+from hermes_gpt.sessions import task_runtime as runtime
 from hermes_gpt.sessions.model_options import REASONING_EFFORTS, ModelOverrides
 from hermes_gpt.sessions.task_runtime import PROFILE_DEFAULT_TOOLSETS, TOOLSETS
-from hermes_gpt.sessions.task_store import _TASK_ID_RE, MAX_TASK_LIST_LIMIT, MAX_TASK_LIST_OFFSET, _now, _public_task_summary, _read_json, _save_task_record, _task_path, _task_root, _task_setting, _write_json
+from hermes_gpt.sessions.task_store import (
+    _TASK_ID_RE,
+    MAX_TASK_LIST_LIMIT,
+    MAX_TASK_LIST_OFFSET,
+    _now,
+    _public_task_summary,
+    _read_json,
+    _save_task_record,
+    _task_path,
+    _task_root,
+    _task_setting,
+    _write_json,
+)
 
 ENABLE_SCOPED_TASKS_ENV = "HERMES_GPT_ENABLE_SCOPED_TASKS"
 TASK_WORKSPACES_ENV = "HERMES_GPT_TASK_WORKSPACES"
@@ -291,7 +302,16 @@ def hermes_task_start(
             task_record.unlink(missing_ok=True)
         if task_home is not None:
             shutil.rmtree(task_home, ignore_errors=True)
-        return {"success": False, "code": "TASK_START_ERROR", "safe_message": str(exc)}
+        result = {"success": False, "code": "TASK_START_ERROR", "safe_message": str(exc)}
+        if isinstance(exc, task_profile.ProfileCloneError):
+            result["code"] = exc.code
+            result["next_action"] = (
+                "No task was started. For an ordinary request such as checking email, "
+                "use hermes_ask or hermes_session_start with an authorized existing "
+                "Hermes profile; no profile clone is needed. For confined workspace "
+                "work, resolve the clone failure before retrying. Do not bypass confinement."
+            )
+        return result
 
 
 def hermes_task_continue(

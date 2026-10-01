@@ -2,9 +2,26 @@ import json
 import shutil
 import subprocess
 
+import pytest
 import yaml
 
 from hermes_gpt.sessions import task_profile
+
+
+@pytest.mark.parametrize("output,code", [
+    ("[Errno 28] No space left on device: /private/token.json", "TASK_PROFILE_STORAGE_FULL"),
+    ("private credential contents", "TASK_PROFILE_CLONE_FAILED"),
+])
+def test_clone_failure_is_classified_without_private_output(monkeypatch, tmp_path, output, code):
+    monkeypatch.setattr(task_profile.subprocess, "run", lambda *args, **kwargs:
+                        subprocess.CompletedProcess(args[0], 1, stdout="", stderr=output))
+    with pytest.raises(task_profile.ProfileCloneError) as caught:
+        task_profile._create_hermes_profile(
+            "a" * 32, "chatgpt", profiles_root=tmp_path / "profiles",
+            executable="hermes", source_home=tmp_path,
+        )
+    assert caught.value.code == code
+    assert output not in str(caught.value)
 
 
 def _mock_clone(monkeypatch, root, source_profile):

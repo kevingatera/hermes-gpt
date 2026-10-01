@@ -1,5 +1,13 @@
 # Managed Hermes sessions and browser access
 
+Use `hermes_ask` or `hermes_session_start` for ordinary requests involving an
+existing profile's accounts, such as checking email. Managed tasks clone profile
+resources for explicitly confined workspace work and require additional disk
+space. `TASK_PROFILE_STORAGE_FULL` means that clone ran out of space, not that
+browser authentication failed. No task starts on a clone failure; resolve the
+storage problem before retrying confined work. Never substitute an unconfined
+session for a request that requires confinement.
+
 Managed tasks run Hermes Agent in an authorized workspace. You can start a
 session, continue it by task ID, and use the same browser from Hermes and an
 MCP client such as ChatGPT.

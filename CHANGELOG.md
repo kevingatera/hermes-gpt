@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Distinguish profile cloning failures from browser authentication and report insufficient disk space with a safe recovery action. Clarify that ordinary account requests use existing Hermes sessions without cloning a workspace profile.
+
 - Report panel content-size changes to MCP Apps hosts and scroll within fixed-height panes, keeping completed answers and expanded settings reachable. Following a pasted job selects its authorized profile before offering continuation.
 
 - Add opt-in private connection administration with persistent live feature/profile settings, stable tool discovery, nonsecret profile configuration, and native scheduler changes. The panel applies settings without a metadata refresh; protected paths and Owner authority remain server-controlled.

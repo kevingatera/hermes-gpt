@@ -30,6 +30,29 @@ def _configure(monkeypatch, tmp_path, workspace):
     return root
 
 
+def test_profile_storage_failure_returns_recovery_and_removes_partial_clone(monkeypatch, tmp_path):
+    workspace = tmp_path / "authorized" / "demo"
+    workspace.mkdir(parents=True)
+    root = _configure(monkeypatch, tmp_path, workspace)
+    monkeypatch.setattr(tasks.job_runtime, "_hermes_executable", lambda _: "hermes")
+
+    def fail_clone(task_id, source_profile, task_home, **kwargs):
+        task_home.mkdir(parents=True)
+        (task_home / "partial").write_text("private")
+        raise tasks.task_profile.ProfileCloneError("TASK_PROFILE_STORAGE_FULL", "Insufficient disk space")
+
+    monkeypatch.setattr(tasks.task_profile, "prepare_task_profile", fail_clone)
+    result = tasks.hermes_task_start(
+        "Inspect workspace", "demo", confirm=True, dry_run=False,
+        browser_enabled=False, hermes_root=root,
+    )
+    assert result["success"] is False
+    assert result["code"] == "TASK_PROFILE_STORAGE_FULL"
+    assert "hermes_ask" in result["next_action"]
+    assert "Do not bypass confinement" in result["next_action"]
+    assert not list((root / "profiles").glob("*/partial"))
+
+
 def test_file_only_task_uses_selected_workspace_and_model(monkeypatch, tmp_path):
     workspace = tmp_path / "authorized" / "demo"
     workspace.mkdir(parents=True)

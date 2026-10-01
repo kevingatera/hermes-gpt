@@ -21,6 +21,14 @@ _PROFILE_MARKER = ".hermes-gpt-task-profile.json"
 _SESSION_STATE_FILES = ("state.db", "state.db-wal", "state.db-shm")
 
 
+class ProfileCloneError(RuntimeError):
+    """A classified clone failure without private CLI output."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _profile_paths(task_id: str, hermes_root: Path | None) -> tuple[Path, Path]:
     if not _TASK_ID_RE.fullmatch(task_id or ""):
         raise ValueError("task_id has an invalid format")
@@ -70,7 +78,18 @@ def _create_hermes_profile(
 
     task_home = profiles_root / profile_id
     if result.returncode != 0 or not task_home.is_dir():
-        raise RuntimeError("Hermes could not copy the selected profile into private task state")
+        # Native copytree errors contain private file paths. Classify the
+        # storage error here; never return or log the raw subprocess output.
+        output = (result.stdout or "") + (result.stderr or "")
+        if "[Errno 28]" in output or "No space left on device" in output:
+            raise ProfileCloneError(
+                "TASK_PROFILE_STORAGE_FULL",
+                "Insufficient disk space to clone the Hermes profile for a confined workspace task.",
+            )
+        raise ProfileCloneError(
+            "TASK_PROFILE_CLONE_FAILED",
+            "Hermes could not clone the selected Hermes profile into private task state. This is not a browser authentication check.",
+        )
     return task_home
 
 

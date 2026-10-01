@@ -7,8 +7,8 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
-from hermes_gpt.sessions import session as op_session
 from hermes_gpt.server.tools.session_context import SessionToolContext
+from hermes_gpt.sessions import session as op_session
 
 DEFAULT_SESSION_TIMEOUT = 900
 
@@ -89,7 +89,12 @@ class ManagedSessionTaskTools:
         headed_browser: bool = False,
         browser_profile: str | None = None,
     ) -> dict[str, Any]:
-        """Start a profile-backed Hermes task with an isolated or configured browser."""
+        """Start explicitly confined workspace work in a private Hermes profile clone.
+
+        For ordinary requests such as checking email or using configured accounts,
+        use hermes_ask or hermes_session_start with an existing authorized profile.
+        This tool clones profile resources and needs additional disk space.
+        """
         return self.context.managed_tasks.hermes_task_start(
             prompt=prompt,
             workspace_id=workspace_id,
