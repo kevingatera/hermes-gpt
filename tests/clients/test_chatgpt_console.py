@@ -38,6 +38,7 @@ def test_console_is_read_only_and_references_a_self_contained_resource(monkeypat
     assert 'ui/initialize' in html and 'tools/call' in html
     assert 'fetch(' not in html and 'localStorage' not in html
     assert 'innerHTML' not in html
+    assert html.index('id="job"') < html.index('id="ask-form"')
 
 
 def test_console_does_not_enable_session_controls(monkeypatch):

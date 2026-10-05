@@ -10,7 +10,7 @@ from mcp.types import ToolAnnotations
 from hermes_gpt.policy import runtime_settings
 
 UI_ENV = "HERMES_GPT_ENABLE_CHATGPT_UI"
-UI_URI = "ui://hermes/console/v5.html"
+UI_URI = "ui://hermes/console/v6.html"
 UI_MIME = "text/html;profile=mcp-app"
 
 
