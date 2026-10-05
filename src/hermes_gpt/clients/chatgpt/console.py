@@ -1,6 +1,7 @@
 """Register the optional MCP Apps control panel without adding authority."""
 
 import os
+import re
 from importlib.resources import files
 from typing import Any
 
@@ -9,7 +10,7 @@ from mcp.types import ToolAnnotations
 from hermes_gpt.policy import runtime_settings
 
 UI_ENV = "HERMES_GPT_ENABLE_CHATGPT_UI"
-UI_URI = "ui://hermes/console/v2.html"
+UI_URI = "ui://hermes/console/v5.html"
 UI_MIME = "text/html;profile=mcp-app"
 
 
@@ -43,10 +44,12 @@ def register_console(server: Any, *, core: Any, controls: Any, controls_enabled:
 
     from hermes_gpt.clients.chatgpt.management import connection_settings
 
-    def hermes_console() -> dict[str, Any]:
-        """Open the Hermes panel to ask for work, continue conversations, inspect schedules, and follow results."""
+    def hermes_console(job_id: str | None = None) -> dict[str, Any]:
+        """Open the Hermes panel to ask for work, continue conversations, inspect schedules, and follow results. Supply job_id to follow existing work automatically."""
+        if job_id is not None and not re.fullmatch(r"[a-f0-9]{32}", job_id):
+            return {"success": False, "code": "INVALID_JOB_ID"}
         profiles = controls.hermes_session_profiles() if (runtime_settings.getenv("HERMES_GPT_ENABLE_SESSION_CONTROL") == "1" if runtime_settings.admin_enabled() else controls_enabled) else {"success": True, "profiles": []}
-        return {"success": True, "console_version": "1", "profiles": profiles,
+        return {"success": True, "console_version": "1", "profiles": profiles, "follow_job_id": job_id,
                 "capabilities": core.capabilities(),
                 "connection_settings": connection_settings()
                                        if runtime_settings.admin_enabled() else None}

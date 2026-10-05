@@ -53,6 +53,7 @@ async function callTool(name, args) {
   if (result?.isError || body.success === false || body.ok === false) {
     const error = new Error(body.error?.safe_message || body.error?.message || body.safe_message || body.code || "Hermes could not complete this request.");
     error.traceId = result?._meta?.hermes_request_id;
+    error.code = body.error?.code || body.code;
     throw error;
   }
   return body;

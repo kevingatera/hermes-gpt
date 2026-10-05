@@ -45,3 +45,11 @@ def test_console_does_not_enable_session_controls(monkeypatch):
     result = wire(asyncio.run(server.call_tool('hermes_console', {})))
     assert result['structuredContent']['profiles']['profiles'] == []
     assert result['structuredContent']['capabilities']['capabilities']['delegation']['enabled'] is False
+
+
+def test_console_can_follow_a_job_without_resubmitting(monkeypatch):
+    server = build(monkeypatch)
+    result = wire(asyncio.run(server.call_tool('hermes_console', {'job_id': 'a' * 32})))
+    assert result['structuredContent']['follow_job_id'] == 'a' * 32
+    invalid = wire(asyncio.run(server.call_tool('hermes_console', {'job_id': 'invalid'})))
+    assert invalid['structuredContent']['code'] == 'INVALID_JOB_ID'

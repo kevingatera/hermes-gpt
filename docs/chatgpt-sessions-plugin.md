@@ -170,8 +170,19 @@ Use `hermes_session_profiles` to discover an authorized profile, then
 conversation, or omit it to start one. Model and effort overrides are optional.
 The tool waits up to 20 seconds by default, with a maximum of 30. A completed
 turn includes its bounded result. A pending turn includes a job ID and the next
-polling action. Retrieve its result before reporting completion. Polling never
-requires submitting the prompt again.
+waiting action. Use `hermes_session_job_status(job_id=...)` to wait up to 25
+seconds for the existing job; a completed response includes its result.
+`hermes_wait(job_id=..., wait_seconds=25)` is an equivalent optional action. Repeat bounded waits while
+running, without narrating each check or submitting the prompt again. Report
+completion only from the actual terminal result.
+
+If the chat turn ends before completion, the job continues. Open the Hermes
+panel with `hermes_console(job_id=...)` to follow it automatically, or ask ChatGPT for that job's result later.
+Do not promise an automatic later chat reply. The panel shows elapsed time,
+backs off to ten-second checks for longer work, and follows for up to roughly
+two hours before offering manual checks. The panel exposes a 1–60 minute work
+time limit (15 minutes by default), separately from observation duration. Observation failures retry without
+restarting the job. Closing the panel stops observation, not Hermes work.
 
 A disabled direct web, vision, or scheduling tool does not describe all of
 Hermes's own abilities. The selected profile's enabled tools and configured
@@ -221,6 +232,14 @@ operational data.
 After a server update, refresh tool discovery in ChatGPT. Rebuild an installed
 local plugin package to pick up its display name and skill instructions. Server
 instructions also provide the workflow when the local package is older.
+
+A cloud plugin can retain an older tool/UI snapshot even after its connector's
+**Refresh tools** succeeds. Verify the tools and rendered panel in a new chat.
+For an installed cloud package, use its **Upload new version** action with the
+same plugin name and app reference; preserve existing permissions. Updating
+connector metadata alone is not proof that chats are using the new snapshot.
+The existing job status action supports bounded waiting for older chats that
+do not yet expose `hermes_wait`.
 
 ## Advanced controls
 

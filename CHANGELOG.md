@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Make the existing job status action wait briefly and include completed answers; add `hermes_wait` as an optional equivalent. The panel follows a supplied job reference automatically, exposes work time limits, shows elapsed time, backs off checks, retries transient observations, and offers result recovery from diagnostics without duplicate submissions.
+
 - Distinguish profile cloning failures from browser authentication and report insufficient disk space with a safe recovery action. Clarify that ordinary account requests use existing Hermes sessions without cloning a workspace profile.
 
 - Report panel content-size changes to MCP Apps hosts and scroll within fixed-height panes, keeping completed answers and expanded settings reachable. Following a pasted job selects its authorized profile before offering continuation.

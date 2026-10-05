@@ -20,8 +20,13 @@ panel. It does not configure account credentials.
 When the user asks Hermes to do something, delegate through a regular profile
 session. This includes checking email through Hermes's configured integrations.
 Prefer `hermes_ask` after discovering an authorized profile. It starts or
-continues a turn and returns an answer or a job ID. Poll a pending job and retrieve the
-answer. Report missing integrations from the actual result. Do not infer their
+continues a turn and returns an answer or a job ID. Use `hermes_session_job_status` with the same job ID for bounded waits
+(25 seconds by default) that include the actual answer when ready.
+`hermes_wait` is an equivalent when available. Give one brief
+working update, not a narration of each check. If the chat turn ends, explain
+that work continues; offer `hermes_console(job_id=...)` to follow it without
+pasting a reference, or a later result request. Never promise an automatic
+later reply. Retrieve `hermes_session_job_result` if a completed status lacks its answer. Report missing integrations from the actual result. Do not infer their
 availability from the bridge's direct-tool capability flags. Do not claim the
 request is complete merely because the job was accepted.
 

@@ -10,7 +10,7 @@
 <div class="columns"><label>Profile<select id="profile"></select></label><label>Conversation<select id="conversation"><option value="">New conversation</option></select></label></div>
 <p id="defaults" class="hint"></p>
 <label>What would you like Hermes to do?<textarea id="prompt" rows="3" maxlength="20000" required placeholder="Research something, check an integration, or work on a task"></textarea></label>
-<details><summary>Model and effort for this turn</summary><div class="columns"><label>Model override<input id="model" placeholder="Use profile default" maxlength="200"></label><label>Reasoning effort<select id="effort"><option value="">Use profile default</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label></div></details>
+<details><summary>Model, effort, and time limit</summary><div class="columns"><label>Model override<input id="model" placeholder="Use profile default" maxlength="200"></label><label>Reasoning effort<select id="effort"><option value="">Use profile default</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label></div><label>Time limit (minutes)<input id="timeout-minutes" type="number" min="1" max="60" step="1" value="15"></label><p class="hint">Hermes continues if you leave this panel. Work stops when this time limit is reached.</p></details>
 <button id="send" type="submit">Ask Hermes</button>
 </fieldset></form>
 <details><summary>Follow existing work</summary><label>Job reference<input id="job-id" maxlength="32" placeholder="Paste a job reference"></label><button id="follow-job" type="button">Follow job</button></details>

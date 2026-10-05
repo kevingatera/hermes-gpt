@@ -13,7 +13,8 @@ clone those supported profile resources into private task state; see the
 repository's managed-session guide for their workspace and browser boundaries.
 
 Prefer `hermes_ask` for ordinary requests. It returns an answer or a job ID to
-follow. Use direct read tools for schedules and inspect request diagnostics
+follow with `hermes_wait`. Open `hermes_console(job_id=...)` to follow it in
+the panel without pasting a reference. Use direct read tools for schedules and inspect request diagnostics
 when something fails. See the [interaction guide](../../docs/chatgpt-sessions-plugin.md).
 
 The package ID remains `hermes-sessions` for existing installations; the display

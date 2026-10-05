@@ -39,6 +39,10 @@ function applyToolResult(result) {
   el("connection").textContent = profiles.length ? "Connected to Hermes" : "Connected. No profiles are authorized for work.";
   updateDefaults();
   applySettings(data.connection_settings);
+  if (data.follow_job_id && data.follow_job_id !== currentJob) {
+    followJob({ job_id: data.follow_job_id });
+    el("controls").disabled = true;
+  }
 }
 function updateDefaults() {
   const profile = profiles.find(row => row.profile === el("profile").value);
@@ -58,12 +62,19 @@ async function refreshPanel() {
   applyToolResult({ structuredContent: await callTool("hermes_console", {}) });
   await loadConversations();
 }
-function listRows(target, rows, describe) {
+function listRows(target, rows, describe, action = null) {
   target.replaceChildren();
   for (const row of rows) {
     const li = document.createElement("li");
     // Tool results and page content are untrusted. Never render them as HTML.
     li.textContent = describe(row);
+    if (action && row.job_id) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Follow result";
+      button.addEventListener("click", () => action(row));
+      li.appendChild(button);
+    }
     target.appendChild(li);
   }
 }
@@ -80,7 +91,10 @@ el("load-cron").addEventListener("click", () => perform(async () => {
 }));
 el("load-diagnostics").addEventListener("click", () => perform(async () => {
   const result = await callTool("hermes_request_diagnostics", { limit: 12 });
-  listRows(el("diagnostics"), result.records || [], row => `${row.tool} · ${row.outcome || row.phase}${row.error_code ? ` · ${row.error_code}` : ""} · ${row.request_id}`);
+  listRows(el("diagnostics"), result.records || [], row => `${row.tool} · ${row.outcome || row.phase}${row.error_code ? ` · ${row.error_code}` : ""} · ${row.request_id}${row.job_id ? ` · Job ${row.job_id}` : ""}`, row => {
+    followJob({ job_id: row.job_id });
+    el("controls").disabled = true;
+  });
 }));
 el("ask-form").addEventListener("submit", event => {
   event.preventDefault();
@@ -91,6 +105,9 @@ el("ask-form").addEventListener("submit", event => {
     el("send").textContent = "Sending…";
     try {
       const args = { prompt: el("prompt").value.trim(), profile: el("profile").value, wait_seconds: 0 };
+      const minutes = Number(el("timeout-minutes").value);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60) throw new Error("Choose a time limit from 1 to 60 whole minutes.");
+      args.timeout = minutes * 60;
       if (el("conversation").value) args.session_id = el("conversation").value;
       if (el("model").value.trim()) args.model = el("model").value.trim();
       if (el("effort").value) args.reasoning_effort = el("effort").value;
