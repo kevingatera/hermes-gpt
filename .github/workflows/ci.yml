@@ -144,7 +144,7 @@ jobs:
           src/hermes_gpt/clients/chatgpt/management.py src/hermes_gpt/clients/chatgpt/schedules.py src/hermes_gpt/policy/runtime_settings.py
           tests/clients/test_runtime_settings.py tests/clients/test_chatgpt_schedules.py
           src/hermes_gpt/policy/cron_read.py
-          src/hermes_gpt/clients/codex/ask.py src/hermes_gpt/clients/codex/usage.py tests/clients/test_ask.py
+          src/hermes_gpt/clients/codex/ask.py src/hermes_gpt/clients/codex/job_wait.py src/hermes_gpt/clients/codex/usage.py tests/clients/test_ask.py
           src/hermes_gpt/sessions/model_options.py tests/sessions/test_model_options.py
           src/hermes_gpt/paths.py tests/packaging/test_package_paths.py
           tests/server/test_session_store_imports.py

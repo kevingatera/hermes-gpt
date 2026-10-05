@@ -18,8 +18,13 @@ reasoning_effort unless the user requests an override. Hermes loads the selected
 profile's providers, credentials, skills, and enabled tools. Availability of an
 account integration must be checked by Hermes; never promise access merely
 because session delegation is enabled.
-After starting a turn, retain its job_id, poll hermes_session_job_status, and
-retrieve hermes_session_job_result when completed. Report the actual result or
+After starting a turn, retain its job_id and use hermes_session_job_status to await the
+actual result in bounded waits (25 seconds by default, completed answer included).
+hermes_wait is an optional equivalent when available. Give one short working update; do not narrate
+every observation or run rapid status polling. If the chat turn must end,
+say the job continues and offer the Hermes panel or a later result request.
+Never promise an automatic later chat reply. Open hermes_console(job_id=...) to follow and cancel
+the same job without asking the user to paste a reference. Retrieve hermes_session_job_result if hermes_wait is unavailable. Report the actual result or
 failure, not just that work was submitted. Do not confuse job, session, and task
 IDs. Do not restart a running turn or launch duplicate jobs while polling.
 For existing scheduled jobs use hermes_cron_list and hermes_cron_status with the

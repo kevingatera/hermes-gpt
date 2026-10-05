@@ -29,6 +29,7 @@ OPERATOR_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
 }
 SESSION_EXPECTED_TOOLS = CORE_EXPECTED_TOOLS | {
     "hermes_ask",
+    "hermes_wait",
     "hermes_request_diagnostics",
     "hermes_cron_list",
     "hermes_cron_status",

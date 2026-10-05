@@ -5,11 +5,11 @@ from typing import Any
 
 from mcp.types import ToolAnnotations
 
-from hermes_gpt.sessions import session as op_session
+from hermes_gpt.server.tools.session_context import SessionToolContext
 from hermes_gpt.sessions import metadata as session_metadata
 from hermes_gpt.sessions import profiles as session_profiles
+from hermes_gpt.sessions import session as op_session
 from hermes_gpt.sessions.history import redact_error as _redact_error
-from hermes_gpt.server.tools.session_context import SessionToolContext
 
 DEFAULT_SESSION_TIMEOUT = 900
 
@@ -38,8 +38,9 @@ class SessionControlTools:
                 readOnlyHint=True,
             ),
         )
+        from hermes_gpt.clients.codex.job_wait import register_status_wait_tool
+        register_status_wait_tool(server, self, tool_meta)
         for tool, title in (
-            (self.hermes_session_job_status, "Read Hermes session job status"),
             (self.hermes_session_job_result, "Read Hermes session job result"),
         ):
             server.add_tool(

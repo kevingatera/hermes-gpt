@@ -360,9 +360,10 @@ class CodexToolCore:
                 "use_for": "Delegate ordinary requests to Hermes, including requests that need its configured accounts and tools.",
                 "start": "hermes_ask",
                 "status": "hermes_session_job_status",
+                "wait": "hermes_session_job_status",
                 "result": "hermes_session_job_result",
                 "defaults": "Discover an authorized profile; omit model and reasoning_effort unless an override was requested.",
-                "completion": "Poll the job and retrieve its result before reporting completion.",
+                "completion": "Use hermes_session_job_status for bounded waits and the actual result; avoid narrating every check. The panel follows durable jobs if the chat turn ends.",
             } if toolset == "sessions" else None,
             "operator": {
                 "enabled": policy.enabled,
