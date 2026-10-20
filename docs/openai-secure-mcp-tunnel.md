@@ -55,7 +55,7 @@ OpenAI tunnel permissions and ChatGPT developer-mode permissions are separate. D
 Start Hermes GPT with Streamable HTTP on a loopback address:
 
 ```powershell
-python server.py --http --host 127.0.0.1 --port 4750
+python -m hermes_gpt --http --host 127.0.0.1 --port 4750
 ```
 
 The local MCP endpoint is:
@@ -195,6 +195,10 @@ OpenAI Secure MCP Tunnel can carry OAuth discovery metadata for the MCP server, 
 Use Hermes GPT OAuth with Secure MCP Tunnel only when you deliberately provide that authorization-server reachability and understand the additional trust boundary. For a tunnel-only private deployment, use the baseline loopback path or the optional static bearer defense in depth described above.
 
 See [OAuth and bearer authentication](oauth.md) for the Hermes GPT OAuth contract.
+
+For ChatGPT session and browser control, use the curated `sessions` MCP
+toolset and its separate profile/workspace gates. See [ChatGPT session and
+browser plugin setup](chatgpt-sessions-plugin.md).
 
 ## Windows supervised launcher
 

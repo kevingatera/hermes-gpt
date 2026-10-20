@@ -1,20 +1,20 @@
 # Hermes session history
 
 Hermes GPT exposes five optional, read-only MCP tools for finding and reviewing
-existing Hermes sessions, including canonical Bot Chats. These capabilities
-were originally available only through the full ChatGPT connector. The separately
-installed **Hermes GPT Session History** integration brings the same read-only
-operations to Codex as native tools. They query Hermes' installed session APIs;
-they do not create sessions, resume conversations, rebuild search indexes, or
-write exports to disk.
+existing Hermes sessions, including canonical Bot Chats. The separately
+installed Hermes GPT Session History integration brings the same read-only
+operations to Codex as native tools, and the Hermes GPT Codex MCP `sessions`
+toolset exposes them alongside session control and browser tools. They query
+Hermes' installed session APIs. They do not create sessions, resume
+conversations, rebuild search indexes, or write exports to disk.
 
 ## Client availability
 
 - **ChatGPT/full connector:** the tools are registered by the normal Hermes GPT
   server when the session-search gate is enabled.
-- **Codex:** the curated `core` and `operator` toolsets did not originally
-  include session history. Install and enable the Hermes GPT Session History
-  integration to make the session-history native tool names available in Codex.
+- **Codex:** the curated `core` and `operator` toolsets do not include session
+  history. Install the separate Session History integration for native tools,
+  or use `hermes-gpt codex install --toolset sessions` for the MCP tools.
 
 Tool availability alone does not bypass Hermes' server-side gates or privacy
 controls. ChatGPT uses a frozen snapshot of an approved MCP app's tools and
@@ -31,7 +31,7 @@ server:
 
 ```powershell
 $env:HERMES_GPT_ENABLE_SESSION_SEARCH="1"
-python server.py
+python -m hermes_gpt
 ```
 
 The five tools are:
@@ -49,10 +49,10 @@ All five tools accept an optional `profile` argument. It defaults to `default` f
 Canonical Bot Chat registry rows and compression continuations may be marked hidden by Hermes and therefore omitted from `hermes_session_list`, which intentionally lists regular visible sessions. This is not a missing-session condition. Use `hermes_bot_chat_get(profile)` to resolve the authoritative registry/current IDs and `hermes_bot_chat_send(profile, prompt)` to act on the current tip. The `current_session_id` is also actionable through `hermes_session_continue` or `hermes_session_send` when the same explicit `profile` is supplied.
 
 Session control is a separate feature with a separate gate. Reading history
-does not enable `hermes_session_continue`, `hermes_session_send`, or
-`hermes_bot_chat_send`.
+does not enable `hermes_session_start`, `hermes_session_continue`,
+`hermes_session_send`, or `hermes_bot_chat_send`.
 
-## Sending ChatGPT output back into Hermes sessions
+## Starting and continuing Hermes sessions from ChatGPT
 
 Enable session control only on a trusted local MCP server:
 
@@ -64,6 +64,7 @@ The session-control tools are profile-aware:
 
 | Tool | Purpose |
 | --- | --- |
+| `hermes_session_start` | Start one bounded asynchronous turn in a new authorized profile session. |
 | `hermes_session_continue` | Start one bounded asynchronous turn in an existing session. |
 | `hermes_session_send` | Send terminology alias for `hermes_session_continue`. |
 | `hermes_bot_chat_send` | Resolve a profile's canonical Bot Chat/current compression tip and send one bounded turn directly to it. |
@@ -118,9 +119,8 @@ paste transcript content into bug reports or publish it without review.
 
 ## Clean native-tool smoke test
 
-Use the four displayed native tools directly from Codex rather than invoking
-shell commands or inspecting the source. Keep limits small and do not display
-message bodies:
+Use the native tools directly from Codex rather than invoking shell commands or
+inspecting the source. Keep limits small and do not display message bodies:
 
 1. Call `hermes_session_list(limit=3, include_archived=false)`.
 2. Call `hermes_session_search(query="Hermes", limit=3)`.

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hermes</title><style>/* PANEL_STYLE */</style></head>
+<body><main id="panel-content">
+<header><div><h1>Hermes</h1><p>Work with your configured tools and accounts.</p></div><button id="refresh" type="button">Refresh</button></header>
+<p id="connection" role="status" aria-live="polite">Connecting to Hermes…</p>
+<section id="job" hidden aria-live="polite"><h2>Current work</h2><p id="job-status"></p><p id="job-reference" class="hint"></p><button id="check-job" type="button">Check result</button><button id="cancel-job" type="button">Cancel work</button><pre id="answer"></pre></section>
+<form id="ask-form">
+<fieldset id="controls" disabled>
+<div class="columns"><label>Profile<select id="profile"></select></label><label>Conversation<select id="conversation"><option value="">New conversation</option></select></label></div>
+<p id="defaults" class="hint"></p>
+<label>What would you like Hermes to do?<textarea id="prompt" rows="3" maxlength="20000" required placeholder="Research something, check an integration, or work on a task"></textarea></label>
+<details><summary>Model, effort, and time limit</summary><div class="columns"><label>Model override<input id="model" placeholder="Use profile default" maxlength="200"></label><label>Reasoning effort<select id="effort"><option value="">Use profile default</option><option>minimal</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option></select></label></div><label>Time limit (minutes)<input id="timeout-minutes" type="number" min="1" max="60" step="1" value="15"></label><p class="hint">Hermes continues if you leave this panel. Work stops when this time limit is reached.</p></details>
+<button id="send" type="submit">Ask Hermes</button>
+</fieldset></form>
+<details><summary>Follow existing work</summary><label>Job reference<input id="job-id" maxlength="32" placeholder="Paste a job reference"></label><button id="follow-job" type="button">Follow job</button></details>
+
+<section><div class="section-heading"><h2>Scheduled jobs</h2><div><select id="cron-profile" aria-label="Scheduler profile"></select><button id="load-cron" type="button" disabled>Show schedules</button></div></div><p id="cron-empty" class="hint">Choose a scheduler to inspect its jobs.</p><ul id="cron-list"></ul></section>
+<details id="settings-panel" hidden><summary>Connection settings</summary><p class="hint">Ask ChatGPT to change features, profiles, or model defaults at any time. Changes take effect without refreshing the plugin.</p><div id="setting-features"></div><div id="setting-profiles"></div><label>Changes<select id="apply-mode"><option value="dry_run">Preview only</option><option value="direct">Apply when requested</option></select></label><button id="save-settings" type="button">Apply these settings</button><p id="settings-status" role="status"></p></details>
+<details><summary>Request diagnostics</summary><p class="hint">Recent outcomes and job references. Private messages are excluded.</p><button id="load-diagnostics" type="button" disabled>Show recent requests</button><ul id="diagnostics"></ul></details>
+<p id="error" role="alert" hidden></p>
+</main><script>/* HOST_BRIDGE */</script><script>/* LAYOUT_SCRIPT */</script><script>/* PANEL_SCRIPT */</script><script>/* JOB_SCRIPT */</script><script>/* SETTINGS_SCRIPT */</script>
+</body></html>

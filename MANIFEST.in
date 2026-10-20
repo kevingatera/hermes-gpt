@@ -4,6 +4,8 @@ include CHANGELOG.md
 # Public-safe docs only. Internal counsel/design/release-planning packets
 # (docs/design/*, docs/releases/*) are intentionally NOT distributed.
 include docs/README.md
+include docs/development/contributing.md
+include docs/development/repository-layout.md
 include docs/codex.md
 include docs/operator-mode.md
 include docs/mcp-compatibility.md
@@ -19,10 +21,13 @@ include docs/release-notes-v0.7.0.md
 include docs/release-notes-v0.8.0.md
 include docs/retention-policy.md
 include docs/updating.md
+include docs/runtime-checkout.md
+include docs/capabilities-and-mission-ledger.md
 include docs/windows-chatgpt-codex.md
 include docs/ui-security-boundary.md
 include docs/flight-deck-coverage.md
 include docs/gemini-spark.md
+include docs/managed-hermes-sessions.md
 recursive-include examples *.ps1
 prune docs/design
 prune docs/releases
@@ -33,3 +38,12 @@ prune tmp-operator-test
 prune __pycache__
 prune .pytest_cache
 global-exclude *.py[cod] *.log *.err.log .env .env.* *.pem
+
+recursive-include src/hermes_gpt/clients/chatgpt/assets *.html *.css *.js
+
+include docs/chatgpt-runtime-settings.md
+
+include docs/autopilot.md
+include docs/release-notes-v0.13.0.md
+include docs/release-notes-v0.14.0.md
+recursive-include web/dist *.html *.js *.css

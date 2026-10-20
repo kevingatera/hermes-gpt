@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         python: ['3.10', '3.11', '3.12']
         sdk: ['mcp>=1.28.1,<2', 'mcp>=2,<3']
         include:
@@ -31,55 +31,87 @@ jobs:
       - name: Run full test suite
         env:
           HERMES_HTTP_TEST: "1"
-        run: python -m pytest -q
+        run: python -m pytest -q -o addopts='' --tb=short
       - name: Run runner regression tests
         run: >-
           python -m pytest -q
-          test_operator_runners.py
-          test_operator_fabric.py
-          test_operator_fabric_adversarial.py
-          test_operator_fabric_control.py
-          test_operator_fabric_router.py
-          test_operator_fabric_g4c.py
-          test_operator_fabric_view.py
-          test_operator_fabric_integration.py
-          test_ui_fabric.py
+          tests/execution/test_runners.py
+          tests/fleet/test_fabric.py
+          tests/fleet/test_fabric_adversarial.py
+          tests/fleet/test_fabric_control.py
+          tests/fleet/test_fabric_router.py
+          tests/fleet/test_fabric_g4c.py
+          tests/fleet/test_fabric_view.py
+          tests/fleet/test_fabric_integration.py
+          tests/ui/test_ui_fabric.py
       - name: Run binary export regression tests
-        run: python -m pytest -q test_operator_export.py test_server_export.py
+        run: python -m pytest -q tests/workspace/test_export.py tests/server/test_server_export.py
       - name: Compile operator modules
         run: >-
           python -m py_compile
-          server.py
-          codex_core.py
-          codex_mcp.py
-          mcp_compat.py
-          codex_config.py
-          operator_codex.py
-          operator_contract.py
-          fabric_artifacts.py
-          fabric_write_guard.py
-          operator_fabric.py
-          operator_fabric_control.py
-          operator_fabric_router.py
-          operator_fabric_g4c.py
-          operator_fabric_view.py
-          operator_fleet.py
-          operator_runners.py
-          operator_swarm.py
-          operator_swarm_workflows.py
-          operator_workspace.py
-          operator_export.py
-          updater.py
-          operator_recovery.py
-          operator_review.py
-          operator_events.py
-          operator_oauth.py
-          token_store.py
-          seams.py
-          ui_api.py
-          ui_fabric.py
+          src/hermes_gpt/missions/autopilot.py
+          src/hermes_gpt/server/tools/autopilot.py
+          src/hermes_gpt/server/app.py
+          src/hermes_gpt/clients/codex/core.py
+          src/hermes_gpt/clients/codex/mcp.py
+          src/hermes_gpt/mcp_compat.py
+          src/hermes_gpt/clients/codex/config.py
+          src/hermes_gpt/execution/codex.py
+          src/hermes_gpt/execution/contract.py
+          src/hermes_gpt/fleet/fabric_artifacts.py
+          src/hermes_gpt/fleet/fabric_write_guard.py
+          src/hermes_gpt/fleet/fabric.py
+          src/hermes_gpt/fleet/fabric_control.py
+          src/hermes_gpt/fleet/fabric_router.py
+          src/hermes_gpt/fleet/fabric_g4c.py
+          src/hermes_gpt/fleet/fabric_view.py
+          src/hermes_gpt/fleet/fleet.py
+          src/hermes_gpt/execution/runners.py
+          src/hermes_gpt/execution/swarm.py
+          src/hermes_gpt/execution/swarm_workflows.py
+          src/hermes_gpt/workspace/tools.py
+          src/hermes_gpt/workspace/export.py
+          src/hermes_gpt/workspace/updater.py
+          src/hermes_gpt/workspace/recovery.py
+          src/hermes_gpt/execution/review.py
+          src/hermes_gpt/workspace/events.py
+          src/hermes_gpt/auth/tools.py
+          src/hermes_gpt/auth/token_store.py
+          src/hermes_gpt/workspace/seams.py
+          src/hermes_gpt/ui/routes.py
+          src/hermes_gpt/ui/fabric.py
       - name: Check whitespace
         run: git diff --check
+
+  agent-loader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          path: hermes-agent-src
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -e ".[dev]" httpx
+      - name: Install the Hermes Agent runtime used by the loader
+        run: python -m pip install -e hermes-agent-src
+      - name: Prove the real Agent loader is importable
+        env:
+          HERMES_AGENT_ROOT: ${{ github.workspace }}/hermes-agent-src
+          PYTHONPATH: ${{ github.workspace }}/hermes-agent-src
+        run: >-
+          python -c "from hermes_gpt.skills import loader as r;
+          assert r._agent_modules() is not None, 'Hermes Agent loader missing'"
+      - name: Run skill-resolution tests against the real Agent loader
+        env:
+          HERMES_HTTP_TEST: "1"
+          HERMES_AGENT_ROOT: ${{ github.workspace }}/hermes-agent-src
+          PYTHONPATH: ${{ github.workspace }}/hermes-agent-src
+          HERMES_GPT_REQUIRE_AGENT_LOADER: "1"
+        run: python -m pytest -q tests/skills/test_skill_resolution.py
 
   compatibility:
     runs-on: ubuntu-latest
@@ -92,9 +124,9 @@ jobs:
       - name: Prove v0.7 local-only contracts, swarms, and runners remain unchanged
         run: >-
           python -m pytest -q
-          test_operator_contract.py
-          test_operator_swarm.py
-          test_operator_runners.py
+          tests/execution/test_contract.py
+          tests/execution/test_swarm.py
+          tests/execution/test_runners.py
 
   lint:
     runs-on: ubuntu-latest
@@ -104,21 +136,44 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e ".[dev]"
+      - run: node --test tests/clients/chatgpt_bridge.test.cjs tests/clients/chatgpt_layout.test.cjs tests/clients/chatgpt_jobs.test.cjs
       - run: >-
           python -m ruff check
-          mcp_compat.py codex_mcp.py test_mcp_sdk_migration.py test_mcp_compat.py
-          test_mcp_transport_mode.py test_codex_mcp.py test_hermetic_environment.py test_operator_codex.py
-          fabric_artifacts.py fabric_write_guard.py
-          operator_fabric.py operator_fabric_control.py operator_fabric_router.py operator_fabric_g4c.py operator_fabric_view.py
-          test_operator_fabric.py test_operator_fabric_adversarial.py test_operator_fabric_control.py
-          test_operator_fabric_router.py test_operator_fabric_g4c.py test_operator_fabric_view.py test_operator_fabric_integration.py test_ui_fabric.py
-          operator_runners.py test_operator_runners.py operator_delegations.py test_operator_delegations.py
-          runner_confinement.py test_runner_confinement.py test_runner_confinement_policy.py
-          operator_export.py test_operator_export.py test_server_export.py
-          operator_mission_runtime.py test_operator_mission_runtime.py
-          operator_live_events.py test_operator_live_events.py test_v09_system_invariants.py
-          tools/check_package_hygiene.py test_package_hygiene.py
-          ui_api.py ui_fabric.py ui_missions.py test_ui_missions.py
+          src/hermes_gpt/auth/oauth.py src/hermes_gpt/auth/token_codec.py tests/auth/test_oauth_auth.py tests/auth/test_oauth_token_codec.py
+          src/hermes_gpt/server/cli.py tests/server/test_server_cli.py
+          src/hermes_gpt/server/request_log.py tests/server/test_request_log.py
+          src/hermes_gpt/clients/chatgpt/console.py tests/clients/test_chatgpt_console.py
+          src/hermes_gpt/clients/chatgpt/management.py src/hermes_gpt/clients/chatgpt/schedules.py src/hermes_gpt/policy/runtime_settings.py
+          tests/clients/test_runtime_settings.py tests/clients/test_chatgpt_schedules.py
+          src/hermes_gpt/policy/cron_read.py
+          src/hermes_gpt/clients/codex/ask.py src/hermes_gpt/clients/codex/job_wait.py src/hermes_gpt/clients/codex/usage.py tests/clients/test_ask.py
+          src/hermes_gpt/sessions/model_options.py tests/sessions/test_model_options.py
+          src/hermes_gpt/paths.py tests/packaging/test_package_paths.py
+          tests/server/test_session_store_imports.py
+          src/hermes_gpt/browser/launcher.py tests/browser/test_bridge_launcher.py tests/execution/test_worker_launch.py
+          src/hermes_gpt/browser/tabs.py tests/browser/test_browser_tabs.py
+          src/hermes_gpt/fleet/fabric_config.py tests/fleet/test_fabric_config_read_bounds.py
+          src/hermes_gpt/mcp_compat.py src/hermes_gpt/clients/codex/mcp.py tests/server/test_mcp_sdk_migration.py tests/server/test_mcp_compat.py
+          tests/server/test_mcp_transport_mode.py tests/clients/test_codex_mcp.py tests/packaging/test_hermetic_environment.py tests/execution/test_codex.py
+          src/hermes_gpt/fleet/fabric_artifacts.py src/hermes_gpt/fleet/fabric_write_guard.py
+          src/hermes_gpt/fleet/fabric.py src/hermes_gpt/fleet/fabric_control.py src/hermes_gpt/fleet/fabric_router.py src/hermes_gpt/fleet/fabric_routing_policy.py src/hermes_gpt/fleet/fabric_g4c.py src/hermes_gpt/fleet/fabric_view.py
+          tests/fleet/test_fabric.py tests/fleet/test_fabric_adversarial.py tests/fleet/test_fabric_control.py
+          tests/fleet/test_fabric_router.py tests/fleet/test_fabric_routing_policy.py tests/fleet/test_fabric_g4c.py tests/fleet/test_fabric_view.py tests/fleet/test_fabric_integration.py tests/ui/test_ui_fabric.py
+          src/hermes_gpt/missions/autopilot.py src/hermes_gpt/server/tools/autopilot.py
+          tests/missions/test_autopilot.py tests/missions/test_autopilot_acceptance.py
+          tests/missions/test_autopilot_advance.py tests/missions/test_autopilot_deliverables.py
+          tests/missions/test_autopilot_frontier.py tests/missions/test_autopilot_limits.py
+          tests/missions/test_autopilot_recovery.py tests/missions/test_autopilot_scheduler.py
+          tests/missions/test_autopilot_status.py tests/missions/test_autopilot_wakeup.py
+          tests/missions/test_mission_supersede.py tests/missions/test_plan_rework.py
+          tests/execution/test_v014_acceptance.py tests/ui/test_ui_autopilot.py
+          src/hermes_gpt/execution/runners.py tests/execution/test_runners.py src/hermes_gpt/execution/delegations.py tests/execution/test_delegations.py
+          src/hermes_gpt/policy/confinement.py tests/policy/test_runner_confinement.py tests/policy/test_runner_confinement_policy.py
+          src/hermes_gpt/workspace/export.py tests/workspace/test_export.py tests/server/test_server_export.py
+          src/hermes_gpt/missions/runtime.py tests/missions/test_mission_runtime.py
+          src/hermes_gpt/workspace/live_events.py tests/workspace/test_live_events.py tests/packaging/test_v09_system_invariants.py
+          tools/check_package_hygiene.py tests/packaging/test_package_hygiene.py
+          src/hermes_gpt/ui/routes.py src/hermes_gpt/ui/fabric.py src/hermes_gpt/ui/missions.py tests/ui/test_ui_missions.py
 
   web:
     runs-on: ubuntu-latest
@@ -135,6 +190,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flight-deck
+          path: web/dist/
 
   windows-docs:
     runs-on: windows-latest
@@ -162,10 +221,14 @@ jobs:
           }
 
   build:
-    needs: [test, compatibility, lint, web, windows-docs]
+    needs: [test, agent-loader, compatibility, lint, web, windows-docs]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: flight-deck
+          path: web/dist/
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

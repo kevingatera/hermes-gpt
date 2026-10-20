@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-gpt"
-version = "0.12.0"
+version = "0.14.0"
 description = "Local-dev MCP sidecar for exposing selected Hermes Agent capabilities."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,72 +32,23 @@ dev = [
 ]
 
 [project.scripts]
-hermes-gpt = "server:main"
-hermes-gpt-fabric-peer = "operator_fabric_g4c:peer_main"
+hermes-gpt = "hermes_gpt.server.app:main"
+hermes-gpt-fabric-peer = "hermes_gpt.fleet.fabric_g4c:peer_main"
 
 [tool.setuptools]
 include-package-data = true
-py-modules = [
-  "server",
-  "oauth_auth",
-  "operator_policy",
-  "operator_cron",
-  "operator_skills",
-  "operator_config",
-  "operator_workspace",
-  "operator_export",
-  "operator_fleet",
-  "fabric_artifacts",
-  "fabric_write_guard",
-  "operator_fabric",
-  "operator_fabric_control",
-  "operator_fabric_router",
-  "operator_fabric_g4c",
-  "operator_fabric_view",
-  "operator_diagnostics",
-  "operator_codex",
-  "operator_session",
-  "operator_mission",
-  "operator_mission_runtime",
-  "operator_mission_plan",
-  "operator_mission_ledger",
-  "operator_mission_budget",
-  "operator_capability_manifest",
-  "operator_placement",
-  "operator_failure_semantics",
-  "operator_controller",
-  "operator_contract",
-  "operator_delegations",
-  "operator_job_supervisor",
-  "operator_runners",
-  "runner_confinement",
-  "operator_review",
-  "operator_events",
-  "operator_live_events",
-  "operator_oauth",
-  "token_store",
-  "operator_swarm",
-  "operator_swarm_workflows",
-  "operator_recovery",
-  "operator_finance",
-  "finance_worker",
-  "codex_core",
-  "codex_mcp",
-  "mcp_compat",
-  "codex_config",
-  "seams",
-  "updater",
-  "versioning",
-  "hermes_state",
-  "ui_api",
-  "ui_security",
-  "ui_chat",
-  "ui_ops",
-  "ui_fabric",
-  "ui_missions",
-]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["hermes_gpt*"]
+
+[tool.setuptools.package-data]
+"hermes_gpt.clients.chatgpt" = ["assets/*.html", "assets/*.css", "assets/*.js"]
 
 [tool.setuptools.data-files]
+"share/hermes-gpt/web" = ["web/dist/*.html"]
+"share/hermes-gpt/web/assets" = ["web/dist/assets/*.js", "web/dist/assets/*.css"]
 "share/hermes-gpt" = [
   "README.md",
   "pyproject.toml",
@@ -109,11 +60,17 @@ py-modules = [
   "docs/operator-mode.md",
   "docs/finance.md",
   "docs/missions.md",
+  "docs/autopilot.md",
+  "docs/release-notes-v0.13.0.md",
+  "docs/release-notes-v0.14.0.md",
+  "docs/capabilities-and-mission-ledger.md",
   "docs/live-events.md",
   "docs/delegations.md",
   "docs/mcp-compatibility.md",
   "docs/file-export.md",
   "docs/openai-secure-mcp-tunnel.md",
+  "docs/chatgpt-sessions-plugin.md",
+  "docs/chatgpt-runtime-settings.md",
   "docs/cloudflare-tunnel.md",
   "docs/release-notes-v0.2.0.md",
   "docs/release-notes-v0.3.0.md",
@@ -121,7 +78,9 @@ py-modules = [
   "docs/codex.md",
   "docs/session-history.md",
   "docs/session-control.md",
+  "docs/managed-hermes-sessions.md",
   "docs/updating.md",
+  "docs/runtime-checkout.md",
   "docs/release-notes-v0.5.0b1.md",
   "docs/release-notes-v0.5.0b2.md",
   "docs/release-notes-v0.5.0.md",
@@ -142,8 +101,13 @@ py-modules = [
   "examples/install-task.example.ps1",
   "examples/fleet-authority.example.json",
 ]
+"share/hermes-gpt/docs/development" = [
+  "docs/development/contributing.md",
+  "docs/development/repository-layout.md",
+]
 
 [tool.pytest.ini_options]
-testpaths = ["."]
+testpaths = ["tests"]
+pythonpath = ["src"]
 python_files = ["test_*.py"]
 addopts = "-q"

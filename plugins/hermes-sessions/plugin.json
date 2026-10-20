@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hermes-sessions",
+  "version": "0.4.2",
+  "description": "Use Hermes Agent from ChatGPT with its configured tools, accounts, and browsers.",
+  "author": {
+    "name": "Hermes GPT contributors"
+  },
+  "homepage": "https://github.com/kevingatera/hermes-gpt",
+  "repository": "https://github.com/kevingatera/hermes-gpt",
+  "license": "MIT",
+  "keywords": [
+    "hermes",
+    "sessions",
+    "browser",
+    "mcp"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Hermes",
+        "shortDescription": "Ask Hermes to work from ChatGPT",
+        "longDescription": "Delegate work to Hermes using its configured providers, tools, accounts, skills, and memory. Manage schedules and change live settings, continue conversations, control authorized browsers, and follow results with request diagnostics.",
+        "developerName": "Hermes GPT contributors",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Open the Hermes panel to send work, inspect schedules, and follow results.",
+          "Ask Hermes to do work using an authorized profile and report the result.",
+          "Show my Hermes scheduled jobs and their last-run status.",
+          "Continue a Hermes conversation or use its authorized browser."
+        ],
+        "brandColor": "#2563EB"
+      }
+    }
+  }
+}

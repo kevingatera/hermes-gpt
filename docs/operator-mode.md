@@ -1,8 +1,24 @@
 # Operator Mode for Hermes GPT
 
-Operator Mode is the policy-gated control plane for trusted MCP clients such as ChatGPT. This document describes the current v0.12.0 behavior, including the durable Mission lifecycle, unified delegation lineage, live-event bus, and Fabric-backed cross-machine Swarm execution, plus the vNext slice-1 additive surfaces (MissionPlan DAG, derived capability-manifest / mission-ledger views, budget envelope, placement scoring, failure classification + recovery matrix, and the shadow/observe mission controller) and the vNext slice-2 gated execution rungs (budget D3 hard-block enforcement behind `HERMES_GPT_BUDGET_HARD_BLOCK=1`, and the controller L2 rung behind `HERMES_GPT_CONTROLLER_EXECUTE=1`). The slice-1 surfaces are decision-only; the slice-2 rungs are default-off, add no tools, and keep every existing surface byte-identical until their gates are armed. They are documented further in [vnext-capability-manifest-and-mission-ledger.md](vnext-capability-manifest-and-mission-ledger.md) and [design/](design/).
+Operator Mode lets trusted MCP clients inspect and maintain a local Hermes
+installation. Start with the authority settings below, then use the section
+for the operation you need. Tool registration and permission to apply a change
+are separate checks.
+
+Mission plans, budgets, placement decisions, and controller recommendations
+also have their own rules. The controller's optional execution path requires
+`HERMES_GPT_CONTROLLER_EXECUTE=1` plus direct workspace authority, confirmation,
+and `dry_run=false`. The internal budget-breaker API requires
+`HERMES_GPT_BUDGET_HARD_BLOCK=1` and its mission and confirmation gates.
+The registered MCP `hermes_budget_check` currently evaluates only; it does not
+expose the internal enforcement arguments. Both execution paths are disabled
+by default.
 
 For documentation authority and historical-artifact rules, see [docs/README.md](README.md).
+
+Private ChatGPT connections can optionally change feature/profile settings and
+apply mode at runtime. Operator enablement, level, protected paths, and Owner
+acknowledgments remain server-controlled. See [live connection settings](chatgpt-runtime-settings.md).
 
 ## Core rule
 
@@ -10,7 +26,8 @@ For documentation authority and historical-artifact rules, see [docs/README.md](
 
 Hermes GPT is designed to run on the user's machine, bound to loopback. Remote clients require a deliberately configured private or authenticated boundary in front of that loopback service. Public unauthenticated Operator hosting is unsupported.
 
-Operator Mode is defense-in-depth, not an OS sandbox. Use OS-level isolation for untrusted input.
+Operator policy checks which operations may run. Use OS-level isolation to
+contain processes that handle untrusted input.
 
 ## Authority model
 
@@ -70,7 +87,7 @@ $env:HERMES_GPT_OPERATOR_LEVEL="skills_config"
 $env:HERMES_GPT_OPERATOR_APPLY_MODE="dry_run"
 $env:HERMES_GPT_OPERATOR_ALLOWED_PROFILES="default"
 
-python server.py --http --host 127.0.0.1 --port 4750
+python -m hermes_gpt --http --host 127.0.0.1 --port 4750
 ```
 
 Mutating tools return plans or previews but do not apply changes.
@@ -171,7 +188,7 @@ Do not describe the unset state as deny-by-default. The implementation deliberat
 
 Mission Control requires only `read_only` authority and never needs direct apply mode.
 
-## Missions lifecycle (v0.9)
+## Mission lifecycle
 
 Beyond the read-only Mission Control overview, v0.9 adds a first-class durable Mission object as the bounded parent record for a larger objective. A Mission groups an objective, acceptance criteria, bounded context references, an explicit skills manifest, Swarm/work/delegation attachments, lifecycle state, and a final Owner approval that defaults on.
 
@@ -183,7 +200,7 @@ Reads are read-only. Mutations preserve the normal workspace/direct/confirm gate
 
 See [Missions (v0.9)](missions.md).
 
-## Delegations (v0.9)
+## Delegations
 
 v0.9 adds a durable, normalized delegation lifecycle above Work Contracts and existing runner/Fabric execution. The delegation record is lineage and state metadata, not a second execution authority; runner, Fabric, Work Contract validation, and Operator policy remain authoritative.
 
@@ -193,7 +210,7 @@ A delegation never marks work successful from a worker's claim: terminal backend
 
 See [Delegations (v0.9)](delegations.md).
 
-## Live events (v0.9)
+## Live events
 
 v0.9 adds a durable, bounded live-event bus for clients and parent orchestrators that need completion/wake-up delivery without polling every underlying store.
 
@@ -203,7 +220,7 @@ Live events are notifications, not proof. Mission, Swarm, Work Contract, runner,
 
 ## Binary file export
 
-`hermes_export_file(path)` is a read-only raw-byte transfer surface gated at Operator `workspace` level. It requires a non-empty `HERMES_GPT_OPERATOR_ALLOWED_PATHS`, resolves paths before authorization so symlink escapes are refused, preserves all denied secret/credential paths even in Owner Mode, enforces a 4 MiB default and 16 MiB hard maximum, and supports an optional `HERMES_GPT_EXPORT_ALLOWED_EXTENSIONS` suffix allowlist. Successful bytes are returned as `EmbeddedResource(BlobResourceContents)` with safe metadata; client download/attachment rendering is client-controlled. See [Binary file export](file-export.md).
+`hermes_export_file(path)` transfers file bytes and requires Operator `workspace` level. It requires a non-empty `HERMES_GPT_OPERATOR_ALLOWED_PATHS`, resolves paths before authorization so symlink escapes are refused, preserves all denied secret/credential paths even in Owner Mode, enforces a 4 MiB default and 16 MiB hard maximum, and supports an optional `HERMES_GPT_EXPORT_ALLOWED_EXTENSIONS` suffix allowlist. Successful bytes are returned as `EmbeddedResource(BlobResourceContents)` with safe metadata; client download/attachment rendering is client-controlled. See [Binary file export](file-export.md).
 
 ## Work Contracts
 
@@ -231,13 +248,12 @@ Missing evidence fails closed. A valid contract with no observed run cannot beco
 
 Retry selection is deterministic. Forbidden-action audit evidence is scoped to the contract's task identity so unrelated concurrent work does not contaminate the verdict.
 
-### Review limitation in v0.6.0
+### Review evidence
 
-v0.6.0 has no production review-accept writer. If a contract requires review, the necessary evidence must already exist through an authorized external reviewer/audit path or human approval reference. If it does not exist, validation returns `NOT_SATISFIED`.
-
-**v0.7 closes this gap**: `hermes_review_accept` (owner-gated, distinct
-reviewer enforced) writes review-acceptance records that the validator reads
-as evidence. See [Flight Deck (v0.7)](#flight-deck-v07).
+If a contract requires review, validation needs an authorized review record or
+human approval reference. `hermes_review_accept` writes records that the
+validator can read. It requires Owner authority and a distinct reviewer.
+Without the required evidence, validation returns `NOT_SATISFIED`.
 
 Required test checks execute only through the workspace test allowlist and inherit the workspace/direct policy gates.
 
@@ -275,13 +291,18 @@ Failed validation can return a stage for one bounded rework retry. A second fail
 
 Codex may provide a bounded review verdict, but Codex is never an implementation owner. Final workflow approval is human and Owner-gated.
 
-## Fabric execution (v0.8)
+## Fabric execution
 
-v0.8 extends Swarm execution across authenticated Hermes machines without moving completion authority to the worker. A stage using `execution.backend=auto` can be placed on an eligible local or remote runtime from the current capability snapshot; explicit backend/placement choices remain available where the workflow supports them.
+Fabric runs Swarm stages across authenticated Hermes machines. The coordinator
+keeps completion authority. A stage using `execution.backend=auto` can be
+placed on an eligible local or remote runtime from the current capability
+snapshot; supported workflows also accept explicit backend and placement choices.
 
 The packaged remote endpoint is `hermes-gpt-fabric-peer`. Loopback HTTP is permitted for same-machine development. Non-loopback peer serving requires both `--cert` and `--key`; the peer refuses insecure remote transport.
 
 Fabric routing is fail-closed. Placement considers node health and capability freshness, backend support, profile/workspace policy, and the server-controlled authority ceiling. A remote peer cannot widen the coordinator's authority. Remote worker self-report is transport data, not Work Contract completion evidence.
+
+Fabric configuration and routing-policy JSON files have a 128 KiB payload limit. File reads stop at that limit plus one byte so oversized input is rejected before the whole file is loaded into memory.
 
 Remote evidence and artifacts are admitted through coordinator-controlled paths. Required unavailable evidence cannot become `SATISFIED`; artifact bytes are verified before admission. Restart, timeout, and cancellation reconciliation preserve the original attempt where recovery is possible rather than silently creating a replacement writer.
 
@@ -289,9 +310,11 @@ Flight Deck adds read-only Fabric node, placement, attempt, evidence, and routin
 
 See [v0.8.0 release notes](release-notes-v0.8.0.md) for the two-machine acceptance boundary and the known historical-timeout presentation limitation.
 
-## Flight Deck (v0.7 foundation, v0.8 Fabric views)
+## Flight Deck
 
-Flight Deck began in v0.7 with production review evidence, structured event history, durable encrypted token storage, and restart reconciliation. v0.8 layers read-only Fabric nodes, placement, attempts, evidence, and routing visibility onto that foundation. Existing authority classes and final human approval remain authoritative.
+Flight Deck shows review evidence, event history, token-store status, and
+read-only Fabric nodes, placement, attempts, evidence, and routing. It uses the
+existing Operator gates and retains final human approval.
 
 ### Review evidence (`hermes_review_accept`)
 
@@ -300,7 +323,7 @@ Flight Deck began in v0.7 with production review evidence, structured event hist
 | `hermes_review_accept(contract_sha256, task_id, assignee, reviewer, verdict, evidence_refs, approval_reference, dry_run, confirm)` | **owner** + direct + confirm | Write a review-acceptance record for a Work Contract. Distinct reviewer is enforced at write time (`reviewer != assignee`); verdicts are bounded to `SATISFIED` / `NOT_SATISFIED`; evidence is referenced, never copied. |
 
 The Work Contract validator reads the review-evidence store as an additional
-evidence source while keeping the v0.6 audit + human-approval paths. A
+evidence source alongside audit records and human approval. A
 `SATISFIED` acceptance by a reviewer distinct from the assignee satisfies the
 review check; a self-review record never does.
 
@@ -311,7 +334,7 @@ review check; a self-review record never does.
 | `hermes_events_query(source, subject_id, kind, since, until, limit)` | read_only + allowlist | Query the normalized, redacted event timeline (audit / swarm / codex / cron / kanban). |
 | `hermes_events_tail(limit)` | read_only + allowlist | Recent events across all allowed sources. |
 
-The event surface is a derived read-model over existing durable stores; it
+The event timeline is derived from existing durable stores; it
 never writes. Allowlist: `HERMES_GPT_EVENTS_ALLOWED_SOURCES` (unset = all
 read-only sources; list = only listed; empty = none). Retention:
 `HERMES_GPT_EVENTS_MAX_AGE_DAYS` (default 90). Redaction invariants match
@@ -322,11 +345,11 @@ Mission Control; prompts appear only as length/sha when present in the source.
 | Tool | Authority | Purpose |
 | --- | --- | --- |
 | `hermes_oauth_status()` | read_only | Durable token store presence/expiry only; never exposes token material. |
-| `hermes_oauth_revoke(confirm, dry_run, rotate_key)` | **owner** + direct + confirm (pending legal scope decision) | Retire every durable token + advance the revocation epoch in one transaction; optionally rotate the active master key. |
+| `hermes_oauth_revoke(confirm, dry_run, rotate_key)` | **owner** + direct + confirm | Retire every durable token and advance the revocation epoch in one transaction; optionally rotate the active master key. |
 
 OAuth access/refresh tokens are persisted through `token_store` (a
 transactional SQLite store at `<hermes_data>/secrets/hermes_gpt_tokens.db`,
-0600; per-row AES-256-GCM ciphertext; keyring → key file → env key
+0600; per-row AES-256-GCM ciphertext; env key, then keyring, then key file
 precedence) so a server restart does not invalidate credentials. No token
 material is ever written to the audit log or any MCP response. The
 `secrets/` directory is a denied path for all tools.
@@ -342,7 +365,7 @@ work. The operator explicitly re-advances through the existing gated
 `hermes_swarm_stage_advance`, which is idempotent for already-validated or
 done stages (a re-advance returns current state as a no-op).
 
-### v0.7 surface manifest
+### Tool permissions
 
 | Tool | Authority class | Gates | Audit | Allowlist |
 | --- | --- | --- | --- | --- |
@@ -350,7 +373,7 @@ done stages (a re-advance returns current state as a no-op).
 | `hermes_events_query` | read_only | allowlist | every call | `HERMES_GPT_EVENTS_ALLOWED_SOURCES` |
 | `hermes_events_tail` | read_only | allowlist | every call | `HERMES_GPT_EVENTS_ALLOWED_SOURCES` |
 | `hermes_oauth_status` | read_only | none | every call | n/a |
-| `hermes_oauth_revoke` | owner | direct + confirm (pending legal) | every call | n/a |
+| `hermes_oauth_revoke` | owner | direct + confirm | every call | n/a |
 | `hermes_swarm_reconcile` | workspace/owner | dry-run-first + apply | every call | n/a |
 
 ## Session history and session control
@@ -359,13 +382,15 @@ These surfaces are independent from the Operator level hierarchy and remain hidd
 
 `HERMES_GPT_ENABLE_SESSION_SEARCH=1` exposes bounded read-only `hermes_session_search`, `hermes_session_list`, `hermes_session_read`, and `hermes_session_export`. Default transcript roles are `user` and `assistant`; internal roles additionally require `HERMES_GPT_ENABLE_SESSION_INTERNAL_CONTENT=1`. Export is in-memory and bounded, creates no files or paths, and lineage export fails closed.
 
-`HERMES_GPT_ENABLE_SESSION_CONTROL=1` exposes `hermes_session_continue`, `hermes_session_send`, `hermes_session_job_status`, and `hermes_session_job_result`. Session-control jobs use a fixed `hermes --resume <id> --oneshot <prompt>` argv with `shell=False`, bound prompt/timeout/result sizes, permit one active job per session, and persist prompt length/hash rather than raw prompt text. Restart reconciliation marks unowned running jobs orphaned rather than signaling a process from a persisted PID. The configured Hermes provider/model is used and may consume quota.
+`HERMES_GPT_ENABLE_SESSION_CONTROL=1` exposes `hermes_session_start`, `hermes_session_continue`, `hermes_session_send`, `hermes_session_rename`, `hermes_session_pin`, `hermes_session_job_status`, `hermes_session_job_result`, and `hermes_session_job_cancel`. Start runs `hermes chat --query-file - --oneshot -Q` in an explicitly allowed Hermes profile; continue/send use `hermes chat --resume <id> --query-file - --oneshot -Q`. Both paths use fixed argv with `shell=False`; optional `model` and `reasoning_effort` values select the turn's model settings. Rename and pin/unpin use fixed `hermes sessions` commands and the same profile allowlists. Jobs bound prompt/timeout/result sizes, permit one active job per existing session, and persist prompt length/hash rather than raw prompt text. Restart reconciliation marks unowned running jobs orphaned rather than signaling a process from a persisted PID. Model calls may consume quota.
 
 See [session history](session-history.md) and [session control](session-control.md). Treat transcript content as private local data.
 
+The separate [managed Hermes session tools](managed-hermes-sessions.md) start scoped sessions with selectable model and reasoning effort. A managed session has a private Hermes home and an isolated browser shared by Hermes and ChatGPT through narrow browser tools.
+
 ## Fleet routing through the local A2A registry
 
-Fleet routing uses only peers already present in the authenticated local Hermes A2A registry.
+Fleet routing uses only peers already present in the authenticated local Hermes A2A registry. Official A2A discovery and RPC responses are limited to 1 MiB before JSON decoding; larger responses are refused.
 
 | Tool | Authority | Behavior |
 | --- | --- | --- |
@@ -449,7 +474,7 @@ Audit records do not intentionally persist raw prompts, `.env` values, vault con
 
 ### `hermes_operator_doctor`
 
-Read-only deep health check across the Operator surface. Checks include gateway state, config/env readability, cron/skills, policy, audit readability, and connector capability.
+Read-only health check of the Operator tools and their dependencies. Checks include gateway state, config/env readability, cron/skills, policy, audit readability, and connector capability.
 
 Gateway state is fail-closed: `hermes_operator_doctor` never reports the gateway as healthy on a heartbeat file alone. A heartbeat with no live gateway PID fails with `GATEWAY_PID_MISSING`; a dead PID fails with `GATEWAY_DEAD_PID`; an unreachable gateway fails with `GATEWAY_UNREACHABLE`. Stale heartbeat files surface as `GATEWAY_STALE_HEARTBEAT` warnings.
 
@@ -674,3 +699,20 @@ Local runner timeout and explicit-cancellation cleanup share one platform-aware
 path. POSIX signals the runner process group. Windows uses `taskkill /T /F` for
 the process tree and falls back to direct process termination if `taskkill` is
 unavailable, times out, or reports failure.
+
+## Autopilot (v0.13)
+
+Autopilot is an optional, default-off runtime that drives one Mission through its MissionPlan. It is enabled by the machine gate `HERMES_GPT_AUTOPILOT=1`, which registers `hermes_autopilot_start`, `hermes_autopilot_status`, and `hermes_autopilot_stop`; with the gate unset none of them exist. Starting needs `workspace` level, direct apply mode, `dry_run=false`, and `confirm=true` (a dry run previews and writes nothing); stopping never needs the machine gate. It adds no authority: every dispatch goes through the existing placement, Work Contract, and delegation surfaces, it never dispatches or advances an approval or `high_impact` node, and it cannot approve a Mission. See [autopilot.md](autopilot.md).
+
+
+Autopilot carries node artifact requirements into Work Contracts, refuses replacement of plans with unfinished work (`PLAN_IN_FLIGHT`), and exposes bounded recovery deferral in Mission reconciliation. See [autopilot.md](autopilot.md) for the exact acceptance and recovery rules. Its read-only browser panel is included in release wheels; browser access still requires the existing UI/authentication gates.
+
+## Declared artifact checks
+
+Work Contract `expected_artifacts` entries accept optional `max_bytes` and
+lowercase `sha256` checks alongside `min_bytes`. Local hashes read at most
+8 MiB and reject changing, nonregular, or unreadable files. Remote evidence
+still needs coordinator verification and an immutable contract binding.
+MissionPlan `artifact_requirements` carries the same checks into every attempt.
+Size and digest checks do not replace semantic review. See
+[Autopilot acceptance](autopilot.md#declared-deliverable-acceptance-v014).

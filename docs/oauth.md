@@ -72,7 +72,7 @@ Keep the process loopback-bound and terminate HTTPS in a deliberately configured
 
 ## Additional clients (Gemini Spark profile)
 
-One statically configured confidential client remains the default. An opt-in **Gemini Spark client profile** can be registered alongside it for Google's consumer Gemini Apps "Custom apps for Spark" connector:
+One statically configured confidential client remains the default. An opt-in Gemini Spark client profile can be registered alongside it for Google's consumer Gemini Apps "Custom apps for Spark" connector:
 
 ```text
 HERMES_GPT_OAUTH_GEMINI_ENABLE=1
@@ -109,56 +109,56 @@ ChatGPT may add `openid` to the authorization request. `offline_access` is requi
 
 An authorization-code exchange returns an access token with `expires_in=3600`. If `offline_access` was granted, it also returns a refresh token. A successful refresh returns a new access token and rotates the refresh token; replaying the old refresh token fails with `invalid_grant`.
 
-Access tokens are HMAC-SHA256 signed with a key derived from the confidential
-client secret. Clustered origins that share the same issuer, client id, client
-secret, and resource can validate a ChatGPT bearer issued by another origin
-**only when that token is still present in the shared encrypted durable token
-store**. A valid signature alone is never sufficient: in server mode the
-durable store is the revocation authority, so `hermes_oauth_revoke` removes
-access and refresh tokens everywhere at once: the envelope is deleted, a
-durable revocation epoch is advanced (fencing off any clustered peer that
-still holds pre-revocation tokens in memory and would otherwise re-persist
-them), and the live process drops its caches and rotates the
-authorization-code signing key. Issuance merges into the shared envelope
-rather than replacing it, so one origin's issuance never evicts another
-origin's valid tokens. Opaque legacy access tokens
-remain valid on the issuing origin via the in-memory/durable store until they
-expire. Rotating the client secret invalidates every signed access token.
+Access tokens use HMAC-SHA256 signatures with a key derived from the primary
+client secret. Origins sharing an issuer, client ID, client secret, resource,
+and encrypted token store can validate one another's tokens. In server mode,
+a valid signature is insufficient: the token must still be live in the shared
+store. Opaque legacy access tokens remain valid on the issuing origin until
+expiry, subject to the same in-memory and durable-store checks. Rotating the
+primary client secret invalidates every signed access token.
 
-Authorization codes are short-lived signed values. Only used-code replay state,
-access tokens, and refresh tokens are held in process memory. Since v0.7,
-issued access and refresh tokens are also persisted to an **encrypted durable
-token store** so a server restart does not invalidate credentials:
+### Durable storage
 
-- store: `<hermes_data>/secrets/hermes_gpt_tokens.db` (0600, SQLite WAL) —
-  one transactional store; each row is AES-256-GCM ciphertext keyed by
-  sha256(token value), so no token material is stored in plaintext. A
-  flock-serialized mutation lock (`hermes_gpt_tokens.db.lock`) orders
-  issuance, rotation, and revocation across processes;
-- retirement tombstones: rotated/revoked token hashes stay retired forever
-  (past their original expiry), so a stale peer cache can never resurrect
-  them; the revocation epoch lives in the store's metadata and is advanced
-  on every revocation;
-- legacy upgrade: pre-SQLite JSON artifacts (`hermes_gpt_tokens.json`,
-  `hermes_gpt_token_ledger`, `hermes_gpt_token_epoch`) are migrated into
-  the store in one transaction at first use, preserving retirement marks
-  and the revocation epoch fail-closed, then removed;
-- key management precedence: OS keyring (`keyring` lib) → key file
-  `<hermes_data>/secrets/hermes_gpt_token_key` (0600, created on first use) →
-  env `HERMES_GPT_TOKEN_MASTER_KEY` (CI/test only, weakest — documented);
-- no token material is ever written to the audit log or any MCP response;
-  `hermes_oauth_status` reports presence/expiry only;
-- explicit revocation: `hermes_oauth_revoke` (owner + direct + confirm)
-  retires every token and advances the epoch in one transaction, then — under
-  the same mutation lock — drops the live process's caches, rotates the
-  authorization-code key, and optionally rotates the ACTIVE master key
-  (keyring overwrite or key-file regeneration; an env-managed key is
-  reported as not rotated with a note to rotate it externally).
+Access and refresh tokens survive restarts through
+`<hermes_data>/secrets/hermes_gpt_tokens.db`. The store is SQLite with WAL and
+0600 permissions. Each token row is AES-256-GCM ciphertext indexed by the
+SHA-256 hash of its token value. Token material is never stored in plaintext
+or included in audit records or MCP responses. `hermes_oauth_status` reports
+presence and expiry only.
 
-The durable store is **subject to legal review before shipping** (ADR-001,
-risk R4). On hosts without a keyring service the key-file fallback keeps the
-key beside the ciphertext under the same 0600 directory; treat that directory
-as secret-bearing.
+A process-shared mutation lock, `hermes_gpt_tokens.db.lock`, orders issuance,
+refresh rotation, and revocation. Issuance merges records rather than replacing
+another origin's valid tokens. Rotated or revoked hashes remain retired forever,
+so stale peer caches cannot restore them. A durable revocation epoch also fences
+out writes from peers holding pre-revocation state.
+
+The pre-SQLite files `hermes_gpt_tokens.json`, `hermes_gpt_token_ledger`, and
+`hermes_gpt_token_epoch` migrate in one transaction at first use. Migration
+preserves retirement marks and the epoch, fails closed on invalid input, and
+removes the legacy files afterward.
+
+`HERMES_GPT_TOKEN_MASTER_KEY`, when set, takes precedence over stored keys and
+is intended for CI or tests. Otherwise lookup uses the OS keyring, then
+`<hermes_data>/secrets/hermes_gpt_token_key`, a 0600 file created on first use.
+New keys go to the keyring when available, or to the key file. Without a
+keyring service, the key sits beside the ciphertext; protect the entire
+secret-bearing directory. Historical risk and legal-review context remains in
+[the design archive](design/README.md).
+
+### Revocation
+
+`hermes_oauth_revoke` requires Owner authority, direct mode, `dry_run=false`,
+and `confirm=true`. It retires every client's tokens on the instance's data
+root and advances the epoch in one transaction. It then clears the live
+process's caches and rotates the authorization-code signing key. The store
+lock also protects optional master-key rotation after the transaction commits.
+It can rotate the active master key by overwriting the keyring entry
+or regenerating the key file. An environment-managed key is reported as not
+rotated and must be changed externally.
+
+Authorization codes are signed and expire after five minutes. Used-code replay
+state, access-token caches, and refresh-token caches remain bounded in process
+memory.
 
 ## Static bearer alternative
 

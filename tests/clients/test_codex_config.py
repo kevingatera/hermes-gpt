@@ -1,0 +1,142 @@
+from pathlib import Path
+
+from hermes_gpt.clients.codex import config as codex_config
+from hermes_gpt.execution import codex as oc
+
+
+def _fake_codex(path: Path, version: str = "0.50.0", *, exit_code: int = 0) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\necho 'codex {version}'\nexit {exit_code}\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def test_direct_project_install_is_idempotent_and_preserves_other_servers(tmp_path):
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    config = config_dir / "config.toml"
+    config.write_text(
+        "# existing user comment\n[mcp_servers.other]\ncommand = \"other.exe\"\nargs = []\n",
+        encoding="utf-8",
+    )
+    first = codex_config.install(project=True, cwd=tmp_path, server_path=tmp_path / "server.py", prefer_cli=False)
+    assert first["ok"] is True
+    assert first["changed"] is True
+    assert first["backup"]
+    text = config.read_text(encoding="utf-8")
+    assert "# existing user comment" in text
+    assert "[mcp_servers.other]" in text
+    assert codex_config.get_server_entry(config)["args"][-1] == "mcp"
+
+    second = codex_config.install(project=True, cwd=tmp_path, server_path=tmp_path / "server.py", prefer_cli=False)
+    assert second["ok"] is True
+    assert second["changed"] is False
+
+    removed = codex_config.uninstall(project=True, cwd=tmp_path)
+    assert removed["ok"] is True
+    assert removed["changed"] is True
+    after = config.read_text(encoding="utf-8")
+    assert "[mcp_servers.other]" in after
+    assert "hermes-gpt" not in after
+
+
+def test_install_refuses_conflicting_server_name(tmp_path):
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    config.write_text("[mcp_servers.\"hermes-gpt\"]\ncommand = \"not-hermes.exe\"\nargs = [\"x\"]\n", encoding="utf-8")
+    result = codex_config.install(project=True, cwd=tmp_path, prefer_cli=False)
+    assert result["ok"] is False
+    assert result["code"] == "NAME_CONFLICT"
+    assert "not-hermes.exe" in config.read_text(encoding="utf-8")
+
+
+def test_malformed_config_is_never_changed(tmp_path):
+    config = tmp_path / ".codex" / "config.toml"
+    config.parent.mkdir()
+    original = "[mcp_servers\nthis is invalid"
+    config.write_text(original, encoding="utf-8")
+    result = codex_config.install(project=True, cwd=tmp_path, prefer_cli=False)
+    assert result["ok"] is False
+    assert result["code"] == "MALFORMED_CONFIG"
+    assert config.read_text(encoding="utf-8") == original
+
+
+def test_doctor_reports_registry_and_redaction_checks(tmp_path):
+    result = codex_config.doctor(
+        project=True,
+        cwd=tmp_path,
+        list_tools=lambda: ["hermes_status", "hermes_capabilities", "hermes_plan", "hermes_gateway_diagnostics"],
+        status=lambda: {"ok": True, "gateway": "running"},
+    )
+    assert result["checks"]["mcp_tool_registry"]["status"] == "PASS"
+    assert result["checks"]["redaction_smoke"]["status"] == "PASS"
+    assert result["checks"]["gateway"]["status"] == "PASS"
+
+
+def test_install_toolset_difference_requires_refresh(tmp_path):
+    first = codex_config.install(project=True, cwd=tmp_path, prefer_cli=False, toolset="core")
+    assert first["ok"] is True
+    blocked = codex_config.install(project=True, cwd=tmp_path, prefer_cli=False, toolset="operator")
+    assert blocked["code"] == "REFRESH_REQUIRED"
+    refreshed = codex_config.install(project=True, cwd=tmp_path, prefer_cli=False, toolset="operator", refresh=True)
+    assert refreshed["ok"] is True and refreshed["changed"] is True
+    entry = codex_config.get_server_entry(tmp_path / ".codex" / "config.toml")
+    assert entry["env"][codex_config.CODEX_TOOLSET_ENV] == "operator"
+    assert refreshed["backup"]
+
+
+def test_sessions_install_enables_session_gates_and_refresh_preserves_user_env(tmp_path):
+    installed = codex_config.install(
+        project=True, cwd=tmp_path, prefer_cli=False, toolset="core"
+    )
+    assert installed["ok"] is True
+    config = tmp_path / ".codex" / "config.toml"
+    with config.open("a", encoding="utf-8") as handle:
+        handle.write('HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES = "chatgpt-local"\n')
+
+    refreshed = codex_config.install(
+        project=True,
+        cwd=tmp_path,
+        prefer_cli=False,
+        toolset="sessions",
+        refresh=True,
+    )
+    assert refreshed["ok"] is True
+    entry = codex_config.get_server_entry(config)
+    assert entry["env"][codex_config.CODEX_TOOLSET_ENV] == "sessions"
+    assert entry["env"][codex_config.ENABLE_SESSION_SEARCH_ENV] == "1"
+    assert entry["env"][codex_config.ENABLE_SESSION_CONTROL_ENV] == "1"
+    assert entry["env"][codex_config.ENABLE_SCOPED_TASKS_ENV] == "1"
+    assert entry["env"]["HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES"] == "chatgpt-local"
+
+
+def test_doctor_reports_resolved_codex_binary(monkeypatch, tmp_path):
+    exe = _fake_codex(tmp_path / "bin" / "codex")
+    monkeypatch.setattr(oc, "_probe_codex_version", lambda path: "codex 0.50.0")
+    monkeypatch.setenv(oc.CODEX_EXE_ENV, str(exe))
+    result = codex_config.doctor(
+        project=True,
+        cwd=tmp_path,
+        list_tools=lambda: ["hermes_status", "hermes_capabilities", "hermes_plan", "hermes_gateway_diagnostics"],
+        status=lambda: {"ok": True, "gateway": "running"},
+    )
+    assert result["checks"]["codex_binary"]["status"] == "PASS"
+    assert result["checks"]["codex_binary"]["path"] == str(exe)
+    assert result["checks"]["codex_binary"]["source"] == "env"
+    assert result["checks"]["codex_version"]["status"] == "PASS"
+
+
+def test_doctor_warns_when_only_protected_windows_apps_candidate(monkeypatch, tmp_path):
+    protected = _fake_codex(tmp_path / "WindowsApps" / "codex")
+    monkeypatch.setenv("PATH", str(protected.parent))
+    monkeypatch.setattr(oc, "_path_candidates", lambda: [protected])
+    monkeypatch.delenv(oc.CODEX_EXE_ENV, raising=False)
+    result = codex_config.doctor(
+        project=True,
+        cwd=tmp_path,
+        list_tools=lambda: ["hermes_status", "hermes_capabilities", "hermes_plan", "hermes_gateway_diagnostics"],
+        status=lambda: {"ok": True, "gateway": "running"},
+    )
+    assert result["checks"]["codex_binary"]["status"] == "WARN"
+    assert result["checks"]["codex_binary"]["path"] is None
+    assert "WindowsApps" in result["checks"]["codex_binary"]["reason"]

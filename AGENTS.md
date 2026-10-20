@@ -94,10 +94,10 @@ Run the smallest relevant tests first, then the full suite for cross-cutting cha
 Common commands:
 
 ```bash
-python -m pytest test_operator_mission.py
-python -m pytest test_operator_contract.py
-python -m pytest test_operator_swarm.py
-python -m pytest test_operator_codex.py
+python -m pytest tests/missions/test_mission.py
+python -m pytest tests/execution/test_contract.py
+python -m pytest tests/execution/test_swarm.py
+python -m pytest tests/execution/test_codex.py
 python -m pytest
 ```
 

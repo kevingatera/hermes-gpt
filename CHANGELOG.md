@@ -1,10 +1,101 @@
 # Changelog
 
+## Unreleased
+
+- Make the existing job status action wait briefly and include completed answers; add `hermes_wait` as an optional equivalent. The panel follows a supplied job reference automatically, exposes work time limits, shows elapsed time, backs off checks, retries transient observations, and offers result recovery from diagnostics without duplicate submissions.
+
+- Distinguish profile cloning failures from browser authentication and report insufficient disk space with a safe recovery action. Clarify that ordinary account requests use existing Hermes sessions without cloning a workspace profile.
+
+- Report panel content-size changes to MCP Apps hosts and scroll within fixed-height panes, keeping completed answers and expanded settings reachable. Following a pasted job selects its authorized profile before offering continuation.
+
+- Add opt-in private connection administration with persistent live feature/profile settings, stable tool discovery, nonsecret profile configuration, and native scheduler changes. The panel applies settings without a metadata refresh; protected paths and Owner authority remain server-controlled.
+
+- Add an opt-in inline Hermes panel using the MCP Apps bridge. Profile defaults, conversation selection, work submission, schedule reads, job following/cancellation, and request diagnostics use existing authorized tools. No additional provider credentials or UI network origins are required.
+
+- Present the plugin as Hermes, with `hermes_ask` for ordinary delegated requests and bounded answer waiting. Existing package IDs and session controls remain compatible.
+- Expose read-only cron inspection on the curated connection and distinguish direct MCP capabilities from a Hermes profile's tools. A separate cron read allowlist grants no mutation authority.
+- Add rotating private request logs, request-to-job correlation, and bounded `hermes_request_diagnostics`. Logs omit request and response bodies, credentials, URLs, and exception messages.
+- Stop using private cron prompt excerpts as names for unnamed jobs.
+
+- Prepare a managed task's stopped browser before starting a resumed Agent turn. Failed preparation returns `TASK_BROWSER_UNAVAILABLE`; Agent confinement and explicit browser closure remain in force.
+
+- Move Python runtime modules into the `hermes_gpt` package under `src/` and group tests by subsystem. Python imports now use package namespaces; launch with `hermes-gpt` or `python -m hermes_gpt` instead of the removed root `server.py`. MCP tool names and persisted formats are unchanged.
+
+- Separate OAuth token encoding and cryptographic validation from grant lifecycle, retaining existing imports, replay prevention, revocation, and persistence checks.
+
+- Bound Fabric configuration and routing-policy file reads before enforcing the existing 128 KiB JSON payload limit.
+
+- Separate CLI orchestration in `hermes_gpt.server.cli` from server composition in `hermes_gpt.server.app`. CLI flags, authorization gates, transport defaults, and stderr messages are unchanged.
+- Separate Fabric routing-policy models, `RoutingError`, and policy validation into `hermes_gpt.fleet.fabric_routing_policy`. The router imports that policy layer; eligibility filtering, ranking, journaling, and backend dispatch are unchanged.
+- Refresh the active browser tab title from the current page instead of forwarding stale CLI metadata; omit it when the observation fails.
+
+- Separate budget policy validation, SQLite storage, and MCP actions into focused modules while retaining the established budget imports and enforcement gates.
+
+- Keep malformed workflow and delegation observations unverified instead of raising during mission reconciliation.
+
+- Recognize flat typeshed credential API stub packages while refusing data files, symlinks, and credential directories outside typeshed.
+
+- Accept Python type-stub files as source when validating cloned MCP runtime mounts.
+
+- Include the server tool and runtime modules required by the installed `hermes-gpt` entry point; check local import dependencies against the package manifest.
+
+- Restore the confined task browser bridge import dependencies after the Operator policy split.
+
+- Bound A2A discovery and RPC response reads to 1 MiB before decoding peer JSON.
+
+- Add read-only `hermes_session_profiles` discovery for explicitly authorized profiles and their non-secret configured model, provider, and reasoning-effort defaults.
+- Add profile-scoped `hermes_session_rename` and `hermes_session_pin` controls using Hermes' fixed session CLI commands.
+- Add `hermes_session_start` to the gated session-control MCP surface, using an allowlisted Hermes profile and optional model and reasoning-effort overrides; the returned job status exposes Hermes' new session ID.
+- Add an opt-in Codex `sessions` toolset for gated Hermes session history/control, model and reasoning-effort selection, scoped session start/resume, and authorized local browser controls through the existing Codex MCP installer.
+- Add opt-in scoped Hermes sessions with selectable model and reasoning effort, workspace confinement, durable resume, and a browser shared with ChatGPT through a narrow MCP toolset. Browsers are isolated by default; a separate profile allowlist can enable attachment to a local browser configured by a Hermes profile. The read-only `hermes_task_list` tool finds managed sessions to resume in later conversations. Managed tasks inherit the selected profile's configured tools under OS confinement; the injected browser bridge exposes no raw CDP or password-vault operations.
+- Add profile-scoped MCP browser tools so ChatGPT can list, attach to, observe, and act in an explicitly authorized local Hermes browser profile without starting a model turn. Page mutations keep the Operator workspace/direct and explicit-confirmation gates; shared browsers cannot be closed or restarted through these tools.
+- Add bounded browser tab listing and gated tab selection to managed-task and direct-profile browser controls.
+- Include each managed task's browser source (`disabled`, `isolated`, or `hermes_profile`) and headed-browser flag in `hermes_task_list` without exposing the profile name.
+- Redact browser URL credentials and common secret-bearing query or fragment parameters from browser status and command output.
+- Run managed turns through Hermes' supported `chat` interface, recover session IDs from quiet-mode stderr, and keep the task's browser MCP active inside the confined process. Browser descriptors use private per-task mount directories, and both an installed CLI symlink and its target are exposed read-only.
+- Validate profile-configured MCP runtime mounts and refuse protected secret paths or runtime trees that cannot be checked safely.
+- Preserve protected symlink aliases during runtime-path validation and skip ancestors of external Hermes data directories before scanning them.
+- Require session-control requests to use a profile explicitly named by `HERMES_GPT_SESSION_CONTROL_ALLOWED_PROFILES` and authorized by the Operator profile allowlist. This prevents session execution from bypassing profile restrictions through the default-profile path.
+- Add `hermes_session_job_cancel`, which signals only a process owned by the current server instance and records cancellation in the durable job status. POSIX cancellation targets the dedicated process group and escalates to `SIGKILL` when members remain.
+- Publish redacted session-job lifecycle and elapsed-time progress events on the durable `session-job` topic; task records remain authoritative and progress events contain no prompts or captured output.
+- Separate child stderr from captured stdout so local diagnostics cannot appear as Hermes task results.
+
+## 0.14.0 - 2026-10-03
+
+Acceptance and recovery: declare deliverable checks before dispatch and recover from positively observed artifact failures within existing limits.
+
+- MissionPlan nodes can specify optional `artifact_requirements` for existing artifact basenames: positive `min_bytes`, optional `max_bytes`, and optional lowercase `sha256`. Requirements participate in the node signature, survive bounded rework unchanged, and flow into each attempt's Work Contract. Existing nodes/contracts retain their prior canonical hashes when optional fields are absent.
+- Work Contracts enforce size bounds and expected hashes against local files or contract-bound coordinator-verified remote artifact metadata. Local hash reads are binary, bounded to 8 MiB, reject changing/nonregular files, and fail closed on unreadable evidence.
+- Delegations persist bounded validation check enums and a restart-safe 30-second artifact delivery grace. Successful execution with confirmed bad artifacts and all other required checks passing becomes `failed` with outcome `validation_failed` after grace; Autopilot can use its existing bounded semantic replan path. Missing run observations, pending review, denied authority, cancellation ambiguity, and unreadable artifacts never trigger this recovery.
+- Flight Deck explains per-attempt completion checks, artifact failure reasons, delivery grace, and pending validation without adding browser mutation actions. Completed/failed task evidence stays visible when its current lineage can be resolved.
+- No new MCP tools, no default gate changes, and no approval bypass. Autopilot remains default off and final Mission approval remains Owner-only.
+
+## 0.13.0 - 2026-10-03
+
+- Release hardening: enforce required nonempty node artifacts in isolated attempt workspaces; prevent plan replacement from orphaning unfinished work; preserve bounded, classifier-approved recovery during independent Mission reconciliation without hiding failed evidence.
+- Flight Deck now renders Autopilot progress, workers, budgets, recovery limits, and owner attention; release packages include the built browser assets. CI exercises the Python/MCP matrix on Windows and Linux.
+- Windows process observation leaves terminal publication unblocked; durable state handles transient file-sharing contention and fails closed on persistent read denial. Pi RPC pipe reading is portable and enforces timeouts even for partial JSONL lines.
+
+Autopilot: one durable, default-off runtime that drives a Mission through its MissionPlan without a human re-triggering every node, and never crosses an approval boundary. It is a caller of the existing Mission, plan, placement, Work Contract, delegation, budget, and live-event surfaces, not a new authority. See [docs/autopilot.md](docs/autopilot.md).
+
+- Added `hermes_autopilot_start` / `hermes_autopilot_status` / `hermes_autopilot_stop`, registered only when `HERMES_GPT_AUTOPILOT=1` (default off), so the default connector surface is unchanged at 137 tools and is 140 with the gate set. Start is dry-run first and needs `workspace` level, direct mode, and `confirm=true`; stop is never gated behind the machine gate. A detached worker process (via the durable job supervisor) owns one Mission at a time and survives an MCP server restart, with status re-verified on every read rather than trusted from a cache.
+- Parallel scheduling: up to `max_concurrency` ready nodes run at once, dispatched only through the existing placement, contract, and delegation chain (no new dispatch path). Dispatch is idempotent with deterministic task and delegation ids, a crash between dispatch and the node update is adopted rather than redispatched, and controller-dispatched work is adopted rather than duplicated. Plan writes are compare-and-swap on the plan version (`hermes_plan_node_transition` gains an optional `expected_plan_version`).
+- Automatic node advancement: nodes complete only when `hermes_delegation_reconcile` validates the Work Contract `SATISFIED` against observed state with evidence bound to the contract hash; a worker's own success claim is never accepted, and missing evidence fails closed.
+- Approval frontier: approval nodes and `high_impact` nodes are never dispatched or advanced. Autopilot reports `waiting_for_owner` and dispatches nothing past that node while independent branches continue. It never approves or completes a Mission; once every node is done it calls the existing Mission reconcile, which stops at `awaiting_approval`, and only `hermes_mission_approve` in Owner mode completes it.
+- Bounded recovery driven by the existing failure classifier: transient failures are retried with backoff on an alternate peer, semantic failures with an eligible proposal are replanned through a rework clone (the failed node is kept as history; completed nodes, authorization classes, and approval nodes are never touched), and every other class fails the node for a human. New `bump_retries` option on `hermes_plan_node_transition`, plus an internal guarded rework patch.
+- Mission model change: a failed or cancelled delegation attempt can be marked superseded by its successor (`superseded_by:<id>` on the attachment relationship) so a successful retry no longer leaves the Mission failed. It is written only by an internal bridge, refused by public `hermes_mission_attach`, honored only while the old attempt is authoritatively failed or cancelled, and ignored when forged, dangling, or cyclic. Approval rules are unchanged. See [docs/missions.md](docs/missions.md).
+- Mission limits: `max_attempts_per_node`, `max_runtime_seconds`, `max_concurrency`, and `max_replans` are validated at start. New dispatch is held whenever the budget envelope is not verifiably within its limit, independent of whether the budget hard-block gates are armed; an invalid or unreadable envelope also holds. An expired runtime stops new work, drains what is in flight, and ends the run.
+- Event-driven wakeups: the worker long-polls the Mission's live events with a periodic backstop (`HERMES_GPT_AUTOPILOT_IDLE_SECONDS`, default 2.0). Events only end a wait early and are never treated as proof; a broken event store degrades to the timer; ticks are debounced. A cancel that arrives before the worker has registered its process identity is noticed within a second.
+- `hermes_autopilot_status` gains an additive, read-only `summary` (progress, workers, the approval frontier, budget, recovery counters, limits, wake-up counters, and an `attention` list with `needs_owner`); every earlier key is unchanged. A status read never enforces a budget.
+- Flight Deck: read-only `GET /api/ops/missions/{mission_id}/autopilot`. It writes nothing (unlike the status tool it does not heal the stored record), reports a dead worker as stale, and returns an allow-listed projection only. See [docs/flight-deck-missions.md](docs/flight-deck-missions.md).
+- An end-to-end acceptance test runs the whole scenario with a real detached worker: parallel nodes on two placements, a killed peer with a reroute and no duplicate attempt, an approval stop and resume, the owner's final approval in a separate process, and the same run again with the MCP server restarted mid-Mission.
+- `operator_autopilot` is now included in the built wheel and sdist (it was missing from the module list).
+- Profile-aware skill validation probes the Hermes Agent explicit-load path with `skill_view(..., preprocess=False)`, so a pre-dispatch gate cannot execute `skills.inline_shell` snippets. Linux CI now checks out Hermes Agent so the real-loader integration tests run instead of skipping.
+
 ## 0.12.0 - 2026-09-22
 
 - Added the budget D3 hard-block ENFORCEMENT path (v0.12 slice-2, design `docs/design/v0.12-budget-enforcement.md`): `operator_mission_budget.enforce_budget_breaker` executes the on-crossing action set — pause the Mission via the existing transition (reason `budget_breaker`), one fleet-attention INTERRUPT envelope through the existing controller attention spool, one `budget_events` `break` row — behind a fail-closed gate set that is DEFAULT OFF: per-call `confirm`, machine gate `HERMES_GPT_BUDGET_HARD_BLOCK=1`, Operator enabled + `direct` apply mode, and per-mission `hard_block_enabled` + `pause_on_cross` policy flags. INV-11 anti-TOCTOU re-snapshot, idempotent repeat (`already_enforced`, one spool entry max), not-pausable fail-closed `need_attention`, INV-9 bounded fields, and INV-10 loud spool failures are tested. `hermes_budget_check` gains keyword-only `enforce`/`confirm` (default `enforce=False` is byte-identical to the previous dry-run surface; the MCP tool signature is unchanged), and the controller reconcile pass records a `budget_enforcement` outcome only when the machine gate is armed — otherwise pass output is byte-identical and nothing is written. Connector surface stays at 137 tools.
 - Added the controller L2-rung execution engine + placement-informed dispatch (v0.12 slice-2, design `docs/design/v0.12-controller-l2.md`): when AND ONLY when the per-call `confirm`, the machine gate `HERMES_GPT_CONTROLLER_EXECUTE=1`, and live Operator policy (enabled + `direct` apply mode + `workspace` level) all hold, a reconcile pass EXECUTES its single smallest recovery action — a placement-scored dispatch through the existing work-contract/delegation authority surface, idempotency-keyed, at most one action per pass, with a pre-dispatch intent record so a crash reconciles fail-closed instead of re-dispatching. Every other combination stays decision-only and returns an additive `execution` block naming a stable refusal reason (`confirm_required`, `operator_policy_required`, `workspace_required`, `dry_run`, `no_action`, `not_executable_attention`, `unsupported_action`, `already_executed`, `no_capable_target`, `authorization_class_not_supported`, `approval_gate`, `secret_like_requirement`). All §7.7 prohibitions are retained and tested: the rung never completes, approves, weakens evidence, auto-redispatchs `reconciling` work, rewrites a plan, retries unboundedly, places without authority, or touches secrets — `no_capable_target` still escalates through the existing attention spool, and high-impact authorization classes keep their human gate. `would_assign` in the new `operator_placement.dispatch_view` is `true` only for a dispatch that actually happened (scoring surfaces are unchanged). `hermes_controller_reconcile` gains a `confirm` parameter (default `False`), `hermes_controller_status` reports `execution_enabled` plus an `executions` rollup, and the existing `controller_plan`/`controller_telemetry` surfaces carry the execution ledger. The rung is DEFAULT OFF: with the machine gate unset the pass envelope is byte-identical to the previous release (same 31 keys, no `execution` member, `would_execute` False), `dry_run=True` stays a byte-identical zero-write preview, and the only durable change is four additive execution-ledger columns on `controller_telemetry` (`executed_idempotency_key`/`executed_result`/`executed_target`/`executed_refused_reason`) that stay empty unless an execution is attempted. Connector surface stays at 137 tools.
-
 ## 0.11.0 - 2026-09-21
 
 - Support MCP Python SDK 2.x alongside 1.28.1+, preserving local stdio, HTTP/SSE transport settings, authentication and Operator gates.

@@ -104,7 +104,10 @@ if ([string]::IsNullOrWhiteSpace($env:CONTROL_PLANE_API_KEY)) {
 
 Assert-FileExists -Path $PythonExe -Label 'Python executable'
 Assert-FileExists -Path $TunnelClientExe -Label 'tunnel-client executable'
-Assert-FileExists -Path (Join-Path $WorkingDir 'server.py') -Label 'Hermes GPT server.py'
+& $PythonExe -c 'import hermes_gpt'
+if ($LASTEXITCODE -ne 0) {
+    throw 'Install hermes-gpt into the configured Python environment before launching.'
+}
 
 $hermesProcess = $null
 $tunnelProcess = $null
@@ -113,7 +116,7 @@ $exitCode = 1
 try {
     $hermesProcess = Start-Process `
         -FilePath $PythonExe `
-        -ArgumentList @('server.py', '--http', '--host', $ListenHost, '--port', [string]$ListenPort) `
+        -ArgumentList @('-m', 'hermes_gpt', '--http', '--host', $ListenHost, '--port', [string]$ListenPort) `
         -WorkingDirectory $WorkingDir `
         -PassThru `
         -NoNewWindow
