@@ -52,3 +52,10 @@ notes rather than putting host-specific state in this shared guide.
 Saved sessions can survive a restart. Isolated browser tabs and process
 ownership have different lifetimes; see [managed sessions](managed-hermes-sessions.md)
 and [session control](session-control.md).
+
+A checkout version, an installed package, and a running service can differ.
+Verify the service command, working directory, imported module paths, and MCP
+`serverInfo.version` before reporting an update. Package installations should
+resolve modules from that installation, without an older checkout on
+`PYTHONPATH`. Review local changes and untracked operational files before
+cleaning up any historical checkout.

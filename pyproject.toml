@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hermes-gpt"
-version = "0.12.0"
+version = "0.14.0"
 description = "Local-dev MCP sidecar for exposing selected Hermes Agent capabilities."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -47,6 +47,8 @@ include = ["hermes_gpt*"]
 "hermes_gpt.clients.chatgpt" = ["assets/*.html", "assets/*.css", "assets/*.js"]
 
 [tool.setuptools.data-files]
+"share/hermes-gpt/web" = ["web/dist/*.html"]
+"share/hermes-gpt/web/assets" = ["web/dist/assets/*.js", "web/dist/assets/*.css"]
 "share/hermes-gpt" = [
   "README.md",
   "pyproject.toml",
@@ -58,6 +60,9 @@ include = ["hermes_gpt*"]
   "docs/operator-mode.md",
   "docs/finance.md",
   "docs/missions.md",
+  "docs/autopilot.md",
+  "docs/release-notes-v0.13.0.md",
+  "docs/release-notes-v0.14.0.md",
   "docs/capabilities-and-mission-ledger.md",
   "docs/live-events.md",
   "docs/delegations.md",

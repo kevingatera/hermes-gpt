@@ -72,3 +72,6 @@ _observation_is_fresh_for_cancellation = (
     delegation_lifecycle._observation_is_fresh_for_cancellation
 )
 _mission_dispatch_guard = delegation_lifecycle._mission_dispatch_guard
+
+validation_summary = delegation_store.validation_summary
+VALIDATION_GRACE_SECONDS = delegation_store.VALIDATION_GRACE_SECONDS

@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
         python: ['3.10', '3.11', '3.12']
         sdk: ['mcp>=1.28.1,<2', 'mcp>=2,<3']
         include:
@@ -31,7 +31,7 @@ jobs:
       - name: Run full test suite
         env:
           HERMES_HTTP_TEST: "1"
-        run: python -m pytest -q
+        run: python -m pytest -q -o addopts='' --tb=short
       - name: Run runner regression tests
         run: >-
           python -m pytest -q
@@ -49,6 +49,8 @@ jobs:
       - name: Compile operator modules
         run: >-
           python -m py_compile
+          src/hermes_gpt/missions/autopilot.py
+          src/hermes_gpt/server/tools/autopilot.py
           src/hermes_gpt/server/app.py
           src/hermes_gpt/clients/codex/core.py
           src/hermes_gpt/clients/codex/mcp.py
@@ -101,7 +103,7 @@ jobs:
           HERMES_AGENT_ROOT: ${{ github.workspace }}/hermes-agent-src
           PYTHONPATH: ${{ github.workspace }}/hermes-agent-src
         run: >-
-          python -c "from hermes_gpt.skills import resolution as r;
+          python -c "from hermes_gpt.skills import loader as r;
           assert r._agent_modules() is not None, 'Hermes Agent loader missing'"
       - name: Run skill-resolution tests against the real Agent loader
         env:
@@ -157,6 +159,14 @@ jobs:
           src/hermes_gpt/fleet/fabric.py src/hermes_gpt/fleet/fabric_control.py src/hermes_gpt/fleet/fabric_router.py src/hermes_gpt/fleet/fabric_routing_policy.py src/hermes_gpt/fleet/fabric_g4c.py src/hermes_gpt/fleet/fabric_view.py
           tests/fleet/test_fabric.py tests/fleet/test_fabric_adversarial.py tests/fleet/test_fabric_control.py
           tests/fleet/test_fabric_router.py tests/fleet/test_fabric_routing_policy.py tests/fleet/test_fabric_g4c.py tests/fleet/test_fabric_view.py tests/fleet/test_fabric_integration.py tests/ui/test_ui_fabric.py
+          src/hermes_gpt/missions/autopilot.py src/hermes_gpt/server/tools/autopilot.py
+          tests/missions/test_autopilot.py tests/missions/test_autopilot_acceptance.py
+          tests/missions/test_autopilot_advance.py tests/missions/test_autopilot_deliverables.py
+          tests/missions/test_autopilot_frontier.py tests/missions/test_autopilot_limits.py
+          tests/missions/test_autopilot_recovery.py tests/missions/test_autopilot_scheduler.py
+          tests/missions/test_autopilot_status.py tests/missions/test_autopilot_wakeup.py
+          tests/missions/test_mission_supersede.py tests/missions/test_plan_rework.py
+          tests/execution/test_v014_acceptance.py tests/ui/test_ui_autopilot.py
           src/hermes_gpt/execution/runners.py tests/execution/test_runners.py src/hermes_gpt/execution/delegations.py tests/execution/test_delegations.py
           src/hermes_gpt/policy/confinement.py tests/policy/test_runner_confinement.py tests/policy/test_runner_confinement_policy.py
           src/hermes_gpt/workspace/export.py tests/workspace/test_export.py tests/server/test_server_export.py
@@ -180,6 +190,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flight-deck
+          path: web/dist/
 
   windows-docs:
     runs-on: windows-latest
@@ -211,6 +225,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: flight-deck
+          path: web/dist/
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

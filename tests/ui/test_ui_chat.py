@@ -8,7 +8,7 @@ persistence are all exercised end-to-end without any LLM call.
 
 from __future__ import annotations
 
-import os
+import importlib.util
 import sys
 import threading
 import time
@@ -29,7 +29,6 @@ from starlette.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from hermes_gpt.ui import chat as ui_chat
-
 
 # ── Test doubles ──────────────────────────────────────────────────────────
 
@@ -95,6 +94,16 @@ def install_stub_agent(monkeypatch, **agent_kwargs):
 def isolated_ui_env(monkeypatch, tmp_path):
     """Point HERMES_HOME at a temp dir and reset module state per test."""
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    # Agent config/bootstrap integration is tested separately. Chat transport
+    # tests must not initialize or update an installed Agent runtime.
+    from hermes_gpt.ui import state as local_state
+
+    spec = importlib.util.spec_from_file_location("hermes_state", local_state.__file__)
+    shim = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, "hermes_state", shim)
+    spec.loader.exec_module(shim)
+    monkeypatch.setattr(ui_chat, "_resolve_model", lambda: "test-model")
+    monkeypatch.setattr(ui_chat, "_resolve_toolsets", lambda: [])
     monkeypatch.delenv(ui_chat.UI_PROFILE_ENV, raising=False)
     monkeypatch.delenv(ui_chat.UI_TOOL_PREVIEW_BYTES_ENV, raising=False)
     monkeypatch.delenv(ui_chat.UI_MAX_CONCURRENT_ENV, raising=False)

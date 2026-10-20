@@ -7,9 +7,10 @@ import json
 import re
 from typing import Any
 
+from hermes_gpt.execution.contract_schema import artifact_constraints
+from hermes_gpt.execution.swarm_workflows import CANONICAL_STAGE_SPECS, DEFAULT_OWNERS
 from hermes_gpt.missions import runtime as mission
 from hermes_gpt.policy import authorization as op
-from hermes_gpt.execution.swarm_workflows import CANONICAL_STAGE_SPECS, DEFAULT_OWNERS
 
 SCHEMA_VERSION = "0.9-plan.1"
 PLAN_SCHEMA = "hermes.mission-plan/v1"
@@ -184,9 +185,9 @@ def _node_contract_signature(node: dict[str, Any]) -> str:
         "budget": node["budget"],
         "expected_artifacts": node["expected_artifacts"],
     }
-    enc = json.dumps(
-        skeleton, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    )
+    if node.get("artifact_requirements"):
+        skeleton["artifact_requirements"] = node["artifact_requirements"]
+    enc = json.dumps(skeleton, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(enc.encode("utf-8")).hexdigest()
 
 
@@ -225,32 +226,21 @@ def _validate_node_dag(nodes: list[dict[str, Any]], *, uuid: set[str]) -> None:
 def _canonical_node(raw: Any) -> dict[str, Any]:
     """Validate + canonicalize one plan node (definition only — no state)."""
     if not isinstance(raw, dict):
-        raise ValueError("each plan node must be an object")  # noqa: TRY004 -- validation handlers serialize shape errors as ValueError.
-    node_id = _clean_text(
-        raw.get("node_id"), field="node_id", maximum=64, required=True
-    )
+        raise ValueError("each plan node must be an object")
+    node_id = _clean_text(raw.get("node_id"), field="node_id", maximum=64, required=True)
     if not NODE_ID_RE.fullmatch(node_id):
         raise ValueError(f"node_id {node_id!r} is invalid")
     kind = str(raw.get("kind", KIND_SINGLE)).strip().lower()
     if kind not in KINDS:
         raise ValueError(f"node {node_id!r} kind must be one of {list(KINDS)}")
-    owner = _clean_profile(
-        raw.get("owner"),
-        field=f"node {node_id} owner",
-        allow_owner=(kind == KIND_APPROVAL),
-    )
+    owner = _clean_profile(raw.get("owner"), field=f"node {node_id} owner", allow_owner=(kind == KIND_APPROVAL))
     if kind == KIND_APPROVAL and owner not in ("owner", "tony"):
         raise ValueError(f"approval node {node_id!r} owner must be 'owner' or 'tony'")
 
     parents = raw.get("parents") or []
     if not isinstance(parents, list) or len(parents) > MAX_DEPTH_DEPENDS:
-        raise ValueError(
-            f"node {node_id!r} parents must be a list (<= {MAX_DEPTH_DEPENDS})"
-        )
-    parents = [
-        _clean_text(p, field=f"node {node_id} parent", maximum=64, required=True)
-        for p in parents
-    ]
+        raise ValueError(f"node {node_id!r} parents must be a list (<= {MAX_DEPTH_DEPENDS})")
+    parents = [_clean_text(p, field=f"node {node_id} parent", maximum=64, required=True) for p in parents]
     for p in parents:
         if not NODE_ID_RE.fullmatch(p):
             raise ValueError(f"node {node_id!r} has invalid parent {p!r}")
@@ -262,40 +252,24 @@ def _canonical_node(raw: Any) -> dict[str, Any]:
     if raw.get("objective") is not None:
         objective_meta = _objective_meta(raw["objective"])
     else:
-        o_sha = _clean_text(
-            raw.get("objective_sha256"),
-            field=f"node {node_id} objective_sha256",
-            maximum=64,
-        )
+        o_sha = _clean_text(raw.get("objective_sha256"), field=f"node {node_id} objective_sha256", maximum=64)
         if o_sha:
             if not SHA_RE.fullmatch(o_sha):
-                raise ValueError(
-                    f"node {node_id!r} objective_sha256 must be lowercase SHA-256"
-                )
-            objective_meta = {
-                "objective_len": int(raw.get("objective_len") or 0),
-                "objective_sha256": o_sha,
-            }
+                raise ValueError(f"node {node_id!r} objective_sha256 must be lowercase SHA-256")
+            objective_meta = {"objective_len": int(raw.get("objective_len") or 0), "objective_sha256": o_sha}
         else:
             objective_meta = {"objective_len": 0, "objective_sha256": ""}
     cap = _clean_capability_req(raw.get("capability_req"))
     budget = _clean_budget(raw.get("budget"))
     artifacts = _clean_artifacts(raw.get("expected_artifacts"))
+    requirements = _clean_artifact_requirements(raw.get("artifact_requirements"), artifacts)
     if kind == KIND_APPROVAL and artifacts:
-        raise ValueError(
-            f"approval node {node_id!r} must not declare expected_artifacts"
-        )
+        raise ValueError(f"approval node {node_id!r} must not declare expected_artifacts")
 
-    contract_ref = _clean_text(
-        raw.get("contract_ref"), field=f"node {node_id} contract_ref", maximum=256
-    )
+    contract_ref = _clean_text(raw.get("contract_ref"), field=f"node {node_id} contract_ref", maximum=256)
     if contract_ref and not REF_RE.fullmatch(contract_ref):
-        raise ValueError(
-            f"node {node_id!r} contract_ref contains unsupported characters"
-        )
-    contract_sha = _clean_text(
-        raw.get("contract_sha256"), field=f"node {node_id} contract_sha256", maximum=64
-    )
+        raise ValueError(f"node {node_id!r} contract_ref contains unsupported characters")
+    contract_sha = _clean_text(raw.get("contract_sha256"), field=f"node {node_id} contract_sha256", maximum=64)
     if contract_sha and not SHA_RE.fullmatch(contract_sha):
         raise ValueError(f"node {node_id!r} contract_sha256 must be lowercase SHA-256")
 
@@ -307,8 +281,7 @@ def _canonical_node(raw: Any) -> dict[str, Any]:
         "parents": parents,
         **objective_meta,
         "contract_ref": contract_ref,
-        "contract_sha256": contract_sha
-        or _node_contract_signature(
+        "contract_sha256": contract_sha or _node_contract_signature(
             {
                 "node_id": node_id,
                 "kind": kind,
@@ -318,12 +291,15 @@ def _canonical_node(raw: Any) -> dict[str, Any]:
                 "capability_req": cap,
                 "budget": budget,
                 "expected_artifacts": artifacts,
+                "artifact_requirements": requirements,
             }
         ),
         "capability_req": cap,
         "budget": budget,
         "expected_artifacts": artifacts,
     }
+    if requirements:
+        node["artifact_requirements"] = requirements
     return node
 
 
@@ -504,3 +480,24 @@ def _default_artifacts(stage_id: str) -> list[str]:
 def validate_node_transition(from_state: str, to_state: str) -> bool:
     """Return whether ``from_state -> to_state`` is a legal §5.2 transition."""
     return from_state in NODE_TRANSITIONS and to_state in NODE_TRANSITIONS[from_state]
+
+
+def _clean_artifact_requirements(value: Any, artifacts: list[str]) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > MAX_ARTIFACTS:
+        raise ValueError("artifact_requirements must be a bounded list")
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) - {"path", "min_bytes", "max_bytes", "sha256"}:
+            raise ValueError("artifact requirement fields must be path/min_bytes/max_bytes/sha256")
+        name = _clean_artifacts([item.get("path")])[0]
+        if name not in artifacts or name in seen:
+            raise ValueError("artifact requirement must match one unique expected_artifact")
+        minimum = item.get("min_bytes", 1)
+        if isinstance(minimum, bool) or not isinstance(minimum, int) or not 1 <= minimum <= 2**63 - 1:
+            raise ValueError("artifact min_bytes must be a positive bounded integer")
+        out.append({"path": name, "min_bytes": minimum, **artifact_constraints(item, minimum)})
+        seen.add(name)
+    return sorted(out, key=lambda item: item["path"])

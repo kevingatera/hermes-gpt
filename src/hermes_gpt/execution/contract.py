@@ -51,8 +51,8 @@ from typing import Any, Callable
 from hermes_gpt.execution import contract_checks as _contract_checks
 from hermes_gpt.execution import contract_observations as _contract_observations
 from hermes_gpt.execution import contract_schema as _contract_schema
-from hermes_gpt.policy import authorization as op
 from hermes_gpt.execution import runners as op_runners
+from hermes_gpt.policy import authorization as op
 from hermes_gpt.skills import resolution as skill_resolution
 
 # Preserve the established operator_contract import surface while the
@@ -93,6 +93,8 @@ _capability_requirement = _contract_schema._capability_requirement
 _forbidden_list = _contract_schema._forbidden_list
 _resolve_artifact_paths = _contract_schema._resolve_artifact_paths
 _artifact_list = _contract_schema._artifact_list
+artifact_constraints = _contract_schema.artifact_constraints
+MAX_ARTIFACT_HASH_BYTES = _contract_checks.MAX_ARTIFACT_HASH_BYTES
 _test_list = _contract_schema._test_list
 _review_requirements = _contract_schema._review_requirements
 _completion_criteria = _contract_schema._completion_criteria
@@ -127,12 +129,7 @@ def _validate_manifest_impl(
     return _validate_impl(contract, sha, runner, hermes_root)
 
 
-def _validate_impl(
-    contract: dict[str, Any],
-    sha: str,
-    runner: Callable[..., tuple[int, str, str]] | None,
-    hermes_root: Path,
-) -> dict[str, Any]:
+def _validate_impl(contract: dict[str, Any], sha: str, runner: Callable[..., tuple[int, str, str]] | None, hermes_root: Path) -> dict[str, Any]:
     """Run the six checks and aggregate a deterministic verdict (D7)."""
     checks: list[dict[str, Any]] = [
         _check_run_state(contract, hermes_root),
@@ -153,9 +150,7 @@ def _validate_impl(
     }
 
     failed = [c for c in checks if c["status"] == "FAIL" and required[c["kind"]]]
-    unverified = [
-        c for c in checks if c["status"] == "UNVERIFIED" and required[c["kind"]]
-    ]
+    unverified = [c for c in checks if c["status"] == "UNVERIFIED" and required[c["kind"]]]
 
     rejected: list[str] = []
     false_done = False
@@ -190,9 +185,7 @@ def _validate_impl(
     }
     for c in checks:
         if c.get("evidence"):
-            evidence["artifacts"].extend(
-                c["evidence"] if isinstance(c["evidence"], list) else [c["evidence"]]
-            )
+            evidence["artifacts"].extend(c["evidence"] if isinstance(c["evidence"], list) else [c["evidence"]])
     evidence["artifacts"] = evidence["artifacts"][:10]
 
     return {
@@ -208,6 +201,7 @@ def _validate_impl(
                 "kind": c["kind"],
                 "status": c["status"],
                 "detail": c.get("detail", ""),
+                **({"failure_codes": c["failure_codes"]} if "failure_codes" in c else {}),
             }
             for c in checks
         ],

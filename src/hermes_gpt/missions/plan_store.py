@@ -9,8 +9,13 @@ from pathlib import Path
 from typing import Any
 
 from hermes_gpt.missions import runtime as mission
+from hermes_gpt.missions.plan_schema import (
+    MISSION_ID_RE,
+    NODE_SCHEMA,
+    PLAN_SCHEMA,
+    SCHEMA_VERSION,
+)
 from hermes_gpt.policy import authorization as op
-from hermes_gpt.missions.plan_schema import MISSION_ID_RE, NODE_SCHEMA, PLAN_SCHEMA, SCHEMA_VERSION
 
 
 def _now() -> str:
@@ -173,3 +178,23 @@ def _plan_view(
         value["nodes"] = nodes
         value["node_count"] = len(nodes)
     return value
+
+
+class PlanVersionConflict(ValueError):
+    """The plan was replaced (``hermes_plan_create``) after the caller read it.
+
+    Raised by the optional ``expected_plan_version`` compare-and-swap on
+    ``hermes_plan_node_transition``. ``hermes_plan_create`` replaces the whole
+    plan (and resets every node to ``pending``) with no read-verify-write of its
+    own, so an out-of-process writer such as Autopilot must be able to refuse a
+    node write that was computed against a plan version that no longer exists.
+    """
+
+    def __init__(self, expected: int, actual: int | None):
+        super().__init__(f"plan version changed (expected {expected}, found {actual})")
+        self.expected = expected
+        self.actual = actual
+
+
+class PlanInFlightError(ValueError):
+    """Replacing a plan would orphan an active scheduler or unfinished work."""

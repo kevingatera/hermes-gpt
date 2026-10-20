@@ -112,6 +112,7 @@ def test_sessions_install_enables_session_gates_and_refresh_preserves_user_env(t
 
 def test_doctor_reports_resolved_codex_binary(monkeypatch, tmp_path):
     exe = _fake_codex(tmp_path / "bin" / "codex")
+    monkeypatch.setattr(oc, "_probe_codex_version", lambda path: "codex 0.50.0")
     monkeypatch.setenv(oc.CODEX_EXE_ENV, str(exe))
     result = codex_config.doctor(
         project=True,
@@ -128,6 +129,7 @@ def test_doctor_reports_resolved_codex_binary(monkeypatch, tmp_path):
 def test_doctor_warns_when_only_protected_windows_apps_candidate(monkeypatch, tmp_path):
     protected = _fake_codex(tmp_path / "WindowsApps" / "codex")
     monkeypatch.setenv("PATH", str(protected.parent))
+    monkeypatch.setattr(oc, "_path_candidates", lambda: [protected])
     monkeypatch.delenv(oc.CODEX_EXE_ENV, raising=False)
     result = codex_config.doctor(
         project=True,

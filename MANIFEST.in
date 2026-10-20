@@ -42,3 +42,8 @@ global-exclude *.py[cod] *.log *.err.log .env .env.* *.pem
 recursive-include src/hermes_gpt/clients/chatgpt/assets *.html *.css *.js
 
 include docs/chatgpt-runtime-settings.md
+
+include docs/autopilot.md
+include docs/release-notes-v0.13.0.md
+include docs/release-notes-v0.14.0.md
+recursive-include web/dist *.html *.js *.css

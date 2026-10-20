@@ -29,6 +29,7 @@ GATE_ENVS = [
     oauth_auth.OAUTH_SCOPE_ENV,
     server.TRUSTED_PROXY_IPS_ENV,
     server.ALLOWED_HOSTS_ENV,
+    "HERMES_GPT_AUTOPILOT",
 ]
 
 

@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import inspect
 import json
-from hermes_gpt.policy import runtime_settings
-
 import os
 import sqlite3
 import sys
@@ -13,18 +11,16 @@ from typing import Any
 
 from hermes_gpt import paths
 from hermes_gpt.auth import oauth as oauth_auth
-from hermes_gpt.workspace import finance as op_finance
+from hermes_gpt.missions import autopilot as op_autopilot
 from hermes_gpt.policy import authorization as op_policy
-from hermes_gpt.sessions import session as op_session
-from hermes_gpt.sessions import tasks as op_session_tasks
+from hermes_gpt.policy import runtime_settings
 from hermes_gpt.server import cli as server_cli
-from hermes_gpt.server.tools import codex as codex_tools
 from hermes_gpt.server import hermes_runtime
-from hermes_gpt.server.tools import hermes as hermes_tools
 from hermes_gpt.server import http as http_server
+from hermes_gpt.server.tools import codex as codex_tools
+from hermes_gpt.server.tools import hermes as hermes_tools
 from hermes_gpt.server.tools import skills as skill_tools
-from hermes_gpt.sessions.history import ReadOnlySessionStore
-from hermes_gpt.sessions.history import validate_profile as _validate_profile
+from hermes_gpt.server.tools.autopilot import AutopilotTools
 from hermes_gpt.server.tools.fleet import FleetTools
 from hermes_gpt.server.tools.hermes_profile import HermesProfileTools
 from hermes_gpt.server.tools.jobs import DurableJobTools
@@ -38,7 +34,12 @@ from hermes_gpt.server.tools.session_tasks import ManagedSessionTaskTools
 from hermes_gpt.server.tools.sessions import SessionHistoryTools, SessionToolContext
 from hermes_gpt.server.tools.work import WorkTools
 from hermes_gpt.server.tools.workspace import WorkspaceTools
+from hermes_gpt.sessions import session as op_session
+from hermes_gpt.sessions import tasks as op_session_tasks
+from hermes_gpt.sessions.history import ReadOnlySessionStore
+from hermes_gpt.sessions.history import validate_profile as _validate_profile
 from hermes_gpt.versioning import VERSION
+from hermes_gpt.workspace import finance as op_finance
 
 LOCAL_DEV_PROFILE = "local-dev"
 REMOTE_PROFILE = http_server.REMOTE_PROFILE
@@ -484,6 +485,11 @@ hermes_job_status = _job_tools.hermes_job_status
 hermes_job_wait = _job_tools.hermes_job_wait
 
 
+_autopilot_tools = AutopilotTools(_hermes_root_for_operator)
+hermes_autopilot_start = _autopilot_tools.hermes_autopilot_start
+hermes_autopilot_status = _autopilot_tools.hermes_autopilot_status
+hermes_autopilot_stop = _autopilot_tools.hermes_autopilot_stop
+
 _mission_tools = MissionTools(_hermes_root_for_operator)
 _mission_plan_tools = MissionPlanTools(_hermes_root_for_operator)
 _mission_decision_tools = MissionDecisionTools(_hermes_root_for_operator)
@@ -688,6 +694,8 @@ def register_tools(server: FastMCP) -> None:
     _mission_tools.register_mcp_tools(server, tool_meta=tool_meta)
     _mission_plan_tools.register_mcp_tools(server, tool_meta=tool_meta)
     _mission_decision_tools.register_mcp_tools(server, tool_meta=tool_meta)
+    if env_enabled(op_autopilot.AUTOPILOT_ENV):
+        _autopilot_tools.register_mcp_tools(server, tool_meta=tool_meta)
 
     _work_tools.register_contract_and_runner_tools(server, tool_meta=tool_meta)
     _job_tools.register_mcp_tools(server, tool_meta=tool_meta)

@@ -67,3 +67,10 @@ The live-event journal is bounded. `HERMES_GPT_LIVE_EVENT_RETENTION` sets the
 retained row count, defaulting to 20000 and clamped to a hard cap of 100000.
 Retention affects notification history only; it never removes the underlying
 Mission/Swarm/Fabric/session-job evidence stores.
+
+## Autopilot wakeups
+
+Autopilot long-polls Mission events to wake its worker early. Each wakeup rereads
+durable state; event contents never prove completion. A timer remains the
+backstop when an event is missing or the event store is unavailable. See
+[Autopilot](autopilot.md).

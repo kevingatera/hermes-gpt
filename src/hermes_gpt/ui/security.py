@@ -102,10 +102,23 @@ def ui_dir() -> Path:
     raw = os.environ.get(UI_DIR_ENV, "").strip()
     if raw:
         return Path(raw).expanduser()
-    dist = paths.web_dist_dir()
-    # An installed wheel ships no web build; the route composition then serves
-    # its UI static assets placeholder for this path.
-    return dist if dist is not None else paths.PACKAGE_DIR / "web" / "dist"
+    source = paths.web_dist_dir() or paths.PACKAGE_DIR / "web" / "dist"
+    if (source / "index.html").is_file():
+        return source
+    # Wheel data files can live outside site-packages (including --user installs).
+    # Resolve through the installed distribution's RECORD instead of guessing
+    # a prefix or an interpreter-specific site-packages depth.
+    from importlib.metadata import PackageNotFoundError, distribution
+    try:
+        package = distribution("hermes-gpt")
+        for entry in package.files or []:
+            if entry.as_posix().endswith("share/hermes-gpt/web/index.html"):
+                index = Path(package.locate_file(entry))
+                if index.is_file():
+                    return index.parent
+    except (PackageNotFoundError, OSError, ValueError):
+        pass
+    return source
 
 
 def stale_lease_seconds() -> int:

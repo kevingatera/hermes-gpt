@@ -2,22 +2,47 @@
 
 from __future__ import annotations
 
+import contextlib
+import logging
+import queue
+import time
+
+logger = logging.getLogger(__name__)
+
 import json
 import os
-import selectors
 import subprocess
 import threading
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from hermes_gpt.execution import job_supervisor
+from hermes_gpt.execution.runner_common import (
+    RUNNER_MODEL_ALLOWLIST_ENV,
+    RUNNER_PROVIDER_ALLOWLIST_ENV,
+    _allowed_by_env,
+    _append_event,
+    _atomic_json,
+    _bounded_text,
+    _load_json,
+    _minimal_child_env,
+    _now,
+    _pi_child_env,
+    _pi_selection,
+    _pi_tools,
+    _popen_process_group,
+    _sandbox_for,
+    _terminate_process_group,
+)
+from hermes_gpt.execution.runner_local import _LocalProcessBackend
+from hermes_gpt.execution.runner_opencode import (
+    _opencode_child_config,
+    _opencode_runtime_material,
+    _OpenCodeCredentialProxy,
+)
+from hermes_gpt.execution.runner_registry import get_backend
 from hermes_gpt.policy import authorization as op
 from hermes_gpt.policy import confinement
-from hermes_gpt.execution.runner_common import RUNNER_MODEL_ALLOWLIST_ENV, RUNNER_PROVIDER_ALLOWLIST_ENV, _allowed_by_env, _append_event, _atomic_json, _bounded_text, _load_json, _minimal_child_env, _now, _pi_child_env, _pi_selection, _pi_tools, _popen_process_group, _sandbox_for, _terminate_process_group
-from hermes_gpt.execution.runner_local import _LocalProcessBackend
-from hermes_gpt.execution.runner_opencode import _opencode_child_config, _opencode_runtime_material, _OpenCodeCredentialProxy
-from hermes_gpt.execution.runner_registry import get_backend
 
 
 def _extract_pi_text(message: Any) -> str:
@@ -46,17 +71,13 @@ def _worker_pi(
     log_path: Path,
     hermes_root: Path | None = None,
 ) -> tuple[int, str]:
-    options = (contract.get("execution") or {}).get("options") or {}
+    options = ((contract.get("execution") or {}).get("options") or {})
     tools = _pi_tools(contract)
     provider, model = _pi_selection(contract)
     if provider and not _allowed_by_env(provider, RUNNER_PROVIDER_ALLOWLIST_ENV):
-        raise PermissionError(
-            f"Pi provider {provider!r} is not allowed by {RUNNER_PROVIDER_ALLOWLIST_ENV}"
-        )
+        raise PermissionError(f"Pi provider {provider!r} is not allowed by {RUNNER_PROVIDER_ALLOWLIST_ENV}")
     if model and not _allowed_by_env(model, RUNNER_MODEL_ALLOWLIST_ENV):
-        raise PermissionError(
-            f"Pi model {model!r} is not allowed by {RUNNER_MODEL_ALLOWLIST_ENV}"
-        )
+        raise PermissionError(f"Pi model {model!r} is not allowed by {RUNNER_MODEL_ALLOWLIST_ENV}")
     argv = [exe, "--mode", "rpc", "--no-session", "--tools", tools]
     writable = bool(set(tools.split(",")) - {"read"})
     if not writable:
@@ -92,93 +113,45 @@ def _worker_pi(
         env=child_env,
     )
     assert proc.stdin is not None and proc.stdout is not None
-    proc.stdin.write(
-        json.dumps(
-            {"id": "dispatch", "type": "prompt", "message": contract["objective"]},
-            ensure_ascii=False,
-        )
-        + "\n"
-    )
-    proc.stdin.flush()
-    final_text = ""
-    settled = False
-    rpc_error = ""
-    deadline = datetime.now(timezone.utc).timestamp() + timeout
-    selector = selectors.DefaultSelector()
-    selector.register(proc.stdout, selectors.EVENT_READ)
-    while datetime.now(timezone.utc).timestamp() < deadline:
-        remaining = max(0.0, deadline - datetime.now(timezone.utc).timestamp())
-        ready = selector.select(timeout=min(0.5, remaining))
-        if not ready:
-            if proc.poll() is not None:
-                break
-            continue
-        line = proc.stdout.readline()
-        if not line:
-            if proc.poll() is not None:
-                break
-            continue
+    # Windows selectors accept sockets, not subprocess pipes. A reader thread
+    # also keeps a partial JSONL line from blocking the worker's deadline.
+    lines: queue.Queue[str | None] = queue.Queue(maxsize=128)
+    stop_reader = threading.Event()
+
+    def enqueue(line: str | None) -> None:
+        while not stop_reader.is_set():
+            try:
+                lines.put(line, timeout=0.1)
+                return
+            except queue.Full:
+                continue
+
+    def read_lines() -> None:
         try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        etype = event.get("type")
-        if etype in {
-            "response",
-            "agent_start",
-            "agent_end",
-            "agent_settled",
-            "turn_end",
-            "message_end",
-            "extension_error",
-            "auto_retry_start",
-            "auto_retry_end",
-        }:
-            _append_event(
-                log_path,
-                {
-                    "type": etype,
-                    "at": _now(),
-                    "success": event.get("success"),
-                    "command": event.get("command"),
-                },
-            )
-        if (
-            etype == "response"
-            and event.get("command") == "prompt"
-            and event.get("success") is False
-        ):
-            rpc_error = _bounded_text(
-                event.get("error") or "Pi RPC prompt rejected", 500
-            )
-            break
-        if etype == "message_end":
-            text = _extract_pi_text(event.get("message"))
-            if text:
-                final_text = text
-        if etype == "agent_settled":
-            settled = True
-            break
-    selector.close()
-    if rpc_error:
-        _terminate_process_group(proc)
-        raise RuntimeError(f"Pi RPC prompt failed: {rpc_error}")
-    if not settled:
+            while not stop_reader.is_set():
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                enqueue(line)
+        except (OSError, ValueError) as exc:
+            logger.debug("Pi RPC stream failed before EOF", exc_info=exc)
+        finally:
+            enqueue(None)
+
+    reader = threading.Thread(target=read_lines, name="hermes-pi-rpc-reader", daemon=True)
+    reader.start()
+    try:
+        return _collect_pi_rpc(proc, contract, timeout, log_path, lines)
+    finally:
+        stop_reader.set()
         if proc.poll() is None:
             _terminate_process_group(proc)
-            return 124, final_text
-        rc = int(proc.returncode or 0)
-        return (rc if rc else 1), final_text
-    try:
-        proc.stdin.close()
-    except OSError:
-        pass
-    try:
-        rc = proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        _terminate_process_group(proc)
-        rc = int(proc.returncode or 124)
-    return rc, final_text
+        reader.join(timeout=1)
+        if not reader.is_alive():
+            proc.stdout.close()
+        with contextlib.suppress(OSError):
+            if not proc.stdin.closed:
+                proc.stdin.close()
 
 
 def _worker_opencode(
@@ -481,3 +454,63 @@ def _worker(task_id: str, jobs_root: Path) -> int:
     except Exception as exc:  # noqa: BLE001
         _terminalize(meta, state="failed", error=_bounded_text(exc, 500))
         return 1
+
+
+def _collect_pi_rpc(
+    proc: subprocess.Popen[str],
+    contract: dict[str, Any],
+    timeout: int,
+    log_path: Path,
+    lines: queue.Queue[str | None],
+) -> tuple[int, str]:
+    assert proc.stdin is not None
+    proc.stdin.write(json.dumps({"id": "dispatch", "type": "prompt", "message": contract["objective"]}, ensure_ascii=False) + "\n")
+    proc.stdin.flush()
+    final_text = ""
+    settled = False
+    rpc_error = ""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            line = lines.get(timeout=min(0.5, remaining))
+        except queue.Empty:
+            continue
+        if line is None:
+            break
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        etype = event.get("type")
+        if etype in {"response", "agent_start", "agent_end", "agent_settled", "turn_end", "message_end", "extension_error", "auto_retry_start", "auto_retry_end"}:
+            _append_event(log_path, {"type": etype, "at": _now(), "success": event.get("success"), "command": event.get("command")})
+        if etype == "response" and event.get("command") == "prompt" and event.get("success") is False:
+            rpc_error = _bounded_text(event.get("error") or "Pi RPC prompt rejected", 500)
+            break
+        if etype == "message_end":
+            text = _extract_pi_text(event.get("message"))
+            if text:
+                final_text = text
+        if etype == "agent_settled":
+            settled = True
+            break
+    if rpc_error:
+        _terminate_process_group(proc)
+        raise RuntimeError(f"Pi RPC prompt failed: {rpc_error}")
+    if not settled:
+        if proc.poll() is None:
+            _terminate_process_group(proc)
+            return 124, final_text
+        rc = int(proc.returncode or 0)
+        return (rc if rc else 1), final_text
+    try:
+        proc.stdin.close()
+    except OSError:
+        pass
+    try:
+        rc = proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        _terminate_process_group(proc)
+        rc = int(proc.returncode or 124)
+    return rc, final_text

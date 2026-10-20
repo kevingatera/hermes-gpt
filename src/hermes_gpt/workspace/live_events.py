@@ -64,6 +64,16 @@ SECRETISH_KEYS = (
 _condition = threading.Condition()
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """Close event database handles before returning from a store operation."""
+
+    def __exit__(self, *args):
+        try:
+            return super().__exit__(*args)
+        finally:
+            self.close()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -123,12 +133,12 @@ def _init(db: sqlite3.Connection) -> None:
 def _connect(path: Path, *, write: bool) -> sqlite3.Connection:
     if write:
         path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(path, timeout=5)
+        db = sqlite3.connect(path, timeout=5, factory=_ClosingConnection)
         _init(db)
     else:
         if not path.is_file():
             raise FileNotFoundError(path)
-        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5, factory=_ClosingConnection)
     db.row_factory = sqlite3.Row
     return db
 

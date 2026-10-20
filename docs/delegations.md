@@ -90,3 +90,17 @@ environment never contain that upstream authorization.
 Delegation changes publish bounded notifications through [live events](live-events.md).
 Use each notification to read the durable delegation or backend record again.
 Notification failure cannot advance state or complete work.
+
+## Artifact validation and delivery grace
+
+Delegation reads include a bounded `validation` summary of verdicts, check
+statuses, and fixed artifact failure codes, plus `validation_failure_since`.
+These fields contain no raw validation details, file bodies, or paths. Authorized
+writes migrate the metadata columns; read-only calls do not migrate stores.
+
+Successful execution with confirmed bad required artifacts stays `reconciling`
+for a durable 30-second delivery grace. If the defect remains and every other
+required check passes, the delegation becomes `failed` with
+`outcome="validation_failed"`. Autopilot can then use its bounded semantic
+replan path. Unreadable evidence, pending review, denied authority, and unresolved
+cancellation cannot trigger that recovery. See [Autopilot](autopilot.md#declared-deliverable-acceptance-v014).

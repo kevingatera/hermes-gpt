@@ -9,11 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from hermes_gpt.execution import contract as contract_mod
-from hermes_gpt.policy import authorization as op
 from hermes_gpt.execution import swarm_common as common
-from hermes_gpt.execution import swarm_model
-from hermes_gpt.execution import swarm_scheduler
-from hermes_gpt.execution import swarm_store
+from hermes_gpt.execution import swarm_model, swarm_scheduler, swarm_store
+from hermes_gpt.policy import authorization as op
 
 
 def hermes_swarm_stage_dispatch(
@@ -259,7 +257,11 @@ def hermes_swarm_stage_dispatch(
 
     # Record the stage state transition on a real dispatch.
     st = swarm_store.stage_state(record, stage_id)
-    if st is not None and (not effective or changed):
+    if (
+        st is not None
+        and (not effective or changed)
+        and result_payload.get("code") != "SKILL_REQUIREMENTS_REJECTED"
+    ):
         st["task_id"] = task_id
         st["contract_sha256"] = sha
         st["worktree_plan"] = plan

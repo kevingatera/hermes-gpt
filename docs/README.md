@@ -35,6 +35,7 @@ project overview.
 | Guide | Use it for |
 | --- | --- |
 | [Operator Mode](operator-mode.md) | policy, Owner authority, diagnostics, contracts, swarms, and fleet execution |
+| [Autopilot](autopilot.md) | default-off execution, approval gates, deliverable checks, and bounded recovery |
 | [Missions](missions.md) | mission lifecycle, context, attachments, and approval |
 | [Capabilities and mission ledger](capabilities-and-mission-ledger.md) | derived capability records and replayable mission events |
 | [Delegations](delegations.md) | worker jobs, lineage, cancellation, and reconciliation |

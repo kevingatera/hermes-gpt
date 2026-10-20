@@ -7,6 +7,7 @@ Backend behavior is split by ownership. This module keeps the existing
 from __future__ import annotations
 
 import json
+import selectors as _selectors
 import sys
 from pathlib import Path
 
@@ -101,7 +102,7 @@ os = runner_common.os
 signal = runner_common.signal
 subprocess = runner_common.subprocess
 threading = runner_workers.threading
-selectors = runner_workers.selectors
+selectors = _selectors
 http = runner_opencode.http
 urllib = runner_opencode.urllib
 hmac = runner_opencode.hmac

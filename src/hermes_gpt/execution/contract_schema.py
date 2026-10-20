@@ -9,10 +9,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-from hermes_gpt.workspace import commands as op_command
+from hermes_gpt.execution import runners as op_runners
 from hermes_gpt.fleet import fleet as op_fleet
 from hermes_gpt.policy import authorization as op
-from hermes_gpt.execution import runners as op_runners
+from hermes_gpt.workspace import commands as op_command
 from hermes_gpt.workspace import files as op_workspace_files
 
 SCHEMA_VERSION = "0.6-wc.1"
@@ -293,7 +293,8 @@ def _artifact_list(value: Any, workspaces: list[Path]) -> list[dict[str, Any]]:
         min_bytes = int(item.get("min_bytes", 0))
         if min_bytes < 0:
             raise ValueError("min_bytes must be >= 0")
-        out.append({"path": path, "must_exist": must_exist, "min_bytes": min_bytes})
+        out.append({"path": path, "must_exist": must_exist, "min_bytes": min_bytes,
+                    **artifact_constraints(item, min_bytes)})
     return out
 
 
@@ -592,3 +593,19 @@ def _contract_from_validation_manifest(
         {"schema": CONTRACT_SCHEMA, "objective": "", "inputs": [], "constraints": []}
     )
     return contract, sha
+
+
+def artifact_constraints(item: dict[str, Any], min_bytes: int) -> dict[str, Any]:
+    """Optional deterministic acceptance checks; absent fields preserve old hashes."""
+    out: dict[str, Any] = {}
+    if "max_bytes" in item:
+        maximum = item["max_bytes"]
+        if isinstance(maximum, bool) or not isinstance(maximum, int) or not min_bytes <= maximum <= 2**63 - 1:
+            raise ValueError("max_bytes must be an integer >= min_bytes and <= 2**63-1")
+        out["max_bytes"] = maximum
+    if "sha256" in item:
+        digest = item["sha256"]
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("artifact sha256 must be lowercase SHA-256")
+        out["sha256"] = digest
+    return out

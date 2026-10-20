@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any
 
+from hermes_gpt.policy import authorization as op
 from hermes_gpt.workspace import config as op_config
 from hermes_gpt.workspace import gateway as op_gateway
-from hermes_gpt.policy import authorization as op
 
 STATUS_PASS = "PASS"
 STATUS_WARN = "WARN"
@@ -78,21 +77,10 @@ def _check_result(
 
 
 def _is_process_alive(pid: int | None) -> bool:
-    """Best-effort check whether ``pid`` is alive. Never raises."""
-    if pid is None:
-        return False
-    try:
-        import psutil  # type: ignore
+    """Best-effort read-only process probe; never signal a Windows console."""
+    from hermes_gpt.workspace.gateway import _is_pid_alive
 
-        return psutil.pid_exists(pid)
-    except Exception:
-        try:
-            os.kill(pid, 0)
-            return True
-        except (OSError, ProcessLookupError):
-            return False
-        except Exception:
-            return False
+    return _is_pid_alive(pid)
 
 
 def _read_config_safe(profile_home: Path) -> dict[str, Any]:

@@ -2,15 +2,23 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import stat
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
-from hermes_gpt.policy import authorization as op
 from hermes_gpt.execution import runners as op_runners
-from hermes_gpt.workspace import tools as op_workspace
 from hermes_gpt.execution.contract_observations import _observed_audit, _observed_runs
-from hermes_gpt.execution.contract_schema import _resolve_artifact_paths, _resolve_root, _truncate
+from hermes_gpt.execution.contract_schema import (
+    _resolve_artifact_paths,
+    _resolve_root,
+    _truncate,
+)
+from hermes_gpt.policy import authorization as op
+from hermes_gpt.workspace import tools as op_workspace
 
 
 def _check_run_state(contract: dict[str, Any], hermes_root: Path) -> dict[str, Any]:
@@ -106,17 +114,9 @@ def _check_artifacts(
     workspaces = [Path(w) for w in contract["allowed_scope"]["workspaces"]]
     artifacts = contract["expected_artifacts"]
     if not artifacts:
-        return {
-            "kind": "artifacts",
-            "status": "PASS",
-            "detail": "no artifacts required",
-        }
+        return {"kind": "artifacts", "status": "PASS", "detail": "no artifacts required"}
     if not workspaces:
-        return {
-            "kind": "artifacts",
-            "status": "UNVERIFIED",
-            "detail": "no allowed workspace",
-        }
+        return {"kind": "artifacts", "status": "UNVERIFIED", "detail": "no allowed workspace"}
 
     admitted = _admitted_artifact_evidence(contract, contract_sha256, hermes_root)
     admitted_by_name: dict[str, list[dict[str, Any]]] = {}
@@ -126,6 +126,8 @@ def _check_artifacts(
             admitted_by_name.setdefault(name, []).append(item)
 
     missing: list[str] = []
+    failure_codes: set[str] = set()
+    unverified = False
     evidence: list[dict[str, Any]] = []
     for art in artifacts:
         if not art["must_exist"]:
@@ -135,17 +137,40 @@ def _check_artifacts(
             candidates = _resolve_artifact_paths(art["path"], workspaces)
         except (ValueError, PermissionError):
             missing.append(art["path"])
+            unverified = True
+            failure_codes.add("artifact_unreadable")
             continue
         found = None
+        digest = ""
+        reasons: set[str] = set()
+        unreadable = False
         for cand in candidates:
             try:
-                if cand.is_file() and cand.stat().st_size >= art["min_bytes"]:
-                    found = cand
-                    break
+                info = cand.stat()
+                if not stat.S_ISREG(info.st_mode):
+                    reasons.add("artifact_not_file")
+                    continue
+                if info.st_size < art["min_bytes"]:
+                    reasons.add("artifact_too_small")
+                    continue
+                if "max_bytes" in art and info.st_size > art["max_bytes"]:
+                    reasons.add("artifact_too_large")
+                    continue
+                digest = _artifact_hash(cand, min_bytes=art["min_bytes"], max_bytes=art.get("max_bytes")) if art.get("sha256") else ""
+                if art.get("sha256") and _artifact_identity(info) != _artifact_identity(cand.stat()):
+                    raise OSError("artifact changed between size and digest verification")
+                if art.get("sha256") and digest != art["sha256"]:
+                    reasons.add("artifact_hash_mismatch")
+                    continue
+                found = cand
+                break
+            except FileNotFoundError:
+                reasons.add("artifact_missing")
             except OSError:
-                continue
+                unreadable = True
         if found is not None:
-            evidence.append({"basename": found.name, "size": found.stat().st_size})
+            evidence.append({"basename": found.name, "size": info.st_size,
+                             **({"sha256": digest} if digest else {})})
             continue
 
         remote = next(
@@ -154,6 +179,8 @@ def _check_artifacts(
                 for item in admitted_by_name.get(art["path"], [])
                 if isinstance(item.get("size_bytes"), int)
                 and item["size_bytes"] >= art["min_bytes"]
+                and ("max_bytes" not in art or item["size_bytes"] <= art["max_bytes"])
+                and ("sha256" not in art or item.get("sha256") == art["sha256"])
                 and item.get("provenance") == "coordinator_verified_artifact"
             ),
             None,
@@ -169,12 +196,23 @@ def _check_artifacts(
             )
         else:
             missing.append(art["path"])
+            # Any workspace may contain the required artifact. A confirmed bad
+            # candidate cannot rule out a valid candidate we could not read.
+            if unreadable:
+                unverified = True
+                failure_codes.add("artifact_unreadable")
+            else:
+                remote_items = admitted_by_name.get(art["path"], [])
+                if remote_items:
+                    reasons.add("artifact_remote_mismatch")
+                failure_codes.update(reasons or {"artifact_missing"})
     if missing:
         return {
             "kind": "artifacts",
-            "status": "FAIL",
+            "status": "UNVERIFIED" if unverified else "FAIL",
             "detail": f"missing artifacts: {', '.join(missing)}",
             "evidence": evidence,
+            "failure_codes": sorted(failure_codes),
         }
     return {
         "kind": "artifacts",
@@ -595,3 +633,53 @@ def _check_authorization(contract: dict[str, Any]) -> dict[str, Any]:
         "status": "PASS",
         "detail": f"authorized ({auth.get('class')})",
     }
+
+
+MAX_ARTIFACT_HASH_BYTES = 8 * 1024 * 1024
+
+
+def _artifact_identity(s: os.stat_result, *, cross_api: bool = False) -> tuple[int, int, int, int, int]:
+    # CPython on Windows can expose creation time through stat() and change
+    # time through fstat(). Compare birth time across those APIs when available;
+    # retain ctime for observations made through the same API.
+    timestamp = (getattr(s, "st_birthtime_ns", 0)
+                 if cross_api and sys.platform == "win32" else s.st_ctime_ns)
+    return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, timestamp)
+
+
+def _artifact_hash(path: Path, *, min_bytes: int = 0, max_bytes: int | None = None) -> str:
+    """Bounded observed hash; reject nonfiles, sharing failures and changing bytes."""
+    def observe():
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0))
+        try:
+            before = os.fstat(fd)
+            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_ARTIFACT_HASH_BYTES:
+                raise OSError("artifact cannot be hashed within the verification limit")
+            if before.st_size < min_bytes or (max_bytes is not None and before.st_size > max_bytes):
+                raise OSError("artifact size changed during verification")
+            digest = hashlib.sha256()
+            size = 0
+            while True:
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_ARTIFACT_HASH_BYTES:
+                    raise OSError("artifact exceeded the verification limit")
+                digest.update(chunk)
+            after = os.fstat(fd)
+            if _artifact_identity(before) != _artifact_identity(after) or size != after.st_size:
+                raise OSError("artifact changed during verification")
+        finally:
+            os.close(fd)
+        if _artifact_identity(after, cross_api=True) != _artifact_identity(path.stat(), cross_api=True):
+            raise OSError("artifact changed during verification")
+        return digest.hexdigest(), _artifact_identity(after)
+
+    # Windows may defer write timestamps until outstanding handles close. A
+    # fresh bounded content observation detects rewrites that metadata misses.
+    first = observe()
+    second = observe()
+    if first != second:
+        raise OSError("artifact changed during verification")
+    return second[0]

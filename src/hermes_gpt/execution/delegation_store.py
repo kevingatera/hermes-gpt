@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from hermes_gpt.missions import store as mission_runtime
 from hermes_gpt.policy import authorization as op
 
 SCHEMA_VERSION = "0.9-delegation.2"
@@ -53,7 +54,7 @@ def _db_path(hermes_root: Path | None = None) -> Path:
 def _connect(path: Path, *, write: bool) -> sqlite3.Connection:
     if write:
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        db = sqlite3.connect(path)
+        db = sqlite3.connect(path, factory=mission_runtime._ClosingConnection)
         try:
             path.parent.chmod(0o700)
         except OSError:
@@ -61,7 +62,7 @@ def _connect(path: Path, *, write: bool) -> sqlite3.Connection:
     else:
         if not path.is_file():
             raise FileNotFoundError(path)
-        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True, factory=mission_runtime._ClosingConnection)
     db.row_factory = sqlite3.Row
     return db
 
@@ -120,33 +121,23 @@ def _init(db: sqlite3.Connection) -> None:
         );
         """
     )
-    columns = {
-        str(row[1]) for row in db.execute("PRAGMA table_info(delegations)").fetchall()
-    }
+    columns = {str(row[1]) for row in db.execute("PRAGMA table_info(delegations)").fetchall()}
     if "dispatch_phase" not in columns:
-        db.execute(
-            "ALTER TABLE delegations ADD COLUMN dispatch_phase TEXT NOT NULL DEFAULT 'dispatched'"
-        )
+        db.execute("ALTER TABLE delegations ADD COLUMN dispatch_phase TEXT NOT NULL DEFAULT 'dispatched'")
     if "authority_version" not in columns:
-        db.execute(
-            "ALTER TABLE delegations ADD COLUMN authority_version INTEGER NOT NULL DEFAULT 1"
-        )
+        db.execute("ALTER TABLE delegations ADD COLUMN authority_version INTEGER NOT NULL DEFAULT 1")
     if "cancellation_in_progress" not in columns:
-        db.execute(
-            "ALTER TABLE delegations ADD COLUMN cancellation_in_progress INTEGER NOT NULL DEFAULT 0"
-        )
+        db.execute("ALTER TABLE delegations ADD COLUMN cancellation_in_progress INTEGER NOT NULL DEFAULT 0")
     if "cancellation_claimed_at" not in columns:
-        db.execute(
-            "ALTER TABLE delegations ADD COLUMN cancellation_claimed_at TEXT NOT NULL DEFAULT ''"
-        )
+        db.execute("ALTER TABLE delegations ADD COLUMN cancellation_claimed_at TEXT NOT NULL DEFAULT ''")
     if "cancellation_observation_sha256" not in columns:
-        db.execute(
-            "ALTER TABLE delegations ADD COLUMN cancellation_observation_sha256 TEXT NOT NULL DEFAULT ''"
-        )
+        db.execute("ALTER TABLE delegations ADD COLUMN cancellation_observation_sha256 TEXT NOT NULL DEFAULT ''")
     if "cancellation_watermark_ready" not in columns:
-        db.execute(
-            "ALTER TABLE delegations ADD COLUMN cancellation_watermark_ready INTEGER NOT NULL DEFAULT 0"
-        )
+        db.execute("ALTER TABLE delegations ADD COLUMN cancellation_watermark_ready INTEGER NOT NULL DEFAULT 0")
+    if "validation_summary_json" not in columns:
+        db.execute("ALTER TABLE delegations ADD COLUMN validation_summary_json TEXT NOT NULL DEFAULT '{}'")
+    if "validation_failure_since" not in columns:
+        db.execute("ALTER TABLE delegations ADD COLUMN validation_failure_since TEXT NOT NULL DEFAULT ''")
     db.commit()
 
 
@@ -195,20 +186,20 @@ def _backend_ref(payload: dict[str, Any]) -> dict[str, str]:
     return out
 
 
-def _surface(
-    row: sqlite3.Row | dict[str, Any], *, events: list[dict[str, Any]] | None = None
-) -> dict[str, Any]:
+def _surface(row: sqlite3.Row | dict[str, Any], *, events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     value = dict(row)
     try:
         backend_ref = json.loads(value.pop("backend_ref_json", "{}") or "{}")
     except ValueError:
         backend_ref = {}
     value["backend_ref"] = backend_ref if isinstance(backend_ref, dict) else {}
+    try:
+        value["validation"] = validation_summary(json.loads(value.pop("validation_summary_json", "{}") or "{}"))
+    except (ValueError, TypeError):
+        value["validation"] = {}
     value["cancel_requested"] = bool(value.get("cancel_requested"))
     value["cancellation_in_progress"] = bool(value.get("cancellation_in_progress"))
-    value["cancellation_watermark_ready"] = bool(
-        value.get("cancellation_watermark_ready")
-    )
+    value["cancellation_watermark_ready"] = bool(value.get("cancellation_watermark_ready"))
     if events is not None:
         value["events"] = events
     return value
@@ -335,3 +326,46 @@ def _manifest_row(db: sqlite3.Connection, delegation_id: str) -> dict[str, Any]:
     ):
         raise ValueError("delegation validation manifest metadata mismatch")
     return manifest
+
+
+VALIDATION_GRACE_SECONDS = 30
+
+
+_CHECK_KINDS = frozenset({"run_state", "artifacts", "tests", "review", "forbidden", "authorization"})
+
+
+_CHECK_STATUSES = frozenset({"PASS", "FAIL", "UNVERIFIED"})
+
+
+_ARTIFACT_FAILURE_CODES = frozenset({"artifact_missing", "artifact_too_small", "artifact_too_large",
+                                   "artifact_hash_mismatch", "artifact_remote_mismatch", "artifact_not_file",
+                                   "artifact_unreadable"})
+
+
+def validation_summary(value: Any) -> dict[str, Any]:
+    """Persist/project enums only; never validation details, file bodies or paths."""
+    if not isinstance(value, dict):
+        return {}
+    verdict = value.get("verdict")
+    if not isinstance(verdict, str) or verdict not in {"SATISFIED", "NOT_SATISFIED", "INCONCLUSIVE", "INVALID_CONTRACT"}:
+        return {}
+    raw_checks = value.get("checks")
+    if not isinstance(raw_checks, list):
+        return {"verdict": verdict, "checks": []}
+    checks = []
+    for check in raw_checks[:6]:
+        if not isinstance(check, dict):
+            continue
+        kind, status = check.get("kind"), check.get("status")
+        if not isinstance(kind, str) or kind not in _CHECK_KINDS or not isinstance(status, str) or status not in _CHECK_STATUSES:
+            continue
+        item = {"kind": kind, "status": status}
+        codes = check.get("failure_codes")
+        if kind == "artifacts":
+            item["failure_codes"] = sorted({code for code in codes[:16]
+                if isinstance(code, str) and code in _ARTIFACT_FAILURE_CODES}) if isinstance(codes, list) else []
+        checks.append(item)
+    return {
+        "verdict": verdict,
+        "checks": checks,
+    }

@@ -27,20 +27,13 @@ _MAX_MANIFEST_BYTES = 64_000
 _MAX_TEXT = 4_000
 _MAX_ITEMS = 64
 
-_BUILTIN_PROFILES: dict[str, frozenset[str]] = {
+_BUILTIN_PROFILES = {
     "nous-girl": frozenset({"default"}),
-    "rza": frozenset(
-        {
-            "default",
-            "gza",
-            "masta-killa",
-            "inspectah-deck",
-            "ghostface-killah",
-            "method-man",
-            "raekwon",
-        }
-    ),
-    "gaming-4090": frozenset({"default"}),
+    "rza": frozenset({"default", "gza", "masta-killa", "inspectah-deck", "ghostface-killah", "method-man", "raekwon"}),
+    "gaming-4090": frozenset({"default", "media", "gpu-dev"}),
+    "macbook-m5": frozenset({"default", "apple", "apple-design", "apple-dev", "apple-qa", "apple-release"}),
+    "mac-mini-m5": frozenset({"default"}),
+    "omarchy": frozenset({"default"}),
 }
 
 

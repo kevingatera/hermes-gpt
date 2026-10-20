@@ -12,6 +12,20 @@ configuration. The connection does not need another model-provider key.
 
 Live connection settings and schedule actions: [guide](docs/chatgpt-runtime-settings.md).
 
+## Autopilot and deliverable checks
+
+Autopilot drives a Mission through its plan with bounded concurrency, retries,
+and rework. It is off by default. `HERMES_GPT_AUTOPILOT=1` exposes its three
+tools; direct starts also require workspace authority, direct apply mode,
+`dry_run=false`, and `confirm=true`. Owner approval remains required.
+
+Version 0.14 adds declared artifact sizes and SHA-256 checks. Confirmed artifact
+defects receive a 30-second delivery grace before bounded recovery can run.
+Unreadable evidence stays unverified. The read-only Flight Deck panel shows
+progress and acceptance results. See [Autopilot](docs/autopilot.md) and the
+[v0.14 release notes](docs/release-notes-v0.14.0.md). The repository version
+does not establish what a running service or distribution channel contains.
+
 ## Start locally
 
 Python 3.10 or newer is required. Install Hermes Agent separately and configure

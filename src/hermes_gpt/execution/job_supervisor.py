@@ -44,6 +44,9 @@ _lock_path = _job_store._lock_path
 _cancel_path = _job_store._cancel_path
 _atomic_json = _job_store._atomic_json
 _load_json = _job_store._load_json
+_replace_json_file = _job_store._replace_json_file
+_read_json_text = _job_store._read_json_text
+_storage_id = _job_store._storage_id
 _confined_relative = _job_store._confined_relative
 _resolve_confined = _job_store._resolve_confined
 
@@ -88,9 +91,12 @@ def _pid_exists(pid: int) -> bool | None:
     if not isinstance(pid, int) or pid <= 1:
         return False
     if IS_WINDOWS:
-        # Without a verified CIM identity Windows cannot distinguish a dead PID
-        # from unavailable identity tooling. Preserve uncertainty.
-        return True if process_identity(pid) is not None else None
+        from hermes_gpt.workspace.gateway import _windows_pid_state
+
+        try:
+            return _windows_pid_state(pid)
+        except (OSError, AttributeError):
+            return None
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -260,17 +266,27 @@ def reconcile_job(job_id: str, *, hermes_root: Path | None = None) -> dict[str, 
     """Re-observe a durable worker without ever trusting PID alone."""
     job_id = _validate_job_id(job_id)
     record_path = _record_path(job_id, hermes_root)
+    observed = _load_json(record_path)
+    if not observed or str(observed.get("status")) in TERMINAL_STATES:
+        return observed
+    pid = observed.get("pid")
+    if not isinstance(pid, int) or pid <= 1:
+        return observed
+    expected = observed.get("process_identity")
+    # CIM can take seconds. Observation must not hold the writer lock and
+    # prevent the worker from publishing its own terminal result.
+    verified = verify_process(pid, expected if isinstance(expected, dict) else None)
+    exists = _pid_exists(pid) if verified is None else None
     with _record_lock(job_id, hermes_root):
         record = _load_json(record_path)
         if not record:
             return None
         if str(record.get("status")) in TERMINAL_STATES:
             return record
-        pid = record.get("pid")
-        if not isinstance(pid, int) or pid <= 1:
+        if record.get("pid") != pid or record.get("process_identity") != expected:
+            # The registered worker changed while observation was in progress.
+            # Leave the newer registration untouched; a later read observes it.
             return record
-        expected = record.get("process_identity")
-        verified = verify_process(pid, expected if isinstance(expected, dict) else None)
         if verified is True:
             record["process_verification"] = "verified"
         elif verified is False:
@@ -279,7 +295,6 @@ def reconcile_job(job_id: str, *, hermes_root: Path | None = None) -> dict[str, 
             record["process_verification"] = "mismatch"
             record["reconciliation"] = "recorded pid now belongs to a different process; job process is unverifiable"
         else:
-            exists = _pid_exists(pid)
             if exists is False:
                 record["process_verification"] = "exited-unfinalized"
                 record["status"] = "failed"

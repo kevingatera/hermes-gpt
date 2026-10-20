@@ -28,6 +28,7 @@ from hermes_gpt.missions import spec as mission_spec
 from hermes_gpt.missions import store as mission_store
 from hermes_gpt.policy import authorization as op
 
+_ClosingConnection = mission_store._ClosingConnection
 SCHEMA_VERSION = mission_store.SCHEMA_VERSION
 MISSION_SCHEMA = mission_store.MISSION_SCHEMA
 MISSION_EVENT_SCHEMA = mission_store.MISSION_EVENT_SCHEMA
@@ -329,6 +330,8 @@ def hermes_mission_attach(
         if kind == "workflow" and not WORKFLOW_REF_RE.fullmatch(ref):
             raise ValueError("workflow attachment ref must be a canonical workflow id")
         relationship = _bounded_text(relationship, "relationship", 64, required=True)
+        if relationship.startswith(SUPERSEDED_PREFIX):
+            raise PermissionError("public mission attachment cannot assert a superseded relationship")
         if state not in ATTACHMENT_STATES:
             raise ValueError("attachment state is invalid")
         if state == "succeeded":
@@ -490,7 +493,10 @@ def hermes_mission_reconcile(
                 mission = _row_to_mission(db, _get_row(db, mission_id))
             observed = _observe_attachments(root, mission)
             desired = _desired_mission_status(mission, observed)
-            return json.dumps({"success": True, "schema_version": SCHEMA_VERSION, "tool": "hermes_mission_reconcile", "mission_id": mission_id, "status": mission["status"], "desired_status": desired, "observed": observed, "changed": False, "dry_run": True})
+            recovery_pending = _pending_recovery(root, mission_id, observed) if desired == "failed" else []
+            if recovery_pending:
+                desired = mission["status"]
+            return json.dumps({"success": True, "schema_version": SCHEMA_VERSION, "tool": "hermes_mission_reconcile", "mission_id": mission_id, "status": mission["status"], "desired_status": desired, "observed": observed, "changed": False, "dry_run": True, **({"recovery_pending": recovery_pending} if recovery_pending else {})})
 
         # Completion is linearized against delegation cancellation authority.
         # Observe without holding either write lock, then hold the short-lived
@@ -533,6 +539,9 @@ def hermes_mission_reconcile(
                 raise ValueError("Mission authority changed after child observation")
             if desired == "completed":
                 raise ValueError("Mission child observation changed during completion; retry reconciliation")
+            recovery_pending = _pending_recovery(root, mission_id, observed) if desired == "failed" else []
+            if recovery_pending:
+                desired = current
             original = {(a["kind"], a["ref"]): (a["state"], bool(a.get("verified"))) for a in mission["attachments"]}
             attachment_changed = any(original.get((item["kind"], item["ref"])) != (item["state"], bool(item["verified"])) for item in observed)
             status_changed = desired != current
@@ -546,7 +555,7 @@ def hermes_mission_reconcile(
             db.commit()
         _publish_live_event(live_notice, hermes_root)
         _audit("hermes_mission_reconcile", policy, dry_run=False, success=True, changed=changed, mission_id=mission_id, summary=f"mission reconciled {current}->{desired}")
-        return json.dumps({"success": True, "schema_version": SCHEMA_VERSION, "tool": "hermes_mission_reconcile", "mission_id": mission_id, "status": desired, "observed": observed, "changed": changed})
+        return json.dumps({"success": True, "schema_version": SCHEMA_VERSION, "tool": "hermes_mission_reconcile", "mission_id": mission_id, "status": desired, "observed": observed, "changed": changed, **({"recovery_pending": recovery_pending} if recovery_pending else {})})
     except (ValueError, LookupError, PermissionError, OSError, sqlite3.Error) as exc:
         return _error(exc, "MISSION_RECONCILE_FAILED", "Check mission attachments and lifecycle state.")
 
@@ -712,3 +721,128 @@ def hermes_mission_approve(
         return json.dumps({"success": True, "schema_version": SCHEMA_VERSION, "tool": "hermes_mission_approve", "mission_id": mission_id, "status": target, "approval": approval, "changed": True})
     except (ValueError, LookupError, PermissionError, OSError, sqlite3.Error) as exc:
         return _error(exc, "MISSION_APPROVAL_REJECTED", "Reconcile verified child work and use Owner direct mode with confirm=true.")
+
+
+def supersede_delegation_attachment(
+    mission_id: str,
+    ref: str,
+    successor_ref: str,
+    *,
+    hermes_root: Path | None = None,
+) -> bool:
+    """Mark a *failed or cancelled* delegation attempt as replaced by a successor.
+
+    Internal bridge (not an MCP tool). Refuses unless, inside one write
+    transaction: the Mission is not terminal; both refs are delegation
+    attachments of this Mission; the old attempt is authoritatively
+    ``failed``/``cancelled`` (re-observed from the delegation store, never from
+    the attachment's cached state); and the successor is a different attempt
+    whose chain does not lead back to the old one. A live, running or succeeded
+    attempt can never be superseded, so this cannot hide unfinished or
+    successful work. Repeating the same call is idempotent.
+    """
+    if not REF_RE.fullmatch(ref) or not REF_RE.fullmatch(successor_ref) or ref == successor_ref:
+        return False
+    path = _db_path(hermes_root)
+    if not path.is_file():
+        return False
+    try:
+        root = _root(hermes_root)
+        with _connect(path, write=True) as db:
+            _begin_write(db)
+            mission = _row_to_mission(db, _get_row(db, mission_id))
+            if mission["status"] in TERMINAL_STATUSES:
+                db.rollback()
+                return False
+            by_ref = {a["ref"]: a for a in mission["attachments"] if a["kind"] == "delegation"}
+            old, new = by_ref.get(ref), by_ref.get(successor_ref)
+            if old is None or new is None:
+                db.rollback()
+                return False
+            marker = f"{SUPERSEDED_PREFIX}{successor_ref}"
+            if str(old.get("relationship") or "") == marker:
+                db.commit()
+                return True
+            if str(old.get("relationship") or "").startswith(SUPERSEDED_PREFIX):
+                db.rollback()
+                return False  # already superseded by a different successor
+            if _resolve_successor(by_ref, successor_ref) in (None, ref):
+                db.rollback()
+                return False
+            state, _verified, _authority = _delegation_state(root, mission_id, old)
+            if state not in ("failed", "cancelled"):
+                db.rollback()
+                return False
+            now = _now()
+            db.execute(
+                "UPDATE attachments SET relationship=?,updated_at=? WHERE mission_id=? AND kind='delegation' AND ref=?",
+                (marker, now, mission_id, ref),
+            )
+            db.execute("UPDATE missions SET version=version+1,updated_at=? WHERE mission_id=?", (now, mission_id))
+            live_notice = _event(db, mission_id, "mission.attachment_superseded",
+                                 details={"kind": "delegation", "ref": ref, "successor": successor_ref})
+            db.commit()
+        _publish_live_event(live_notice, hermes_root)
+        return True
+    except (LookupError, OSError, sqlite3.Error):
+        return False
+
+
+SUPERSEDED_PREFIX = "superseded_by:"
+
+
+MAX_SUPERSEDE_CHAIN = 16
+
+
+def _resolve_successor(attachments: dict[str, dict[str, Any]], ref: str) -> str | None:
+    """Follow ``superseded_by`` markers to the live end of a retry chain.
+
+    Returns the ref of the first attachment that is not itself marked, or
+    ``None`` when a marker dangles, leaves the mission, or loops.
+    """
+    seen: set[str] = set()
+    current = ref
+    for _ in range(MAX_SUPERSEDE_CHAIN):
+        att = attachments.get(current)
+        if att is None or current in seen:
+            return None
+        seen.add(current)
+        relationship = str(att.get("relationship") or "")
+        if not relationship.startswith(SUPERSEDED_PREFIX):
+            return current
+        current = relationship[len(SUPERSEDED_PREFIX):]
+    return None
+
+
+def _is_verified_superseded(root: Path, mission: dict[str, Any], by_ref: dict[str, dict[str, Any]], att: dict[str, Any]) -> bool:
+    """True only for a marker that verifies end to end; anything else is ignored.
+
+    The marker sits in a column a workspace-level caller can influence, so it is
+    never trusted on its own: the attempt must be authoritatively
+    failed/cancelled *now*, and its chain must end at a live delegation
+    attachment of the same Mission. A forged, stale, dangling or looping marker
+    has no effect and the attempt is observed normally (fail closed).
+    """
+    relationship = str(att.get("relationship") or "")
+    if att["kind"] != "delegation" or not relationship.startswith(SUPERSEDED_PREFIX):
+        return False
+    end = _resolve_successor(by_ref, str(att["ref"]))
+    if end is None or end == att["ref"]:
+        return False
+    state, _verified, _authority = _delegation_state(root, str(mission["mission_id"]), att)
+    return state in ("failed", "cancelled")
+
+
+def _pending_recovery(root: Path, mission_id: str, observed: list[dict[str, Any]]) -> list[str]:
+    from hermes_gpt.missions import autopilot
+
+    failed = [item for item in observed if item["state"] == "failed"]
+    if not failed:
+        return []
+    try:
+        if all(item["kind"] == "delegation" and autopilot.recovery_pending(mission_id, str(item["ref"]), root)
+               for item in failed):
+            return [str(item["ref"]) for item in failed]
+    except (LookupError, ValueError, TypeError, KeyError, OSError, sqlite3.Error, PermissionError):
+        pass  # unreadable recovery state cannot delay a terminal failure
+    return []

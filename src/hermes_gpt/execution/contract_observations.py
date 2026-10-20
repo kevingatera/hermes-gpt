@@ -6,10 +6,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from hermes_gpt.execution import runners as op_runners
+from hermes_gpt.execution.contract_schema import (
+    _MAX_REVIEW_EVIDENCE_SCAN,
+    _prompt_meta,
+    _resolve_root,
+)
 from hermes_gpt.missions import work as mission_work
 from hermes_gpt.policy import authorization as op
-from hermes_gpt.execution import runners as op_runners
-from hermes_gpt.execution.contract_schema import _MAX_REVIEW_EVIDENCE_SCAN, _prompt_meta, _resolve_root
 
 
 def _surface_contract(contract: dict[str, Any]) -> dict[str, Any]:
@@ -35,6 +39,7 @@ def _surface_contract(contract: dict[str, Any]) -> dict[str, Any]:
             "path": a["path"],
             "must_exist": a["must_exist"],
             "min_bytes": a["min_bytes"],
+            **{key: a[key] for key in ("max_bytes", "sha256") if key in a},
         }
         for a in contract.get("expected_artifacts", [])
     ]

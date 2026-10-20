@@ -102,29 +102,26 @@ def delegation_state(
 
 
 def observe_attachments(root: Path, mission: dict[str, Any]) -> list[dict[str, Any]]:
-    """Refresh attached child state without persisting or assuming success."""
+    """Observe live children, excluding authoritatively replaced failed attempts."""
+    from hermes_gpt.missions.runtime import _is_verified_superseded
+
     observed: list[dict[str, Any]] = []
-    for attachment in mission["attachments"]:
-        state = str(attachment["state"])
-        verified = bool(attachment.get("verified"))
+    by_ref = {str(a["ref"]): a for a in mission["attachments"] if a["kind"] == "delegation"}
+    for att in mission["attachments"]:
+        if _is_verified_superseded(root, mission, by_ref, att):
+            continue
+        state = str(att["state"])
+        verified = bool(att.get("verified"))
         authority_version: int | None = None
-        if attachment["kind"] == "workflow":
-            state = workflow_state(root, str(attachment["ref"]))
+        if att["kind"] == "workflow":
+            state = workflow_state(root, str(att["ref"]))
             verified = state == "succeeded"
-        elif attachment["kind"] == "delegation":
-            state, verified, authority_version = delegation_state(
-                root, str(mission["mission_id"]), attachment
-            )
+        elif att["kind"] == "delegation":
+            state, verified, authority_version = delegation_state(root, str(mission["mission_id"]), att)
         elif state == "succeeded" and not verified:
             state = "blocked"
-
-        item = {
-            "kind": attachment["kind"],
-            "ref": attachment["ref"],
-            "state": state,
-            "verified": verified,
-        }
-        if attachment["kind"] == "delegation" and authority_version is not None:
+        item = {"kind": att["kind"], "ref": att["ref"], "state": state, "verified": verified}
+        if att["kind"] == "delegation" and authority_version is not None:
             item["authority_version"] = authority_version
         observed.append(item)
     return observed

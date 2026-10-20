@@ -4,12 +4,39 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 
 from hermes_gpt.execution import contract as contract_mod
+from hermes_gpt.execution.delegation_lifecycle import (
+    _latest_observation,
+    _mission_state,
+    _mission_sync_failure,
+    _observation_is_fresh_for_cancellation,
+    _sync_mission_attachment,
+)
+from hermes_gpt.execution.delegation_store import (
+    DELEGATION_ID_RE,
+    SCHEMA_VERSION,
+    TERMINAL_STATES,
+    VALIDATION_GRACE_SECONDS,
+    _audit,
+    _bounded,
+    _connect,
+    _db_path,
+    _error,
+    _event,
+    _get_row,
+    _init,
+    _live_event,
+    _manifest_row,
+    _normalize_state,
+    _now,
+    _root,
+    _surface,
+    validation_summary,
+)
 from hermes_gpt.policy import authorization as op
-from hermes_gpt.execution.delegation_lifecycle import _latest_observation, _mission_state, _mission_sync_failure, _observation_is_fresh_for_cancellation, _sync_mission_attachment
-from hermes_gpt.execution.delegation_store import DELEGATION_ID_RE, SCHEMA_VERSION, TERMINAL_STATES, _audit, _bounded, _connect, _db_path, _error, _event, _get_row, _init, _live_event, _manifest_row, _normalize_state, _now, _root, _surface
 
 
 def hermes_delegation_reconcile(
@@ -38,61 +65,40 @@ def hermes_delegation_reconcile(
         path = _db_path(hermes_root)
         with _connect(path, write=False) as db:
             stored = dict(_get_row(db, delegation_id))
+        stored.setdefault("validation_summary_json", "{}")
+        stored.setdefault("validation_failure_since", "")
 
         if contract_json:
             _canonical, contract, sha = contract_mod._parse_contract(contract_json)
-            if (
-                sha != stored["contract_sha256"]
-                or contract["task_id"] != stored["task_id"]
-            ):
-                raise ValueError(
-                    "contract_json does not match delegation validation lineage"
-                )
+            if sha != stored["contract_sha256"] or contract["task_id"] != stored["task_id"]:
+                raise ValueError("contract_json does not match delegation validation lineage")
             manifest = contract_mod._validation_manifest(contract, sha)
         else:
             with _connect(path, write=False) as db:
                 manifest = _manifest_row(db, delegation_id)
-        manifest_contract, manifest_sha = (
-            contract_mod._contract_from_validation_manifest(manifest)
-        )
-        if (
-            manifest_sha != stored["contract_sha256"]
-            or manifest_contract["task_id"] != stored["task_id"]
-        ):
+        manifest_contract, manifest_sha = contract_mod._contract_from_validation_manifest(manifest)
+        if manifest_sha != stored["contract_sha256"] or manifest_contract["task_id"] != stored["task_id"]:
             raise ValueError("delegation validation manifest does not match lineage")
 
         observed = _latest_observation(stored["task_id"], root)
         if observed is None:
-            observed_desired = (
-                "reconciling"
-                if stored["state"] not in TERMINAL_STATES
-                else stored["state"]
-            )
+            observed_desired = "reconciling" if stored["state"] not in TERMINAL_STATES else stored["state"]
             backend_state = "unobserved"
             outcome = stored.get("outcome") or ""
         else:
-            backend_state = str(
-                observed.get("status")
-                or observed.get("state")
-                or observed.get("outcome")
-                or "unknown"
-            )
-            outcome = str(
-                observed.get("outcome") or observed.get("state") or backend_state
-            )
+            backend_state = str(observed.get("status") or observed.get("state") or observed.get("outcome") or "unknown")
+            outcome = str(observed.get("outcome") or observed.get("state") or backend_state)
             observed_desired = _normalize_state(outcome or backend_state)
             if observed.get("error"):
                 observed_desired = "failed"
 
         validation = contract_mod._validate_manifest_impl(manifest, None, root)
         verdict = str(validation.get("verdict") or "")
+        safe_validation = validation_summary(validation)
+        summary_json = json.dumps(safe_validation, sort_keys=True, separators=(",", ":"))
 
-        authoritative_cancel = stored["state"] == "cancelled" and bool(
-            stored.get("cancel_requested")
-        )
-        cancellation_pending = bool(stored.get("cancel_requested")) or bool(
-            stored.get("cancellation_in_progress")
-        )
+        authoritative_cancel = stored["state"] == "cancelled" and bool(stored.get("cancel_requested"))
+        cancellation_pending = bool(stored.get("cancel_requested")) or bool(stored.get("cancellation_in_progress"))
         resolved_cancel_requested = bool(stored.get("cancel_requested"))
         resolved_cancellation_in_progress = bool(stored.get("cancellation_in_progress"))
         dispatch_phase = str(stored.get("dispatch_phase") or "dispatched")
@@ -123,10 +129,35 @@ def hermes_delegation_reconcile(
         elif cancellation_pending:
             desired = "reconciling"
             outcome = ""
-        elif observed is None or (
-            observed_desired == "succeeded" and verdict != "SATISFIED"
-        ):
+        elif observed is None or (observed_desired == "succeeded" and verdict != "SATISFIED"):
             desired = "reconciling"
+        # A successful backend with positively observed bad artifacts is a work
+        # defect, not an ambiguous submission. Allow a durable 30s delivery grace,
+        # then let the existing bounded semantic recovery handle the failure.
+        # Missing/unreadable run, denied authority, and pending reviews never
+        # enter this path, even when their overall verdict is NOT_SATISFIED.
+        checks = {c["kind"]: c["status"] for c in safe_validation.get("checks", [])}
+        required = {"run_state", "authorization"}
+        if manifest_contract["completion_criteria"]["tests_pass"]:
+            required.add("tests")
+        if manifest_contract["completion_criteria"]["no_forbidden_actions"]:
+            required.add("forbidden")
+        if manifest_contract["review_requirements"]["required"]:
+            required.add("review")
+        defect = (observed_desired == "succeeded" and verdict == "NOT_SATISFIED"
+                  and manifest_contract["completion_criteria"]["artifacts_present"]
+                  and checks.get("artifacts") == "FAIL"
+                  and all(checks.get(kind) == "PASS" for kind in required)
+                  and not cancellation_pending and not authoritative_cancel)
+        failure_since = ""
+        if defect:
+            failure_since = str(stored.get("validation_failure_since") or _now())
+            try:
+                age = (datetime.now(timezone.utc) - datetime.fromisoformat(failure_since)).total_seconds()
+            except (ValueError, TypeError):
+                failure_since, age = _now(), 0
+            if age >= VALIDATION_GRACE_SECONDS:
+                desired, outcome = "failed", "validation_failed"
         verified_success = desired == "succeeded" and verdict == "SATISFIED"
 
         changed = (
@@ -135,43 +166,36 @@ def hermes_delegation_reconcile(
             or _bounded(outcome, 128) != stored.get("outcome", "")
             or verdict != stored.get("validation_verdict", "")
             or resolved_cancel_requested != bool(stored.get("cancel_requested"))
-            or resolved_cancellation_in_progress
-            != bool(stored.get("cancellation_in_progress"))
+            or resolved_cancellation_in_progress != bool(stored.get("cancellation_in_progress"))
             or dispatch_phase != stored.get("dispatch_phase")
+            or summary_json != stored.get("validation_summary_json", "{}")
+            or failure_since != stored.get("validation_failure_since", "")
         )
         preview = dict(stored)
-        preview.update(
-            {
-                "state": desired,
-                "backend_state": _bounded(backend_state, 128),
-                "outcome": _bounded(outcome, 128),
-                "validation_verdict": _bounded(verdict, 64),
-                "cancel_requested": resolved_cancel_requested,
-                "cancellation_in_progress": resolved_cancellation_in_progress,
-                "dispatch_phase": dispatch_phase,
-            }
-        )
+        preview.update({
+            "state": desired,
+            "backend_state": _bounded(backend_state, 128),
+            "outcome": _bounded(outcome, 128),
+            "validation_verdict": _bounded(verdict, 64),
+            "cancel_requested": resolved_cancel_requested,
+            "cancellation_in_progress": resolved_cancellation_in_progress,
+            "dispatch_phase": dispatch_phase,
+            "validation_summary_json": summary_json,
+            "validation_failure_since": failure_since,
+        })
         if not apply:
-            return json.dumps(
-                {
-                    "success": True,
-                    "schema_version": SCHEMA_VERSION,
-                    "changed": changed,
-                    "applied": False,
-                    "delegation": _surface(preview),
-                    "observed": observed,
-                    "evidence_ref": f"contract:{stored['contract_sha256']}"
-                    if verified_success
-                    else "",
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+            return json.dumps({
+                "success": True,
+                "schema_version": SCHEMA_VERSION,
+                "changed": changed,
+                "applied": False,
+                "delegation": _surface(preview),
+                "observed": observed,
+                "evidence_ref": f"contract:{stored['contract_sha256']}" if verified_success else "",
+            }, ensure_ascii=False, indent=2)
 
         now = _now()
-        terminal_at = stored.get("terminal_at") or (
-            now if desired in TERMINAL_STATES else None
-        )
+        terminal_at = stored.get("terminal_at") or (now if desired in TERMINAL_STATES else None)
         if desired not in TERMINAL_STATES:
             terminal_at = None
         with _connect(path, write=True) as db:
@@ -179,90 +203,48 @@ def hermes_delegation_reconcile(
             db.execute("BEGIN IMMEDIATE")
             current = dict(_get_row(db, delegation_id))
             authority_fields = (
-                "schema",
-                "mission_id",
-                "task_id",
-                "contract_sha256",
-                "backend",
-                "state",
-                "cancel_requested",
-                "cancellation_in_progress",
-                "authority_version",
-                "cancellation_claimed_at",
-                "cancellation_observation_sha256",
-                "cancellation_watermark_ready",
-                "dispatch_phase",
-                "terminal_at",
-                "updated_at",
+                "schema", "mission_id", "task_id", "contract_sha256", "backend",
+                "state", "cancel_requested", "cancellation_in_progress", "authority_version",
+                "cancellation_claimed_at", "cancellation_observation_sha256", "cancellation_watermark_ready",
+                "dispatch_phase", "terminal_at", "updated_at",
+                "validation_summary_json", "validation_failure_since",
             )
             stale = any(current.get(key) != stored.get(key) for key in authority_fields)
             if stale:
                 db.commit()
-                return json.dumps(
-                    {
-                        "success": True,
-                        "schema_version": SCHEMA_VERSION,
-                        "changed": False,
-                        "applied": False,
-                        "stale_observation": True,
-                        "delegation": _surface(current),
-                        "observed": observed,
-                        "evidence_ref": "",
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                return json.dumps({
+                    "success": True,
+                    "schema_version": SCHEMA_VERSION,
+                    "changed": False,
+                    "applied": False,
+                    "stale_observation": True,
+                    "delegation": _surface(current),
+                    "observed": observed,
+                    "evidence_ref": "",
+                }, ensure_ascii=False, indent=2)
             if contract_json:
                 db.execute(
                     "INSERT INTO delegation_validation_manifests(delegation_id,schema,context_sha256,manifest_json,created_at,updated_at) "
                     "VALUES(?,?,?,?,?,?) ON CONFLICT(delegation_id) DO UPDATE SET schema=excluded.schema,context_sha256=excluded.context_sha256,manifest_json=excluded.manifest_json,updated_at=excluded.updated_at",
-                    (
-                        delegation_id,
-                        manifest["schema"],
-                        manifest["context_sha256"],
-                        json.dumps(manifest, sort_keys=True, separators=(",", ":")),
-                        now,
-                        now,
-                    ),
+                    (delegation_id, manifest["schema"], manifest["context_sha256"], json.dumps(manifest, sort_keys=True, separators=(",", ":")), now, now),
                 )
             db.execute(
                 "UPDATE delegations SET state=?,backend_state=?,outcome=?,validation_verdict=?,"
                 "cancel_requested=?,cancellation_in_progress=?,dispatch_phase=?,"
+                "validation_summary_json=?,validation_failure_since=?,"
                 "authority_version=authority_version+?,updated_at=?,terminal_at=? WHERE delegation_id=?",
-                (
-                    desired,
-                    _bounded(backend_state, 128),
-                    _bounded(outcome, 128),
-                    _bounded(verdict, 64),
-                    1 if resolved_cancel_requested else 0,
-                    1 if resolved_cancellation_in_progress else 0,
-                    dispatch_phase,
-                    1 if changed else 0,
-                    now,
-                    terminal_at,
-                    delegation_id,
-                ),
+                (desired, _bounded(backend_state, 128), _bounded(outcome, 128), _bounded(verdict, 64),
+                 1 if resolved_cancel_requested else 0, 1 if resolved_cancellation_in_progress else 0,
+                 dispatch_phase, summary_json, failure_since, 1 if changed else 0, now, terminal_at, delegation_id),
             )
             if changed:
-                _event(
-                    db,
-                    delegation_id,
-                    "delegation.reconciled",
-                    from_state=stored["state"],
-                    to_state=desired,
-                    backend_state=backend_state,
-                    observed=observed,
-                )
+                _event(db, delegation_id, "delegation.reconciled", from_state=stored["state"], to_state=desired, backend_state=backend_state, observed=observed)
             db.commit()
             row = dict(_get_row(db, delegation_id))
 
         mission_synced = True
         if row.get("mission_id"):
-            evidence_ref = (
-                f"contract:{row['contract_sha256']}"
-                if verified_success
-                else f"delegation:{delegation_id}"
-            )
+            evidence_ref = f"contract:{row['contract_sha256']}" if verified_success else f"delegation:{delegation_id}"
             mission_synced = _sync_mission_attachment(
                 row,
                 _mission_state(desired),
@@ -273,57 +255,9 @@ def hermes_delegation_reconcile(
         if changed:
             _live_event("delegation.reconciled", row, hermes_root=root)
         if not mission_synced:
-            _audit(
-                tool="hermes_delegation_reconcile",
-                policy=policy,
-                dry_run=False,
-                success=False,
-                changed=changed,
-                delegation_id=delegation_id,
-                task_id=row["task_id"],
-                backend=row["backend"],
-            )
-            return _mission_sync_failure(
-                "reconciliation",
-                row,
-                changed=changed,
-                extra={"applied": True, "observed": observed},
-            )
-        _audit(
-            tool="hermes_delegation_reconcile",
-            policy=policy,
-            dry_run=False,
-            success=True,
-            changed=changed,
-            delegation_id=delegation_id,
-            task_id=row["task_id"],
-            backend=row["backend"],
-        )
-        return json.dumps(
-            {
-                "success": True,
-                "schema_version": SCHEMA_VERSION,
-                "changed": changed,
-                "applied": True,
-                "delegation": _surface(row),
-                "observed": observed,
-                "evidence_ref": f"contract:{row['contract_sha256']}"
-                if verified_success
-                else "",
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-    except (
-        ValueError,
-        TypeError,
-        LookupError,
-        PermissionError,
-        OSError,
-        sqlite3.Error,
-    ) as exc:
-        return _error(
-            exc,
-            "DELEGATION_RECONCILE_FAILED",
-            "Check delegation lineage, observed backend state, and mutation policy.",
-        )
+            _audit(tool="hermes_delegation_reconcile", policy=policy, dry_run=False, success=False, changed=changed, delegation_id=delegation_id, task_id=row["task_id"], backend=row["backend"])
+            return _mission_sync_failure("reconciliation", row, changed=changed, extra={"applied": True, "observed": observed})
+        _audit(tool="hermes_delegation_reconcile", policy=policy, dry_run=False, success=True, changed=changed, delegation_id=delegation_id, task_id=row["task_id"], backend=row["backend"])
+        return json.dumps({"success": True, "schema_version": SCHEMA_VERSION, "changed": changed, "applied": True, "delegation": _surface(row), "observed": observed, "evidence_ref": f"contract:{row['contract_sha256']}" if verified_success else ""}, ensure_ascii=False, indent=2)
+    except (ValueError, TypeError, LookupError, PermissionError, OSError, sqlite3.Error) as exc:
+        return _error(exc, "DELEGATION_RECONCILE_FAILED", "Check delegation lineage, observed backend state, and mutation policy.")
