@@ -1,10 +1,10 @@
 # Finance bridge
 
-`hermes_finance_analyze` is a narrowly scoped bridge from a trusted ChatGPT client into the local Hermes `finance` profile. It is designed for financial reasoning over a bounded evidence packet, not for direct bank connectivity or money movement.
+`hermes_finance_analyze` is a narrowly scoped bridge from a trusted ChatGPT client into the local Hermes `finance` profile. It reasons over a bounded evidence packet. It does not connect to banks or move money.
 
 ## Security model
 
-The financial data plane remains outside Hermes. A trusted caller retrieves financial facts from its authorized source, normalizes only the facts required for the current decision, and submits a `finance.evidence/v1` JSON packet.
+Financial data stays outside Hermes. A trusted caller retrieves financial facts from its authorized source, normalizes only the facts the current decision needs, and submits a `finance.evidence/v1` JSON packet.
 
 Hermes GPT validates that packet before execution. It rejects oversized input, the wrong schema, missing coverage metadata, and credential-like fields or private-key material. The packet must be explicitly marked `financial-confidential`.
 

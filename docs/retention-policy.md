@@ -1,7 +1,6 @@
-# Hermes GPT data retention and cleanup policy
+# Data retention and cleanup policy
 
-**Status:** current v0.7.0 operational policy  
-**Owner:** Hermes GPT maintainer
+Status: current operational policy. Owner: Hermes GPT maintainer.
 
 For documentation authority rules, see [docs/README.md](README.md).
 
@@ -13,21 +12,22 @@ Mission Control does not return raw request dumps, Codex CLI transcripts, prompt
 
 ## Retention windows
 
-| Artifact class | Maximum window | Enforcement in v0.7.0 |
+| Artifact class | Maximum window | Enforcement |
 | --- | --- | --- |
 | `request_dump_*.json` | 7 days from file mtime | maintainer cleanup |
-| Codex job metadata/transcript artifacts | 30 days after terminal completion | age-based cleanup during `operator_codex` reconciliation |
+| Codex job metadata/transcript artifacts | 30 days after terminal completion | age-based cleanup during Codex job reconciliation |
 | terminal Swarm worktrees | 7 days after terminal state and declared artifact preservation | maintainer cleanup through normal Git worktree handling |
 | terminal Swarm workflow/verdict records | 30 days after terminal state | maintainer cleanup |
 | failed/abandoned workflow records | same windows, measured from last state transition | maintainer cleanup |
 | review-acceptance records (`review-evidence/review-acceptances.jsonl`) | 30 days after the contract they evidence reaches terminal state (legal review pending) | maintainer cleanup; see below |
-| event timeline | derived read-model — no stored copy; query window `HERMES_GPT_EVENTS_MAX_AGE_DAYS` (default 90) | enforced at query time by the event surface |
+| event timeline | derived read model with no stored copy; query window `HERMES_GPT_EVENTS_MAX_AGE_DAYS` (default 90) | enforced at query time by the event tools |
 | durable token store (`secrets/hermes_gpt_tokens.db`) | live rows until expired; retirement tombstones kept permanently | revocation via `hermes_oauth_revoke`; see below |
 
 ### Review-evidence records
 
 Review-acceptance records are append-only and never rewritten in place. They
-contain identity and references only — no raw prompts, transcripts, or bodies.
+contain identity and references only, with no raw prompts, transcripts, or
+bodies.
 Cleanup follows the same conservative procedure as other classes: confirm the
 evidenced contract is terminal and no legal hold applies, then remove the
 record. The retention window is aligned with the contract records it evidences
@@ -55,13 +55,17 @@ window is larger (legal finding L2).
 
 ### Codex-specific automatic cleanup
 
-`operator_codex` defines `RETENTION_DAYS=30` and performs age-based cleanup as part of job reconciliation.
-
-This is **not** a general background deletion daemon. If no Codex reconciliation occurs, do not describe the policy as a continuously scheduled purge.
+`src/hermes_gpt/execution/codex.py` defines `RETENTION_DAYS=30` and performs
+age-based cleanup as part of job reconciliation. It is not a general background
+deletion daemon: nothing in this class ages out unless a reconciliation pass
+runs.
 
 ### Other artifact classes
 
-v0.7.0 does not install a global cleanup service for request dumps, Swarm worktrees, Swarm workflow/verdict records, or review-acceptance records. The maintainer remains responsible for keeping those classes within the stated windows unless later code explicitly adds and tests automation.
+No global cleanup service handles request dumps, Swarm worktrees, Swarm
+workflow/verdict records, or review-acceptance records. The maintainer remains
+responsible for keeping those classes within the stated windows unless later
+code adds and tests automation.
 
 ## Cleanup procedure
 
@@ -93,4 +97,6 @@ Any future cleanup automation must remain:
 - auditable;
 - conservative around active workflows and legal-hold exceptions.
 
-If documentation and implementation disagree about cleanup behavior, verify `operator_codex.py`, Swarm storage code, and the relevant tests before updating the claim.
+If documentation and implementation disagree about cleanup behavior, verify
+`src/hermes_gpt/execution/codex.py`, the Swarm store code, and the relevant tests
+before changing the claim.

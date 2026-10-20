@@ -1,23 +1,21 @@
-# MCP Compatibility
+# MCP compatibility
 
-- Status: current source (SDK 1/2 compatibility; not a release announcement)
-
-This manifest describes the MCP surface exposed by both the main server and
-curated Codex server. Package support is `mcp[cli]>=1.28.1,<3`. SDK 1.x remains
-supported; installations may select SDK 2.x without changing Hermes source.
+This guide describes the MCP tools the main server and the curated Codex server
+expose. Both SDK 1.x and SDK 2.x are supported through the package floor
+`mcp[cli]>=1.28.1,<3`, and an installation can move to SDK 2.x without changing
+Hermes source.
 
 ## Protocol compatibility
 
 The SDK package version and negotiated MCP protocol revision are separate.
 The compatibility tests perform real HTTP `initialize` requests for legacy
 revisions **2024-11-05** and **2025-11-25**, checking the exact negotiated
-revision and Hermes GPT application version on both server surfaces. The
+revision and Hermes GPT application version on both servers. The
 existing subprocess stdio test also exercises **2025-06-18**.
 
-SDK 2 introduces the **2026-07-28** stateless protocol while retaining legacy
-client support. New-protocol clients do not use the legacy initialization
-handshake. These are SDK transport semantics, not a change to Hermes Operator
-authority. See the [SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
+SDK 2 adds the 2026-07-28 stateless protocol while keeping legacy client
+support, and new-protocol clients skip the legacy initialization handshake.
+That is SDK transport behavior, not a change to Operator authority. See the [SDK migration guide](https://py.sdk.modelcontextprotocol.io/migration/).
 
 The shared `mcp_compat.HermesMCP` adapter preserves explicit HTTP/SSE options:
 SDK 1 accepts them at construction; SDK 2 accepts them at ASGI app creation.
@@ -29,7 +27,7 @@ parameter; only SDK 1 needs the legacy private version assignment.
 
 | Transport | Path | Notes |
 |---|---|---|
-| stdio | — | Default local mode (`hermes-gpt` or `python -m hermes_gpt`) |
+| stdio | none | Default local mode (`hermes-gpt` or `python -m hermes_gpt`) |
 | Streamable HTTP | `/mcp` | Enabled with `--http`; transport security host/origin allowlist |
 | Legacy SSE | `/sse` (plus `/messages/`) | Retained for older clients |
 

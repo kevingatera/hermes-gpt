@@ -1,58 +1,55 @@
-# Derived Capability Manifest + Mission Ledger (vNext slice-1, Phase 1)
+# Capability manifest and mission ledger
 
-Two **read-only derived views** added in the Hermes GPT sidecar (proposal §17
-item 3, §2.2 rows 2+4, §6.2). Both are *read models*: they are computed by
-reading the existing authoritative registries/stores and merging them into a
-single query surface. Neither introduces a new source of truth, a new durable
-table, or a mutation path. INV-9 data containment holds throughout — refs,
-bounded metadata, and content-addressed hashes only; no raw prompt, transcript,
-memory body, credential, or secret-path content ever crosses the surface.
+Two read-only derived views answer questions that would otherwise mean opening
+several stores by hand. Both are read models: they read the existing
+authoritative registries and stores at query time and merge the results. Neither
+adds a source of truth, a durable table, or a mutation path, and neither returns
+raw prompts, transcripts, memory bodies, credentials, or secret-path content.
+Refs, bounded metadata, and content-addressed hashes are all that cross.
 
-## `hermes_capability_manifest` — derived capability manifest
+## `hermes_capability_manifest`
 
 Answers "what can X do" by folding the authoritative registries into one
 normalized capability registry:
 
-- Fabric node registry (`operator_fabric.load_node_registry`)
+- Fabric node registry (`fleet/fabric_config.py`)
 - Fleet authority manifest (`<root>/config/fleet-authority.json`)
-- Profile toolsets & skills (per-profile `skills/` dir + config)
-- Provider dimension (derived from each profile's configured model/provider)
+- Profile toolsets and skills (per-profile `skills/` directory plus config)
+- Provider dimension (derived from each profile's configured model and provider)
 
 Each entity carries `capability_sha256` (content address) and `derived_from`
-(source refs) for provenance. The `placement_cache` object is a **TTL-bounded
-derived snapshot** that is rebuilt from the registries when it expires; it is
-in-process only, never a durable store.
+(source refs) for provenance. The `placement_cache` object is a TTL-bounded
+derived snapshot, rebuilt from the registries when it expires. It lives in
+process memory and is never a durable store.
 
-Read-only by construction: all sources open read-only (`mode=ro` / `r`);
-no write path exists.
+Sources open read-only (`mode=ro` / `r`), and no write path exists.
 
 Args: `source` (fabric|fleet|profile|provider, empty = all), `include_cache`,
 `limit`. Allowlist env: `HERMES_GPT_CAPABILITY_ALLOWED_SOURCES`.
 
-## `hermes_mission_ledger` / `hermes_mission_ledger_replay` — per-mission ledger
+## `hermes_mission_ledger` and `hermes_mission_ledger_replay`
 
-An append-only, replayable **merged cursor stream** per mission, reconciled at
-query time from the existing authoritative stores (it does not replace them):
+An append-only, replayable merged cursor stream per mission, reconciled at query
+time from the existing authoritative stores:
 
-- `mission_events` — `<root>/missions/missions.db`
-- `delegation_events` — `<root>/delegations/delegations.db` (linked via the
-  mission's delegations; tasks carried for the kanban join)
-- operator audit — `<root>/logs/hermes_gpt_operator_audit.jsonl`
-- kanban `task_events` — `<root>/kanban/boards/<slug>/kanban.db` (for the
-  tasks owned by this mission's delegations)
+- `mission_events`: `<root>/missions/missions.db`
+- `delegation_events`: `<root>/delegations/delegations.db` (linked through the
+  mission's delegations; tasks are carried for the kanban join)
+- operator audit: `<root>/logs/hermes_gpt_operator_audit.jsonl`
+- kanban `task_events`: `<root>/kanban/boards/<slug>/kanban.db` (for the tasks
+  owned by this mission's delegations)
 
-Every event carries an opaque per-source watermark `cursor` (prefix `ld1.`);
-each authoritative source keeps its own stable monotonic sequence
+Every event carries an opaque per-source watermark `cursor` (prefix `ld1.`).
+Each authoritative source keeps its own stable monotonic sequence
 (`mission_events.seq`, `delegation_events.seq`, audit line number, kanban
-`rowid`), and the merge orders events without ever reordering within a source,
-so a late event with an older timestamp is still delivered after the watermark.
-The stream is deterministic given the same store state, so
+`rowid`), and the merge orders events without reordering within a source, so a
+late event with an older timestamp is still delivered after the watermark. The
+stream is deterministic for the same store state, so
 `hermes_mission_ledger_replay` reproduces the mission's event history.
 
 Args: `mission_id`, `source` (mission|delegation|audit|kanban, empty = all),
 `cursor` (opaque `next_cursor` token from a previous page, or 0 to start),
-`limit`, `replay`. Allowlist
-env: `HERMES_GPT_LEDGER_ALLOWED_SOURCES`.
+`limit`, `replay`. Allowlist env: `HERMES_GPT_LEDGER_ALLOWED_SOURCES`.
 
-Read-only by construction: all SQLite sources open `mode=ro`; no mutation path
-exists (verified by tests that assert row counts and file sets are unchanged).
+Every SQLite source opens `mode=ro`, and no mutation path exists. Tests assert
+row counts and file sets are unchanged.
